@@ -357,7 +357,7 @@ export default function PlayedMatchDetailScreen({
                           ...badgeStyles,
                         }}
                       >
-                        {summary?.averageRating !== null
+                        {summary && summary.averageRating !== null
                           ? summary.averageRating.toFixed(1)
                           : "--"}
                       </div>
