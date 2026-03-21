@@ -4,6 +4,20 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { styles } from "@/styles/appStyles";
 
+function getAuthRedirectUrl() {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+
+  if (envUrl) {
+    return envUrl.replace(/\/+$/, "");
+  }
+
+  if (typeof window !== "undefined" && window.location.origin) {
+    return window.location.origin.replace(/\/+$/, "");
+  }
+
+  return "https://statppka.vercel.app";
+}
+
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
@@ -18,10 +32,12 @@ export default function LoginScreen() {
     setLoading(true);
     setMessage("");
 
+    const redirectUrl = getAuthRedirectUrl();
+
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
       options: {
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: redirectUrl,
       },
     });
 
