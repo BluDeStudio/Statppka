@@ -34,6 +34,20 @@ function makeInviteToken() {
     .toUpperCase()}`;
 }
 
+function getAppBaseUrl() {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+
+  if (envUrl) {
+    return envUrl.replace(/\/+$/, "");
+  }
+
+  if (typeof window !== "undefined" && window.location.origin) {
+    return window.location.origin.replace(/\/+$/, "");
+  }
+
+  return "https://statppka.vercel.app";
+}
+
 export async function getMyClubMembership(userId: string): Promise<ClubMember | null> {
   try {
     const { data, error } = await supabase
@@ -187,11 +201,8 @@ export async function createInviteLink(
       return null;
     }
 
-    if (typeof window === "undefined") {
-      return token;
-    }
-
-    return `${window.location.origin}/?invite=${encodeURIComponent(token)}`;
+    const baseUrl = getAppBaseUrl();
+    return `${baseUrl}/?invite=${encodeURIComponent(token)}`;
   } catch (error) {
     console.error("Chyba v createInviteLink:", error);
     return null;
