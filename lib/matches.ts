@@ -89,6 +89,34 @@ export async function createPlannedMatch(input: {
   }
 }
 
+export async function deletePlannedMatch(matchId: string): Promise<{
+  success: boolean;
+  errorMessage?: string;
+}> {
+  try {
+    const { error } = await supabase
+      .from("planned_matches")
+      .delete()
+      .eq("id", matchId);
+
+    if (error) {
+      console.error("Nepodařilo se smazat plánovaný zápas:", error);
+      return {
+        success: false,
+        errorMessage: `Nepodařilo se smazat plánovaný zápas: ${error.message}`,
+      };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Chyba v deletePlannedMatch:", error);
+    return {
+      success: false,
+      errorMessage: "Při mazání plánovaného zápasu nastala chyba.",
+    };
+  }
+}
+
 export async function getFinishedMatchesByClubId(clubId: string): Promise<FinishedMatch[]> {
   try {
     const { data: matches, error: matchesError } = await supabase
@@ -256,6 +284,73 @@ export async function saveFinishedMatch(input: {
     return {
       finishedMatch: null,
       errorMessage: "Při ukládání odehraného zápasu nastala chyba.",
+    };
+  }
+}
+
+export async function deleteFinishedMatch(matchId: string): Promise<{
+  success: boolean;
+  errorMessage?: string;
+}> {
+  try {
+    const { error: ratingsError } = await supabase
+      .from("match_player_ratings")
+      .delete()
+      .eq("finished_match_id", matchId);
+
+    if (ratingsError) {
+      console.error("Nepodařilo se smazat hodnocení zápasu:", ratingsError);
+      return {
+        success: false,
+        errorMessage: `Nepodařilo se smazat hodnocení zápasu: ${ratingsError.message}`,
+      };
+    }
+
+    const { error: statsError } = await supabase
+      .from("finished_match_player_stats")
+      .delete()
+      .eq("finished_match_id", matchId);
+
+    if (statsError) {
+      console.error("Nepodařilo se smazat statistiky hráčů:", statsError);
+      return {
+        success: false,
+        errorMessage: `Nepodařilo se smazat statistiky hráčů: ${statsError.message}`,
+      };
+    }
+
+    const { error: eventsError } = await supabase
+      .from("finished_match_events")
+      .delete()
+      .eq("finished_match_id", matchId);
+
+    if (eventsError) {
+      console.error("Nepodařilo se smazat události zápasu:", eventsError);
+      return {
+        success: false,
+        errorMessage: `Nepodařilo se smazat události zápasu: ${eventsError.message}`,
+      };
+    }
+
+    const { error: matchError } = await supabase
+      .from("finished_matches")
+      .delete()
+      .eq("id", matchId);
+
+    if (matchError) {
+      console.error("Nepodařilo se smazat odehraný zápas:", matchError);
+      return {
+        success: false,
+        errorMessage: `Nepodařilo se smazat odehraný zápas: ${matchError.message}`,
+      };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Chyba v deleteFinishedMatch:", error);
+    return {
+      success: false,
+      errorMessage: "Při mazání odehraného zápasu nastala chyba.",
     };
   }
 }

@@ -18,6 +18,8 @@ type ColorPreset = {
   secondary: string;
 };
 
+const INVITE_STORAGE_KEY = "statppka_invite_token";
+
 const colorPresets: ColorPreset[] = [
   {
     id: "green-black",
@@ -82,6 +84,31 @@ function extractInviteToken(value: string) {
   }
 
   return trimmed;
+}
+
+function getInviteTokenFromCurrentUrl() {
+  if (typeof window === "undefined") return "";
+
+  const params = new URLSearchParams(window.location.search);
+  return params.get("invite") ?? "";
+}
+
+function getStoredInviteToken() {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(INVITE_STORAGE_KEY) ?? "";
+}
+
+function storeInviteToken(token: string) {
+  if (typeof window === "undefined") return;
+
+  if (token.trim()) {
+    window.localStorage.setItem(INVITE_STORAGE_KEY, token.trim());
+  }
+}
+
+function clearStoredInviteToken() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(INVITE_STORAGE_KEY);
 }
 
 function makeLogoPath(userId: string, file: File) {
@@ -151,11 +178,16 @@ export default function TeamSetupScreen({
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const params = new URLSearchParams(window.location.search);
-    const invite = params.get("invite");
+    const inviteFromUrl = getInviteTokenFromCurrentUrl();
+    const inviteFromStorage = getStoredInviteToken();
+    const resolvedInvite = inviteFromUrl || inviteFromStorage;
 
-    if (invite) {
-      setInviteToken(invite);
+    if (inviteFromUrl) {
+      storeInviteToken(inviteFromUrl);
+    }
+
+    if (resolvedInvite) {
+      setInviteToken(resolvedInvite);
       setMode("join");
       setMessage("Otevřel jsi pozvánku do týmu. Připoj se.");
     }
@@ -276,10 +308,12 @@ export default function TeamSetupScreen({
 
     setLoading(true);
     setMessage("");
+    storeInviteToken(cleanedToken);
 
     const result = await joinClubByInviteToken(userId, cleanedToken);
 
     if (result.club && result.membership) {
+      clearStoredInviteToken();
       onReady(result.club, result.membership);
       setMessage("");
     } else {

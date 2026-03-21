@@ -22,6 +22,7 @@ import {
 } from "@/lib/club";
 import {
   createPlannedMatch,
+  deleteFinishedMatch,
   getFinishedMatchesByClubId,
   getPlannedMatchesByClubId,
   saveFinishedMatch,
@@ -807,6 +808,31 @@ export default function Home() {
             <PlayedMatchesScreen
               finishedMatches={finishedMatches}
               onSelectMatch={(matchId) => setSelectedPlayedMatchId(matchId)}
+              onDeleteMatch={async (matchId) => {
+                const result = await deleteFinishedMatch(matchId);
+
+                if (!result.success) {
+                  setAppError(result.errorMessage ?? "Nepodařilo se smazat zápas.");
+                  return {
+                    success: false,
+                    errorMessage: result.errorMessage ?? "Nepodařilo se smazat zápas.",
+                  };
+                }
+
+                setFinishedMatches((prev) =>
+                  prev.filter((match) => match.id !== matchId)
+                );
+
+                if (selectedPlayedMatchId === matchId) {
+                  setSelectedPlayedMatchId(null);
+                }
+
+                setAppError("");
+
+                return {
+                  success: true,
+                };
+              }}
               primaryColor={currentClub.primary_color}
             />
           )}

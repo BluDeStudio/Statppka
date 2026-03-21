@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { styles } from "@/styles/appStyles";
 
-function getAuthRedirectUrl() {
+const INVITE_STORAGE_KEY = "statppka_invite_token";
+
+function getBaseAppUrl() {
   const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
 
   if (envUrl) {
@@ -18,10 +20,41 @@ function getAuthRedirectUrl() {
   return "https://statppka.vercel.app";
 }
 
+function getStoredInviteToken() {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(INVITE_STORAGE_KEY) ?? "";
+}
+
+function getInviteTokenFromUrl() {
+  if (typeof window === "undefined") return "";
+
+  const params = new URLSearchParams(window.location.search);
+  return params.get("invite") ?? "";
+}
+
+function buildRedirectUrl() {
+  const baseUrl = getBaseAppUrl();
+  const inviteToken = getInviteTokenFromUrl() || getStoredInviteToken();
+
+  if (!inviteToken) {
+    return baseUrl;
+  }
+
+  return `${baseUrl}/?invite=${encodeURIComponent(inviteToken)}`;
+}
+
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const inviteToken = getInviteTokenFromUrl();
+
+    if (!inviteToken || typeof window === "undefined") return;
+
+    window.localStorage.setItem(INVITE_STORAGE_KEY, inviteToken);
+  }, []);
 
   const handleLogin = async () => {
     if (!email.trim()) {
@@ -32,7 +65,7 @@ export default function LoginScreen() {
     setLoading(true);
     setMessage("");
 
-    const redirectUrl = getAuthRedirectUrl();
+    const redirectUrl = buildRedirectUrl();
 
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
