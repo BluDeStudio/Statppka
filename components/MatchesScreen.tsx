@@ -6,11 +6,6 @@ import MatchLiveScreen from "@/components/MatchLiveScreen";
 import { styles } from "@/styles/appStyles";
 import type { FinishedMatch, PlannedMatch } from "@/app/page";
 
-type ActionResult = {
-  success: boolean;
-  errorMessage?: string;
-};
-
 type MatchesScreenProps = {
   clubId: string;
   clubName: string;
@@ -19,8 +14,15 @@ type MatchesScreenProps = {
   plannedMatches: PlannedMatch[];
   finishedMatchIds: string[];
   onLiveModeChange: (isLive: boolean) => void;
-  onMatchFinished: (finishedMatch: FinishedMatch) => Promise<ActionResult> | ActionResult;
-  onAddMatch: (newMatch: PlannedMatch) => Promise<ActionResult> | ActionResult;
+  onMatchFinished: (
+    finishedMatch: FinishedMatch
+  ) => Promise<{ success: boolean; errorMessage?: string }>;
+  onAddMatch: (
+    newMatch: PlannedMatch
+  ) => Promise<{ success: boolean; errorMessage?: string }>;
+  onDeleteMatch: (
+    matchId: string
+  ) => Promise<{ success: boolean; errorMessage?: string }>;
   isAdmin: boolean;
 };
 
@@ -50,6 +52,7 @@ export default function MatchesScreen({
   onLiveModeChange,
   onMatchFinished,
   onAddMatch,
+  onDeleteMatch,
   isAdmin,
 }: MatchesScreenProps) {
   const [filter, setFilter] = useState<"ALL" | "A" | "B">("ALL");
@@ -63,9 +66,9 @@ export default function MatchesScreen({
   const [newOpponent, setNewOpponent] = useState("");
   const [newDate, setNewDate] = useState("");
   const [newVenue, setNewVenue] = useState<"home" | "away">("home");
-
-  const [savingMatch, setSavingMatch] = useState(false);
   const [message, setMessage] = useState("");
+  const [deletingMatchId, setDeletingMatchId] = useState<string | null>(null);
+  const [savingMatch, setSavingMatch] = useState(false);
 
   useEffect(() => {
     onLiveModeChange(selectedMatchId !== null && lineupSaved && isAdmin);
@@ -123,7 +126,7 @@ export default function MatchesScreen({
 
   const handleAddMatch = async () => {
     if (!newOpponent.trim() || !newDate) {
-      setMessage("Vyplň datum a soupeře.");
+      setMessage("Vyplň soupeře a datum.");
       return;
     }
 
@@ -131,6 +134,7 @@ export default function MatchesScreen({
     setMessage("");
 
     const teamLabel = newTeam === "A" ? teamLabelA : teamLabelB;
+
     const homeTeam = newVenue === "home" ? teamLabel : newOpponent.trim();
     const awayTeam = newVenue === "home" ? newOpponent.trim() : teamLabel;
 
@@ -143,27 +147,48 @@ export default function MatchesScreen({
       awayTeam,
     };
 
-    try {
-      const result = await onAddMatch(newMatch);
+    const result = await onAddMatch(newMatch);
 
-      if (!result.success) {
-        setMessage(result.errorMessage ?? "Nepodařilo se uložit zápas.");
-        setSavingMatch(false);
-        return;
-      }
-
-      setNewTeam("A");
-      setNewOpponent("");
-      setNewDate("");
-      setNewVenue("home");
-      setShowAddForm(false);
-      setMessage("");
-    } catch (error) {
-      console.error("Chyba při ukládání zápasu:", error);
-      setMessage("Nepodařilo se uložit zápas.");
-    } finally {
+    if (!result.success) {
+      setMessage(result.errorMessage ?? "Nepodařilo se uložit zápas.");
       setSavingMatch(false);
+      return;
     }
+
+    setNewTeam("A");
+    setNewOpponent("");
+    setNewDate("");
+    setNewVenue("home");
+    setShowAddForm(false);
+    setSavingMatch(false);
+    setMessage("Zápas byl uložen.");
+  };
+
+  const handleDeleteMatch = async (matchId: string, matchTitle: string) => {
+    const confirmed = window.confirm(`Opravdu chceš smazat zápas "${matchTitle}"?`);
+
+    if (!confirmed) return;
+
+    setDeletingMatchId(matchId);
+    setMessage("");
+
+    const result = await onDeleteMatch(matchId);
+
+    if (!result.success) {
+      setMessage(result.errorMessage ?? "Nepodařilo se smazat zápas.");
+      setDeletingMatchId(null);
+      return;
+    }
+
+    if (selectedMatchId === matchId) {
+      setSelectedMatchId(null);
+      setLineupSaved(false);
+      setSelectedPlayers([]);
+      setGoalkeeper(null);
+    }
+
+    setMessage("Zápas byl smazán.");
+    setDeletingMatchId(null);
   };
 
   if (selectedMatch !== null && lineupSaved && isAdmin) {
@@ -184,7 +209,6 @@ export default function MatchesScreen({
           setLineupSaved(false);
           setSelectedPlayers([]);
           setGoalkeeper(null);
-          setMessage("");
         }}
         matchId={selectedMatch.id}
         matchTitle={`${selectedMatch.homeTeam} vs. ${selectedMatch.awayTeam}`}
@@ -233,19 +257,6 @@ export default function MatchesScreen({
           </button>
         )}
       </div>
-
-      {message && (
-        <div
-          style={{
-            ...styles.card,
-            marginBottom: "12px",
-            color: "#ffd1d1",
-            border: "1px solid rgba(255,255,255,0.08)",
-          }}
-        >
-          {message}
-        </div>
-      )}
 
       {showAddForm && isAdmin && (
         <div
@@ -311,7 +322,7 @@ export default function MatchesScreen({
                 ...primaryButtonStyle,
                 opacity: savingMatch ? 0.7 : 1,
               }}
-              onClick={handleAddMatch}
+              onClick={() => void handleAddMatch()}
               disabled={savingMatch}
             >
               {savingMatch ? "Ukládám..." : "Uložit zápas"}
@@ -323,7 +334,6 @@ export default function MatchesScreen({
                 background: "rgba(255,255,255,0.12)",
               }}
               onClick={() => setShowAddForm(false)}
-              disabled={savingMatch}
             >
               Zrušit
             </button>
@@ -357,7 +367,6 @@ export default function MatchesScreen({
                       setLineupSaved(false);
                       setSelectedPlayers([]);
                       setGoalkeeper(null);
-                      setMessage("");
                     }}
                     style={{
                       cursor: isAdmin ? "pointer" : "default",
@@ -401,7 +410,6 @@ export default function MatchesScreen({
                           setLineupSaved(false);
                           setSelectedPlayers([]);
                           setGoalkeeper(null);
-                          setMessage("");
                         }}
                       >
                         ✏️
@@ -415,14 +423,19 @@ export default function MatchesScreen({
                           border: "none",
                           background: "#ff3b3b",
                           color: "white",
-                          cursor: "pointer",
+                          cursor: deletingMatchId === match.id ? "default" : "pointer",
                           fontWeight: "bold",
+                          opacity: deletingMatchId === match.id ? 0.7 : 1,
                         }}
-                        onClick={() => {
-                          alert("Mazání napojíme jako další krok.");
-                        }}
+                        onClick={() =>
+                          void handleDeleteMatch(
+                            match.id,
+                            `${match.homeTeam} vs. ${match.awayTeam}`
+                          )
+                        }
+                        disabled={deletingMatchId === match.id}
                       >
-                        ✕
+                        {deletingMatchId === match.id ? "..." : "✕"}
                       </button>
                     </div>
                   )}
@@ -436,10 +449,7 @@ export default function MatchesScreen({
           !showAddForm && (
             <button
               style={primaryButtonStyle}
-              onClick={() => {
-                setShowAddForm(true);
-                setMessage("");
-              }}
+              onClick={() => setShowAddForm(true)}
             >
               Přidat zápas
             </button>
@@ -457,6 +467,10 @@ export default function MatchesScreen({
           >
             Jako člen týmu můžeš plánované zápasy zatím pouze sledovat.
           </div>
+        )}
+
+        {message && (
+          <p style={{ marginTop: "12px", color: "#d9d9d9" }}>{message}</p>
         )}
       </div>
     </div>
