@@ -19,6 +19,12 @@ type PlayedMatchDetailScreenProps = {
   onBack: () => void;
 };
 
+const ratingOptions = Array.from({ length: 19 }, (_, index) => 1 + index * 0.5);
+
+function formatRatingValue(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
 export default function PlayedMatchDetailScreen({
   clubId,
   match,
@@ -27,7 +33,7 @@ export default function PlayedMatchDetailScreen({
   const [players, setPlayers] = useState<Player[]>([]);
   const [ratings, setRatings] = useState<PlayerRatingRow[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [selectedRatings, setSelectedRatings] = useState<Record<number, string>>({});
+  const [selectedRatings, setSelectedRatings] = useState<Record<number, number>>({});
   const [message, setMessage] = useState("");
   const [savingPlayerNumber, setSavingPlayerNumber] = useState<number | null>(null);
 
@@ -55,10 +61,10 @@ export default function PlayedMatchDetailScreen({
 
       if (user?.id) {
         const mine = loadedRatings.filter((rating) => rating.rated_by_user_id === user.id);
-        const nextValues: Record<number, string> = {};
+        const nextValues: Record<number, number> = {};
 
         mine.forEach((rating) => {
-          nextValues[rating.player_number] = String(rating.rating);
+          nextValues[rating.player_number] = rating.rating;
         });
 
         setSelectedRatings(nextValues);
@@ -98,34 +104,29 @@ export default function PlayedMatchDetailScreen({
     return match.playerStats.filter((player) => player.goals > 0 || player.assists > 0);
   }, [match.playerStats]);
 
-  const handleSaveRating = async (playerNumber: number) => {
+  const handleSaveRating = async (playerNumber: number, ratingValue: number) => {
     if (!currentUserId) {
       setMessage("Chybí přihlášený uživatel.");
       return;
     }
 
-    const rawValue = selectedRatings[playerNumber];
-
-    if (!rawValue) {
-      setMessage("Zadej známku hráče.");
-      return;
-    }
-
-    const parsedValue = Number(rawValue);
-
-    if (Number.isNaN(parsedValue) || parsedValue < 1 || parsedValue > 10) {
+    if (ratingValue < 1 || ratingValue > 10) {
       setMessage("Známka musí být mezi 1.0 a 10.0.");
       return;
     }
 
     setSavingPlayerNumber(playerNumber);
     setMessage("");
+    setSelectedRatings((prev) => ({
+      ...prev,
+      [playerNumber]: ratingValue,
+    }));
 
     const result = await upsertMatchPlayerRating({
       finishedMatchId: match.id,
       playerNumber,
       ratedByUserId: currentUserId,
-      rating: Math.round(parsedValue * 10) / 10,
+      rating: ratingValue,
     });
 
     if (!result.success) {
@@ -317,6 +318,7 @@ export default function PlayedMatchDetailScreen({
             {matchPlayerNumbers.map((playerNumber) => {
               const summary = summaryMap.get(playerNumber);
               const badgeStyles = getRatingBadgeStyles(summary?.color ?? "neutral");
+              const selectedValue = selectedRatings[playerNumber];
 
               return (
                 <div
@@ -382,42 +384,42 @@ export default function PlayedMatchDetailScreen({
                   <div
                     style={{
                       display: "flex",
-                      gap: "8px",
-                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "6px",
                     }}
                   >
-                    <input
-                      type="number"
-                      min="1"
-                      max="10"
-                      step="0.1"
-                      value={selectedRatings[playerNumber] ?? ""}
-                      onChange={(e) =>
-                        setSelectedRatings((prev) => ({
-                          ...prev,
-                          [playerNumber]: e.target.value,
-                        }))
-                      }
-                      placeholder="1.0 - 10.0"
-                      style={{
-                        ...styles.input,
-                        margin: 0,
-                      }}
-                    />
+                    {ratingOptions.map((ratingValue) => {
+                      const isSelected = selectedValue === ratingValue;
+                      const isSaving = savingPlayerNumber === playerNumber;
 
-                    <button
-                      style={{
-                        ...styles.primaryButton,
-                        marginTop: 0,
-                        width: "auto",
-                        padding: "12px 14px",
-                        opacity: savingPlayerNumber === playerNumber ? 0.7 : 1,
-                      }}
-                      onClick={() => void handleSaveRating(playerNumber)}
-                      disabled={savingPlayerNumber === playerNumber}
-                    >
-                      {savingPlayerNumber === playerNumber ? "..." : "Uložit"}
-                    </button>
+                      return (
+                        <button
+                          key={`${playerNumber}-${ratingValue}`}
+                          type="button"
+                          onClick={() => void handleSaveRating(playerNumber, ratingValue)}
+                          disabled={isSaving}
+                          style={{
+                            minWidth: "48px",
+                            height: "36px",
+                            padding: "0 8px",
+                            borderRadius: "10px",
+                            border: isSelected
+                              ? "1px solid rgba(255,255,255,0.32)"
+                              : "1px solid rgba(255,255,255,0.08)",
+                            background: isSelected
+                              ? "rgba(255,255,255,0.18)"
+                              : "rgba(255,255,255,0.08)",
+                            color: "white",
+                            fontWeight: "bold",
+                            fontSize: "13px",
+                            cursor: isSaving ? "default" : "pointer",
+                            opacity: isSaving ? 0.7 : 1,
+                          }}
+                        >
+                          {formatRatingValue(ratingValue)}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               );
