@@ -1,55 +1,94 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getPlayersByClubId, type Player } from "@/lib/players";
+import { getMatchLineupPlayerIds, saveMatchLineup } from "@/lib/matchLineups";
+import { canEditLineup } from "@/lib/liveMatch";
 import { styles } from "@/styles/appStyles";
+import type { PlannedMatch } from "@/app/page";
 
 type MatchDetailProps = {
   clubId: string;
+  matchId: string;
   onBack: () => void;
-  onSaveLineup: (selectedPlayers: number[], goalkeeper: number | null) => void;
+  onSaveLineup: (
+    selectedPlayers: number[],
+    goalkeeper: number | null,
+    updatedMatch: PlannedMatch
+  ) => void;
   matchTitle: string;
   team: "A" | "B";
   date: string;
   primaryColor?: string;
+  initialStatus?: PlannedMatch["status"];
 };
 
 export default function MatchDetail({
   clubId,
+  matchId,
   onBack,
   onSaveLineup,
   matchTitle,
   team,
   date,
   primaryColor = "#888888",
+  initialStatus = "planned",
 }: MatchDetailProps) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [playersLoading, setPlayersLoading] = useState(true);
   const [selectedPlayers, setSelectedPlayers] = useState<number[]>([]);
   const [goalkeeper, setGoalkeeper] = useState<number | null>(null);
+  const [message, setMessage] = useState("");
+  const [savingLineup, setSavingLineup] = useState(false);
+
+  const lineupEditable = canEditLineup(initialStatus);
 
   useEffect(() => {
     let active = true;
 
-    const loadPlayers = async () => {
+    const loadPlayersAndLineup = async () => {
       setPlayersLoading(true);
+      setMessage("");
 
       const loadedPlayers = await getPlayersByClubId(clubId);
 
       if (!active) return;
 
       setPlayers(loadedPlayers);
+
+      const lineupPlayerIds = await getMatchLineupPlayerIds(matchId);
+
+      if (!active) return;
+
+      if (lineupPlayerIds.length > 0) {
+        const selectedNumbers = loadedPlayers
+          .filter((player) => lineupPlayerIds.includes(player.id))
+          .map((player) => player.number);
+
+        setSelectedPlayers(selectedNumbers);
+      } else {
+        setSelectedPlayers([]);
+      }
+
       setPlayersLoading(false);
     };
 
-    void loadPlayers();
+    void loadPlayersAndLineup();
 
     return () => {
       active = false;
     };
-  }, [clubId]);
+  }, [clubId, matchId]);
+
+  const selectedPlayerIds = useMemo(() => {
+    return players
+      .filter((player) => selectedPlayers.includes(player.number))
+      .map((player) => player.id);
+  }, [players, selectedPlayers]);
 
   const togglePlayer = (number: number) => {
+    if (!lineupEditable) return;
+
     if (selectedPlayers.includes(number)) {
       setSelectedPlayers((prev) => prev.filter((playerNumber) => playerNumber !== number));
 
@@ -66,13 +105,39 @@ export default function MatchDetail({
   };
 
   const setAsGoalkeeper = (number: number) => {
+    if (!lineupEditable) return;
     if (!selectedPlayers.includes(number)) return;
     setGoalkeeper(number);
   };
 
-  const handleSave = () => {
-    if (selectedPlayers.length === 0) return;
-    onSaveLineup(selectedPlayers, goalkeeper);
+  const handleSave = async () => {
+    if (!lineupEditable) {
+      setMessage("Sestava už nejde upravovat.");
+      return;
+    }
+
+    if (selectedPlayers.length === 0) {
+      setMessage("Vyber aspoň jednoho hráče do sestavy.");
+      return;
+    }
+
+    setSavingLineup(true);
+    setMessage("");
+
+    const result = await saveMatchLineup({
+      matchId,
+      playerIds: selectedPlayerIds,
+    });
+
+    if (!result.success || !result.match) {
+      setMessage(result.errorMessage ?? "Nepodařilo se uložit sestavu.");
+      setSavingLineup(false);
+      return;
+    }
+
+    setMessage("Sestava byla uložena. Zápas je připravený k live.");
+    onSaveLineup(selectedPlayers, goalkeeper, result.match);
+    setSavingLineup(false);
   };
 
   return (
@@ -87,9 +152,56 @@ export default function MatchDetail({
           </div>
         </div>
 
-        <div style={{ marginBottom: "12px", color: "#d4d4d4" }}>
-          Vybráno: <strong>{selectedPlayers.length}</strong> / 12
+        <div
+          style={{
+            marginBottom: "12px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "10px",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ color: "#d4d4d4" }}>
+            Vybráno: <strong>{selectedPlayers.length}</strong> / 12
+          </div>
+
+          <div
+            style={{
+              padding: "6px 10px",
+              borderRadius: "999px",
+              fontSize: "12px",
+              fontWeight: "bold",
+              background:
+                initialStatus === "prepared"
+                  ? "rgba(61, 214, 140, 0.18)"
+                  : "rgba(255,255,255,0.08)",
+              color: initialStatus === "prepared" ? "#7dffbc" : "#dcdcdc",
+              border:
+                initialStatus === "prepared"
+                  ? "1px solid rgba(61, 214, 140, 0.35)"
+                  : "1px solid rgba(255,255,255,0.08)",
+            }}
+          >
+            {initialStatus === "prepared" ? "PŘIPRAVENÝ" : "PLÁNOVANÝ"}
+          </div>
         </div>
+
+        {!lineupEditable && (
+          <div
+            style={{
+              marginBottom: "12px",
+              padding: "12px",
+              borderRadius: "12px",
+              background: "rgba(255,120,120,0.08)",
+              border: "1px solid rgba(255,120,120,0.22)",
+              color: "#ffbdbd",
+              fontSize: "14px",
+            }}
+          >
+            Sestavu lze upravovat jen před začátkem zápasu.
+          </div>
+        )}
 
         {playersLoading ? (
           <div
@@ -143,7 +255,7 @@ export default function MatchDetail({
                     gap: "12px",
                     padding: "10px 12px",
                     borderRadius: "12px",
-                    cursor: "pointer",
+                    cursor: lineupEditable ? "pointer" : "default",
                     border: isGoalkeeper
                       ? "2px solid #ffcc00"
                       : isSelected
@@ -154,6 +266,7 @@ export default function MatchDetail({
                       : isSelected
                       ? "rgba(255,255,255,0.08)"
                       : "rgba(255,255,255,0.04)",
+                    opacity: lineupEditable ? 1 : 0.82,
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
@@ -197,8 +310,10 @@ export default function MatchDetail({
                         background: isGoalkeeper ? "#ffcc00" : "rgba(255,255,255,0.12)",
                         color: isGoalkeeper ? "#111" : "white",
                         fontWeight: "bold",
-                        cursor: "pointer",
+                        cursor: lineupEditable ? "pointer" : "default",
+                        opacity: lineupEditable ? 1 : 0.7,
                       }}
+                      disabled={!lineupEditable}
                     >
                       {isGoalkeeper ? "BRANKÁŘ" : "Nastavit BR"}
                     </button>
@@ -213,11 +328,12 @@ export default function MatchDetail({
           style={{
             ...styles.primaryButton,
             background: primaryColor,
+            opacity: savingLineup || !lineupEditable ? 0.7 : 1,
           }}
-          onClick={handleSave}
-          disabled={playersLoading || players.length === 0}
+          onClick={() => void handleSave()}
+          disabled={playersLoading || players.length === 0 || savingLineup || !lineupEditable}
         >
-          Uložit sestavu a jít do zápasu
+          {savingLineup ? "Ukládám sestavu..." : "Uložit sestavu"}
         </button>
 
         <button
@@ -230,6 +346,10 @@ export default function MatchDetail({
         >
           Zpět na zápasy
         </button>
+
+        {message && (
+          <p style={{ marginTop: "12px", color: "#d9d9d9" }}>{message}</p>
+        )}
       </div>
     </div>
   );

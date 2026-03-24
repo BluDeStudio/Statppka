@@ -64,6 +64,12 @@ export type PlannedMatch = {
   team: "A" | "B";
   homeTeam: string;
   awayTeam: string;
+  status?: "planned" | "prepared" | "live" | "halftime" | "finished";
+  current_period?: number;
+  first_half_started_at?: string | null;
+  first_half_elapsed_seconds?: number;
+  second_half_started_at?: string | null;
+  second_half_elapsed_seconds?: number;
 };
 
 function clearSupabaseStorage() {
@@ -722,106 +728,106 @@ export default function Home() {
           )}
 
           {screen === "planned" && selectedPlayedMatchId === null && (
-  <MatchesScreen
-    clubId={currentClub.id}
-    clubName={currentClub.name}
-    hasBTeam={currentClub.has_b_team}
-    primaryColor={currentClub.primary_color}
-    plannedMatches={plannedMatches}
-    finishedMatchIds={finishedMatchIds}
-    onLiveModeChange={setIsLiveMatch}
-    onAddMatch={async (newMatch) => {
-      if (!session) {
-        return {
-          success: false,
-          errorMessage: "Chybí přihlášený uživatel.",
-        };
-      }
+            <MatchesScreen
+              clubId={currentClub.id}
+              clubName={currentClub.name}
+              hasBTeam={currentClub.has_b_team}
+              primaryColor={currentClub.primary_color}
+              plannedMatches={plannedMatches}
+              finishedMatchIds={finishedMatchIds}
+              onLiveModeChange={setIsLiveMatch}
+              onAddMatch={async (newMatch) => {
+                if (!session) {
+                  return {
+                    success: false,
+                    errorMessage: "Chybí přihlášený uživatel.",
+                  };
+                }
 
-      const result = await createPlannedMatch({
-        clubId: currentClub.id,
-        createdBy: session.user.id,
-        match: newMatch,
-      });
+                const result = await createPlannedMatch({
+                  clubId: currentClub.id,
+                  createdBy: session.user.id,
+                  match: newMatch,
+                });
 
-      if (!result.match) {
-        setAppError(result.errorMessage ?? "Nepodařilo se uložit zápas.");
-        return {
-          success: false,
-          errorMessage:
-            result.errorMessage ?? "Nepodařilo se uložit zápas.",
-        };
-      }
+                if (!result.match) {
+                  setAppError(result.errorMessage ?? "Nepodařilo se uložit zápas.");
+                  return {
+                    success: false,
+                    errorMessage:
+                      result.errorMessage ?? "Nepodařilo se uložit zápas.",
+                  };
+                }
 
-      setPlannedMatches((prev) => [...prev, result.match as PlannedMatch]);
-      setAppError("");
+                setPlannedMatches((prev) => [...prev, result.match as PlannedMatch]);
+                setAppError("");
 
-      return {
-        success: true,
-      };
-    }}
-    onDeleteMatch={async (matchId) => {
-      const result = await deletePlannedMatch(matchId);
+                return {
+                  success: true,
+                };
+              }}
+              onDeleteMatch={async (matchId) => {
+                const result = await deletePlannedMatch(matchId);
 
-      if (!result.success) {
-        setAppError(result.errorMessage ?? "Nepodařilo se smazat zápas.");
-        return {
-          success: false,
-          errorMessage: result.errorMessage ?? "Nepodařilo se smazat zápas.",
-        };
-      }
+                if (!result.success) {
+                  setAppError(result.errorMessage ?? "Nepodařilo se smazat zápas.");
+                  return {
+                    success: false,
+                    errorMessage: result.errorMessage ?? "Nepodařilo se smazat zápas.",
+                  };
+                }
 
-      setPlannedMatches((prev) => prev.filter((match) => match.id !== matchId));
-      setAppError("");
+                setPlannedMatches((prev) => prev.filter((match) => match.id !== matchId));
+                setAppError("");
 
-      return {
-        success: true,
-      };
-    }}
-    onMatchFinished={async (finishedMatch) => {
-      if (!session) {
-        return {
-          success: false,
-          errorMessage: "Chybí přihlášený uživatel.",
-        };
-      }
+                return {
+                  success: true,
+                };
+              }}
+              onMatchFinished={async (finishedMatch) => {
+                if (!session) {
+                  return {
+                    success: false,
+                    errorMessage: "Chybí přihlášený uživatel.",
+                  };
+                }
 
-      const result = await saveFinishedMatch({
-        clubId: currentClub.id,
-        createdBy: session.user.id,
-        finishedMatch,
-      });
+                const result = await saveFinishedMatch({
+                  clubId: currentClub.id,
+                  createdBy: session.user.id,
+                  finishedMatch,
+                });
 
-      if (!result.finishedMatch) {
-        setAppError(
-          result.errorMessage ?? "Nepodařilo se uložit odehraný zápas."
-        );
-        return {
-          success: false,
-          errorMessage:
-            result.errorMessage ??
-            "Nepodařilo se uložit odehraný zápas.",
-        };
-      }
+                if (!result.finishedMatch) {
+                  setAppError(
+                    result.errorMessage ?? "Nepodařilo se uložit odehraný zápas."
+                  );
+                  return {
+                    success: false,
+                    errorMessage:
+                      result.errorMessage ??
+                      "Nepodařilo se uložit odehraný zápas.",
+                  };
+                }
 
-      setFinishedMatches((prev) => [
-        result.finishedMatch as FinishedMatch,
-        ...prev,
-      ]);
-      setPlannedMatches((prev) =>
-        prev.filter((match) => match.id !== finishedMatch.id)
-      );
-      setScreen("played");
-      setIsLiveMatch(false);
-      setAppError("");
+                setFinishedMatches((prev) => [
+                  result.finishedMatch as FinishedMatch,
+                  ...prev,
+                ]);
+                setPlannedMatches((prev) =>
+                  prev.filter((match) => match.id !== finishedMatch.id)
+                );
+                setScreen("played");
+                setIsLiveMatch(false);
+                setAppError("");
 
-      return {
-        success: true,
-      };
-    }}
-    isAdmin={true}
-  />
-)}
+                return {
+                  success: true,
+                };
+              }}
+              isAdmin={true}
+            />
+          )}
 
           {screen === "played" && selectedPlayedMatchId === null && !isLiveMatch && (
             <PlayedMatchesScreen

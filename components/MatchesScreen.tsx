@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import MatchDetail from "@/components/MatchDetail";
-import MatchLiveScreen from "@/components/MatchLiveScreen";
 import { styles } from "@/styles/appStyles";
 import type { FinishedMatch, PlannedMatch } from "@/app/page";
 
@@ -42,6 +41,22 @@ function createMatchId(
     .replace(/\//g, "-");
 }
 
+function getMatchStatusLabel(status?: PlannedMatch["status"]) {
+  switch (status) {
+    case "prepared":
+      return "PŘIPRAVENÝ";
+    case "live":
+      return "LIVE";
+    case "halftime":
+      return "PŘESTÁVKA";
+    case "finished":
+      return "ODEHRANÝ";
+    case "planned":
+    default:
+      return "PLÁNOVANÝ";
+  }
+}
+
 export default function MatchesScreen({
   clubId,
   clubName,
@@ -60,6 +75,7 @@ export default function MatchesScreen({
   const [lineupSaved, setLineupSaved] = useState(false);
   const [selectedPlayers, setSelectedPlayers] = useState<number[]>([]);
   const [goalkeeper, setGoalkeeper] = useState<number | null>(null);
+  const [matchOverrides, setMatchOverrides] = useState<Record<string, PlannedMatch>>({});
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTeam, setNewTeam] = useState<"A" | "B">("A");
@@ -71,8 +87,8 @@ export default function MatchesScreen({
   const [savingMatch, setSavingMatch] = useState(false);
 
   useEffect(() => {
-    onLiveModeChange(selectedMatchId !== null && lineupSaved && isAdmin);
-  }, [selectedMatchId, lineupSaved, onLiveModeChange, isAdmin]);
+    onLiveModeChange(false);
+  }, [selectedMatchId, onLiveModeChange]);
 
   useEffect(() => {
     if (!hasBTeam && filter === "B") {
@@ -84,11 +100,32 @@ export default function MatchesScreen({
     }
   }, [hasBTeam, filter, newTeam]);
 
+  useEffect(() => {
+    setMatchOverrides((prev) => {
+      const next: Record<string, PlannedMatch> = {};
+
+      for (const match of plannedMatches) {
+        if (prev[match.id]) {
+          next[match.id] = {
+            ...match,
+            ...prev[match.id],
+          };
+        }
+      }
+
+      return next;
+    });
+  }, [plannedMatches]);
+
+  const mergedMatches = useMemo(() => {
+    return plannedMatches.map((match) => matchOverrides[match.id] ?? match);
+  }, [plannedMatches, matchOverrides]);
+
   const availableMatches = useMemo(() => {
-    return plannedMatches
+    return mergedMatches
       .filter((match) => !finishedMatchIds.includes(match.id))
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [plannedMatches, finishedMatchIds]);
+  }, [mergedMatches, finishedMatchIds]);
 
   const filteredMatches =
     filter === "ALL"
@@ -97,7 +134,7 @@ export default function MatchesScreen({
 
   const selectedMatch =
     selectedMatchId !== null
-      ? plannedMatches.find((match) => match.id === selectedMatchId) ?? null
+      ? availableMatches.find((match) => match.id === selectedMatchId) ?? null
       : null;
 
   const teamLabelA = clubName.trim() || "Můj tým";
@@ -191,49 +228,28 @@ export default function MatchesScreen({
     setDeletingMatchId(null);
   };
 
-  if (selectedMatch !== null && lineupSaved && isAdmin) {
-    return (
-      <MatchLiveScreen
-        clubId={clubId}
-        primaryColor={primaryColor}
-        onBack={() => setLineupSaved(false)}
-        onFinishMatch={async (finishedMatch) => {
-          const result = await onMatchFinished(finishedMatch);
-
-          if (!result.success) {
-            setMessage(result.errorMessage ?? "Nepodařilo se uložit odehraný zápas.");
-            return;
-          }
-
-          setSelectedMatchId(null);
-          setLineupSaved(false);
-          setSelectedPlayers([]);
-          setGoalkeeper(null);
-        }}
-        matchId={selectedMatch.id}
-        matchTitle={`${selectedMatch.homeTeam} vs. ${selectedMatch.awayTeam}`}
-        team={selectedMatch.team}
-        date={formatDisplayDate(selectedMatch.date)}
-        selectedPlayers={selectedPlayers}
-        goalkeeper={goalkeeper}
-      />
-    );
-  }
-
   if (selectedMatch !== null && isAdmin) {
     return (
       <MatchDetail
         clubId={clubId}
+        matchId={selectedMatch.id}
         primaryColor={primaryColor}
         onBack={() => setSelectedMatchId(null)}
-        onSaveLineup={(players, gk) => {
+        onSaveLineup={(players, gk, updatedMatch) => {
           setSelectedPlayers(players);
           setGoalkeeper(gk);
           setLineupSaved(true);
+          setMatchOverrides((prev) => ({
+            ...prev,
+            [updatedMatch.id]: updatedMatch,
+          }));
+          setMessage("Sestava byla uložena. Zápas je připravený k live.");
+          setSelectedMatchId(null);
         }}
         matchTitle={`${selectedMatch.homeTeam} vs. ${selectedMatch.awayTeam}`}
         team={selectedMatch.team}
         date={formatDisplayDate(selectedMatch.date)}
+        initialStatus={selectedMatch.status ?? "planned"}
       />
     );
   }
@@ -348,100 +364,134 @@ export default function MatchesScreen({
           </div>
         ) : (
           <div style={{ display: "grid", gap: "10px" }}>
-            {filteredMatches.map((match) => (
-              <div
-                key={match.id}
-                style={{
-                  background: "rgba(255,255,255,0.04)",
-                  borderRadius: "14px",
-                  padding: "12px",
-                  border: "1px solid rgba(255,255,255,0.05)",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "10px" }}>
-                  <div
-                    onClick={() => {
-                      if (!isAdmin) return;
+            {filteredMatches.map((match) => {
+              const statusLabel = getMatchStatusLabel(match.status);
 
-                      setSelectedMatchId(match.id);
-                      setLineupSaved(false);
-                      setSelectedPlayers([]);
-                      setGoalkeeper(null);
-                    }}
-                    style={{
-                      cursor: isAdmin ? "pointer" : "default",
-                      flex: 1,
-                    }}
-                  >
-                    <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
-                      {formatDisplayDate(match.date)} — {match.team}-tým
-                    </div>
-
-                    <div style={{ fontWeight: "bold", marginTop: "4px" }}>
-                      {match.homeTeam} vs. {match.awayTeam}
-                    </div>
-
+              return (
+                <div
+                  key={match.id}
+                  style={{
+                    background: "rgba(255,255,255,0.04)",
+                    borderRadius: "14px",
+                    padding: "12px",
+                    border: "1px solid rgba(255,255,255,0.05)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: "10px" }}>
                     <div
+                      onClick={() => {
+                        if (!isAdmin) return;
+
+                        setSelectedMatchId(match.id);
+                        setLineupSaved(false);
+                        setSelectedPlayers([]);
+                        setGoalkeeper(null);
+                        setMessage("");
+                      }}
                       style={{
-                        marginTop: "6px",
-                        fontSize: "13px",
-                        color: "#d4d4d4",
+                        cursor: isAdmin ? "pointer" : "default",
+                        flex: 1,
                       }}
                     >
-                      {isAdmin ? "Klikni pro správu zápasu" : "Pouze zobrazení"}
+                      <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
+                        {formatDisplayDate(match.date)} — {match.team}-tým
+                      </div>
+
+                      <div style={{ fontWeight: "bold", marginTop: "4px" }}>
+                        {match.homeTeam} vs. {match.awayTeam}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: "8px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          padding: "5px 9px",
+                          borderRadius: "999px",
+                          fontSize: "11px",
+                          fontWeight: "bold",
+                          background:
+                            match.status === "prepared"
+                              ? "rgba(61, 214, 140, 0.16)"
+                              : "rgba(255,255,255,0.08)",
+                          color:
+                            match.status === "prepared" ? "#7dffbc" : "#d5d5d5",
+                          border:
+                            match.status === "prepared"
+                              ? "1px solid rgba(61, 214, 140, 0.28)"
+                              : "1px solid rgba(255,255,255,0.08)",
+                        }}
+                      >
+                        {statusLabel}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: "8px",
+                          fontSize: "13px",
+                          color: "#d4d4d4",
+                        }}
+                      >
+                        {isAdmin
+                          ? match.status === "prepared"
+                            ? "Klikni pro úpravu připravené sestavy"
+                            : "Klikni pro správu zápasu"
+                          : "Pouze zobrazení"}
+                      </div>
                     </div>
+
+                    {isAdmin && (
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <button
+                          style={{
+                            width: "36px",
+                            height: "36px",
+                            borderRadius: "8px",
+                            border: "none",
+                            background: primaryColor,
+                            color: "white",
+                            cursor: "pointer",
+                            fontWeight: "bold",
+                          }}
+                          onClick={() => {
+                            setSelectedMatchId(match.id);
+                            setLineupSaved(false);
+                            setSelectedPlayers([]);
+                            setGoalkeeper(null);
+                            setMessage("");
+                          }}
+                        >
+                          ✏️
+                        </button>
+
+                        <button
+                          style={{
+                            width: "36px",
+                            height: "36px",
+                            borderRadius: "8px",
+                            border: "none",
+                            background: "#ff3b3b",
+                            color: "white",
+                            cursor: deletingMatchId === match.id ? "default" : "pointer",
+                            fontWeight: "bold",
+                            opacity: deletingMatchId === match.id ? 0.7 : 1,
+                          }}
+                          onClick={() =>
+                            void handleDeleteMatch(
+                              match.id,
+                              `${match.homeTeam} vs. ${match.awayTeam}`
+                            )
+                          }
+                          disabled={deletingMatchId === match.id}
+                        >
+                          {deletingMatchId === match.id ? "..." : "✕"}
+                        </button>
+                      </div>
+                    )}
                   </div>
-
-                  {isAdmin && (
-                    <div style={{ display: "flex", gap: "6px" }}>
-                      <button
-                        style={{
-                          width: "36px",
-                          height: "36px",
-                          borderRadius: "8px",
-                          border: "none",
-                          background: primaryColor,
-                          color: "white",
-                          cursor: "pointer",
-                          fontWeight: "bold",
-                        }}
-                        onClick={() => {
-                          setSelectedMatchId(match.id);
-                          setLineupSaved(false);
-                          setSelectedPlayers([]);
-                          setGoalkeeper(null);
-                        }}
-                      >
-                        ✏️
-                      </button>
-
-                      <button
-                        style={{
-                          width: "36px",
-                          height: "36px",
-                          borderRadius: "8px",
-                          border: "none",
-                          background: "#ff3b3b",
-                          color: "white",
-                          cursor: deletingMatchId === match.id ? "default" : "pointer",
-                          fontWeight: "bold",
-                          opacity: deletingMatchId === match.id ? 0.7 : 1,
-                        }}
-                        onClick={() =>
-                          void handleDeleteMatch(
-                            match.id,
-                            `${match.homeTeam} vs. ${match.awayTeam}`
-                          )
-                        }
-                        disabled={deletingMatchId === match.id}
-                      >
-                        {deletingMatchId === match.id ? "..." : "✕"}
-                      </button>
-                    </div>
-                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -471,6 +521,30 @@ export default function MatchesScreen({
 
         {message && (
           <p style={{ marginTop: "12px", color: "#d9d9d9" }}>{message}</p>
+        )}
+
+        {lineupSaved && selectedPlayers.length > 0 && (
+          <div
+            style={{
+              marginTop: "12px",
+              padding: "12px",
+              borderRadius: "12px",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              color: "#d9d9d9",
+              fontSize: "14px",
+              lineHeight: 1.5,
+            }}
+          >
+            Sestava je uložená v databázi a zápas zůstane připravený i po zavření
+            telefonu. Další krok bude tlačítko <strong>ZAHÁJIT ZÁPAS</strong> a
+            napojení live času z DB.
+            {goalkeeper !== null && (
+              <div style={{ marginTop: "6px", color: "#b8b8b8" }}>
+                Aktuálně zvolený brankář v UI: #{goalkeeper}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

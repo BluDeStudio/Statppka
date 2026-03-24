@@ -29,6 +29,14 @@ export async function getPlannedMatchesByClubId(clubId: string): Promise<Planned
         team: row.team as "A" | "B",
         homeTeam: row.home_team as string,
         awayTeam: row.away_team as string,
+        status: (row.status as PlannedMatch["status"]) ?? "planned",
+        current_period: (row.current_period as number | null) ?? 0,
+        first_half_started_at: (row.first_half_started_at as string | null) ?? null,
+        first_half_elapsed_seconds:
+          (row.first_half_elapsed_seconds as number | null) ?? 0,
+        second_half_started_at: (row.second_half_started_at as string | null) ?? null,
+        second_half_elapsed_seconds:
+          (row.second_half_elapsed_seconds as number | null) ?? 0,
       })) ?? []
     );
   } catch (error) {
@@ -78,6 +86,14 @@ export async function createPlannedMatch(input: {
         team: data.team as "A" | "B",
         homeTeam: data.home_team as string,
         awayTeam: data.away_team as string,
+        status: (data.status as PlannedMatch["status"]) ?? "planned",
+        current_period: (data.current_period as number | null) ?? 0,
+        first_half_started_at: (data.first_half_started_at as string | null) ?? null,
+        first_half_elapsed_seconds:
+          (data.first_half_elapsed_seconds as number | null) ?? 0,
+        second_half_started_at: (data.second_half_started_at as string | null) ?? null,
+        second_half_elapsed_seconds:
+          (data.second_half_elapsed_seconds as number | null) ?? 0,
       },
     };
   } catch (error) {
