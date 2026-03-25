@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import MatchDetail from "@/components/MatchDetail";
+import MatchLiveScreen from "@/components/MatchLiveScreen";
 import { styles } from "@/styles/appStyles";
 import type { FinishedMatch, PlannedMatch } from "@/app/page";
 
@@ -72,10 +73,10 @@ export default function MatchesScreen({
 }: MatchesScreenProps) {
   const [filter, setFilter] = useState<"ALL" | "A" | "B">("ALL");
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
-  const [lineupSaved, setLineupSaved] = useState(false);
-  const [selectedPlayers, setSelectedPlayers] = useState<number[]>([]);
-  const [goalkeeper, setGoalkeeper] = useState<number | null>(null);
-  const [matchOverrides, setMatchOverrides] = useState<Record<string, PlannedMatch>>({});
+  const [selectedMode, setSelectedMode] = useState<"detail" | "live" | null>(null);
+  const [matchOverrides, setMatchOverrides] = useState<Record<string, PlannedMatch>>(
+    {}
+  );
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTeam, setNewTeam] = useState<"A" | "B">("A");
@@ -87,8 +88,8 @@ export default function MatchesScreen({
   const [savingMatch, setSavingMatch] = useState(false);
 
   useEffect(() => {
-    onLiveModeChange(false);
-  }, [selectedMatchId, onLiveModeChange]);
+    onLiveModeChange(selectedMode === "live");
+  }, [selectedMode, onLiveModeChange]);
 
   useEffect(() => {
     if (!hasBTeam && filter === "B") {
@@ -171,7 +172,6 @@ export default function MatchesScreen({
     setMessage("");
 
     const teamLabel = newTeam === "A" ? teamLabelA : teamLabelB;
-
     const homeTeam = newVenue === "home" ? teamLabel : newOpponent.trim();
     const awayTeam = newVenue === "home" ? newOpponent.trim() : teamLabel;
 
@@ -219,32 +219,57 @@ export default function MatchesScreen({
 
     if (selectedMatchId === matchId) {
       setSelectedMatchId(null);
-      setLineupSaved(false);
-      setSelectedPlayers([]);
-      setGoalkeeper(null);
+      setSelectedMode(null);
     }
 
     setMessage("Zápas byl smazán.");
     setDeletingMatchId(null);
   };
 
-  if (selectedMatch !== null && isAdmin) {
+  if (selectedMatch !== null && selectedMode === "live" && isAdmin) {
+    return (
+      <MatchLiveScreen
+        clubId={clubId}
+        primaryColor={primaryColor}
+        onBack={() => {
+          setSelectedMatchId(null);
+          setSelectedMode(null);
+        }}
+        onMatchStateChanged={(updatedMatch) => {
+          setMatchOverrides((prev) => ({
+            ...prev,
+            [updatedMatch.id]: updatedMatch,
+          }));
+        }}
+        onFinishMatch={onMatchFinished}
+        matchId={selectedMatch.id}
+        matchTitle={`${selectedMatch.homeTeam} vs. ${selectedMatch.awayTeam}`}
+        team={selectedMatch.team}
+        date={formatDisplayDate(selectedMatch.date)}
+        selectedPlayers={[]}
+        goalkeeper={null}
+      />
+    );
+  }
+
+  if (selectedMatch !== null && selectedMode === "detail" && isAdmin) {
     return (
       <MatchDetail
         clubId={clubId}
         matchId={selectedMatch.id}
         primaryColor={primaryColor}
-        onBack={() => setSelectedMatchId(null)}
-        onSaveLineup={(players, gk, updatedMatch) => {
-          setSelectedPlayers(players);
-          setGoalkeeper(gk);
-          setLineupSaved(true);
+        onBack={() => {
+          setSelectedMatchId(null);
+          setSelectedMode(null);
+        }}
+        onSaveLineup={(_players, _gk, updatedMatch) => {
           setMatchOverrides((prev) => ({
             ...prev,
             [updatedMatch.id]: updatedMatch,
           }));
-          setMessage("Sestava byla uložena. Zápas je připravený k live.");
+          setMessage("Sestava byla uložena. Zápas je připravený.");
           setSelectedMatchId(null);
+          setSelectedMode(null);
         }}
         matchTitle={`${selectedMatch.homeTeam} vs. ${selectedMatch.awayTeam}`}
         team={selectedMatch.team}
@@ -366,6 +391,10 @@ export default function MatchesScreen({
           <div style={{ display: "grid", gap: "10px" }}>
             {filteredMatches.map((match) => {
               const statusLabel = getMatchStatusLabel(match.status);
+              const canOpenLive =
+                match.status === "prepared" ||
+                match.status === "live" ||
+                match.status === "halftime";
 
               return (
                 <div
@@ -379,17 +408,7 @@ export default function MatchesScreen({
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: "10px" }}>
                     <div
-                      onClick={() => {
-                        if (!isAdmin) return;
-
-                        setSelectedMatchId(match.id);
-                        setLineupSaved(false);
-                        setSelectedPlayers([]);
-                        setGoalkeeper(null);
-                        setMessage("");
-                      }}
                       style={{
-                        cursor: isAdmin ? "pointer" : "default",
                         flex: 1,
                       }}
                     >
@@ -411,13 +430,15 @@ export default function MatchesScreen({
                           fontSize: "11px",
                           fontWeight: "bold",
                           background:
-                            match.status === "prepared"
+                            match.status === "prepared" || match.status === "live"
                               ? "rgba(61, 214, 140, 0.16)"
                               : "rgba(255,255,255,0.08)",
                           color:
-                            match.status === "prepared" ? "#7dffbc" : "#d5d5d5",
+                            match.status === "prepared" || match.status === "live"
+                              ? "#7dffbc"
+                              : "#d5d5d5",
                           border:
-                            match.status === "prepared"
+                            match.status === "prepared" || match.status === "live"
                               ? "1px solid rgba(61, 214, 140, 0.28)"
                               : "1px solid rgba(255,255,255,0.08)",
                         }}
@@ -432,19 +453,19 @@ export default function MatchesScreen({
                           color: "#d4d4d4",
                         }}
                       >
-                        {isAdmin
-                          ? match.status === "prepared"
-                            ? "Klikni pro úpravu připravené sestavy"
-                            : "Klikni pro správu zápasu"
-                          : "Pouze zobrazení"}
+                        {match.status === "prepared"
+                          ? "Sestava je uložená. Můžeš jít do live zápasu."
+                          : match.status === "live"
+                          ? "Zápas už běží. Můžeš se do něj vrátit."
+                          : "Klikni na správu zápasu."}
                       </div>
                     </div>
 
                     {isAdmin && (
-                      <div style={{ display: "flex", gap: "6px" }}>
+                      <div style={{ display: "grid", gap: "6px" }}>
                         <button
                           style={{
-                            width: "36px",
+                            minWidth: "92px",
                             height: "36px",
                             borderRadius: "8px",
                             border: "none",
@@ -452,21 +473,43 @@ export default function MatchesScreen({
                             color: "white",
                             cursor: "pointer",
                             fontWeight: "bold",
+                            padding: "0 10px",
                           }}
                           onClick={() => {
                             setSelectedMatchId(match.id);
-                            setLineupSaved(false);
-                            setSelectedPlayers([]);
-                            setGoalkeeper(null);
+                            setSelectedMode("detail");
                             setMessage("");
                           }}
                         >
-                          ✏️
+                          Správa
                         </button>
+
+                        {canOpenLive && (
+                          <button
+                            style={{
+                              minWidth: "92px",
+                              height: "36px",
+                              borderRadius: "8px",
+                              border: "none",
+                              background: "#16a34a",
+                              color: "white",
+                              cursor: "pointer",
+                              fontWeight: "bold",
+                              padding: "0 10px",
+                            }}
+                            onClick={() => {
+                              setSelectedMatchId(match.id);
+                              setSelectedMode("live");
+                              setMessage("");
+                            }}
+                          >
+                            LIVE
+                          </button>
+                        )}
 
                         <button
                           style={{
-                            width: "36px",
+                            minWidth: "92px",
                             height: "36px",
                             borderRadius: "8px",
                             border: "none",
@@ -474,6 +517,7 @@ export default function MatchesScreen({
                             color: "white",
                             cursor: deletingMatchId === match.id ? "default" : "pointer",
                             fontWeight: "bold",
+                            padding: "0 10px",
                             opacity: deletingMatchId === match.id ? 0.7 : 1,
                           }}
                           onClick={() =>
@@ -484,7 +528,7 @@ export default function MatchesScreen({
                           }
                           disabled={deletingMatchId === match.id}
                         >
-                          {deletingMatchId === match.id ? "..." : "✕"}
+                          {deletingMatchId === match.id ? "..." : "Smazat"}
                         </button>
                       </div>
                     )}
@@ -521,30 +565,6 @@ export default function MatchesScreen({
 
         {message && (
           <p style={{ marginTop: "12px", color: "#d9d9d9" }}>{message}</p>
-        )}
-
-        {lineupSaved && selectedPlayers.length > 0 && (
-          <div
-            style={{
-              marginTop: "12px",
-              padding: "12px",
-              borderRadius: "12px",
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              color: "#d9d9d9",
-              fontSize: "14px",
-              lineHeight: 1.5,
-            }}
-          >
-            Sestava je uložená v databázi a zápas zůstane připravený i po zavření
-            telefonu. Další krok bude tlačítko <strong>ZAHÁJIT ZÁPAS</strong> a
-            napojení live času z DB.
-            {goalkeeper !== null && (
-              <div style={{ marginTop: "6px", color: "#b8b8b8" }}>
-                Aktuálně zvolený brankář v UI: #{goalkeeper}
-              </div>
-            )}
-          </div>
         )}
       </div>
     </div>

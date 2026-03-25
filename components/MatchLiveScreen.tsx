@@ -2,24 +2,27 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getPlayersByClubId, type Player } from "@/lib/players";
+import { getMatchLineupPlayerIds } from "@/lib/matchLineups";
+import {
+  addGoalAgainstEvent,
+  addGoalForEvent,
+  getLiveMatchEvents,
+  getPlannedMatchById,
+  startPreparedMatch,
+  type LiveMatchEventRecord,
+} from "@/lib/liveMatchEvents";
+import { formatMatchClock, getTotalElapsedSeconds } from "@/lib/liveMatch";
 import { styles } from "@/styles/appStyles";
-import type { FinishedMatch } from "@/app/page";
-
-type MatchEvent =
-  | {
-      type: "goal_for";
-      scorer: number;
-      assist: number | null;
-    }
-  | {
-      type: "goal_against";
-    };
+import type { FinishedMatch, PlannedMatch } from "@/app/page";
 
 type MatchLiveScreenProps = {
   clubId: string;
   primaryColor?: string;
   onBack: () => void;
-  onFinishMatch: (finishedMatch: FinishedMatch) => void;
+  onFinishMatch: (
+    finishedMatch: FinishedMatch
+  ) => Promise<{ success: boolean; errorMessage?: string }>;
+  onMatchStateChanged?: (updatedMatch: PlannedMatch) => void;
   matchId: string;
   matchTitle: string;
   team: "A" | "B";
@@ -33,6 +36,7 @@ export default function MatchLiveScreen({
   primaryColor = "#888888",
   onBack,
   onFinishMatch,
+  onMatchStateChanged,
   matchId,
   matchTitle,
   team,
@@ -42,86 +46,226 @@ export default function MatchLiveScreen({
 }: MatchLiveScreenProps) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [playersLoading, setPlayersLoading] = useState(true);
+  const [lineupPlayerIds, setLineupPlayerIds] = useState<string[]>([]);
+  const [matchState, setMatchState] = useState<PlannedMatch | null>(null);
+  const [events, setEvents] = useState<LiveMatchEventRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [startingMatch, setStartingMatch] = useState(false);
+  const [savingEvent, setSavingEvent] = useState(false);
+  const [finishingMatch, setFinishingMatch] = useState(false);
 
-  const [homeScore, setHomeScore] = useState(0);
-  const [awayScore, setAwayScore] = useState(0);
-  const [events, setEvents] = useState<MatchEvent[]>([]);
-  const [scorer, setScorer] = useState<number | "">("");
-  const [assist, setAssist] = useState<number | "none" | "">("none");
+  const [tick, setTick] = useState(0);
+  const [scorerId, setScorerId] = useState("");
+  const [assistId, setAssistId] = useState<"none" | string>("none");
 
   useEffect(() => {
     let active = true;
 
-    const loadPlayers = async () => {
+    const loadData = async () => {
+      setLoading(true);
       setPlayersLoading(true);
-      const loadedPlayers = await getPlayersByClubId(clubId);
+      setMessage("");
+
+      const [loadedPlayers, loadedLineupIds, loadedMatch, loadedEvents] =
+        await Promise.all([
+          getPlayersByClubId(clubId),
+          getMatchLineupPlayerIds(matchId),
+          getPlannedMatchById(matchId),
+          getLiveMatchEvents(matchId),
+        ]);
 
       if (!active) return;
 
       setPlayers(loadedPlayers);
+      setLineupPlayerIds(loadedLineupIds);
+      setMatchState(loadedMatch);
+      setEvents(loadedEvents);
       setPlayersLoading(false);
+      setLoading(false);
     };
 
-    void loadPlayers();
+    void loadData();
 
     return () => {
       active = false;
     };
-  }, [clubId]);
+  }, [clubId, matchId]);
+
+  useEffect(() => {
+    if (matchState?.status !== "live") return;
+
+    const interval = window.setInterval(() => {
+      setTick((prev) => prev + 1);
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [matchState?.status]);
 
   const selectedPlayerObjects = useMemo(() => {
-    return players.filter((player) => selectedPlayers.includes(player.number));
-  }, [players, selectedPlayers]);
+    const idsToUse =
+      lineupPlayerIds.length > 0
+        ? lineupPlayerIds
+        : players
+            .filter((player) => selectedPlayers.includes(player.number))
+            .map((player) => player.id);
 
-  const getPlayerName = (number: number) => {
-    return players.find((player) => player.number === number)?.name ?? `#${number}`;
+    return players.filter((player) => idsToUse.includes(player.id));
+  }, [players, lineupPlayerIds, selectedPlayers]);
+
+  const totalElapsedSeconds = useMemo(() => {
+    if (!matchState) return 0;
+
+    return getTotalElapsedSeconds({
+      status: matchState.status ?? "planned",
+      current_period: matchState.current_period ?? 0,
+      first_half_started_at: matchState.first_half_started_at ?? null,
+      first_half_elapsed_seconds: matchState.first_half_elapsed_seconds ?? 0,
+      second_half_started_at: matchState.second_half_started_at ?? null,
+      second_half_elapsed_seconds: matchState.second_half_elapsed_seconds ?? 0,
+    });
+  }, [matchState, tick]);
+
+  const currentPeriod = matchState?.current_period ?? 0;
+  const scoreFor = events.filter((event) => event.type === "goal_for").length;
+  const scoreAgainst = events.filter((event) => event.type === "goal_against").length;
+
+  const getPlayerNameById = (playerId: string | null) => {
+    if (!playerId) return "—";
+    return players.find((player) => player.id === playerId)?.name ?? "Neznámý hráč";
   };
 
-  const addGoalFor = () => {
-    if (scorer === "") return;
-
-    const assistValue = assist === "" || assist === "none" ? null : Number(assist);
-
-    setEvents((prev) => [
-      ...prev,
-      {
-        type: "goal_for",
-        scorer: Number(scorer),
-        assist: assistValue,
-      },
-    ]);
-
-    setHomeScore((prev) => prev + 1);
-    setScorer("");
-    setAssist("none");
+  const getPlayerNumberById = (playerId: string | null) => {
+    if (!playerId) return null;
+    return players.find((player) => player.id === playerId)?.number ?? null;
   };
 
-  const addGoalAgainst = () => {
-    setEvents((prev) => [...prev, { type: "goal_against" }]);
-    setAwayScore((prev) => prev + 1);
+  const displayedGoalkeeperName =
+    goalkeeper !== null
+      ? players.find((player) => player.number === goalkeeper)?.name ?? `#${goalkeeper}`
+      : null;
+
+  const handleStartMatch = async () => {
+    setStartingMatch(true);
+    setMessage("");
+
+    const result = await startPreparedMatch(matchId);
+
+    if (!result.success || !result.match) {
+      setMessage(result.errorMessage ?? "Nepodařilo se zahájit zápas.");
+      setStartingMatch(false);
+      return;
+    }
+
+    setMatchState(result.match);
+    onMatchStateChanged?.(result.match);
+    setMessage("Zápas běží. Každá další akce se ukládá hned do databáze.");
+    setStartingMatch(false);
   };
 
-  const finishMatch = () => {
-    const statsMap = new Map<number, { goals: number; assists: number }>();
+  const handleAddGoalFor = async () => {
+    if (!matchState || matchState.status !== "live") {
+      setMessage("Nejdřív zahaj zápas.");
+      return;
+    }
 
-    selectedPlayers.forEach((playerNumber) => {
-      statsMap.set(playerNumber, { goals: 0, assists: 0 });
+    if (!scorerId) {
+      setMessage("Vyber střelce.");
+      return;
+    }
+
+    setSavingEvent(true);
+    setMessage("");
+
+    const result = await addGoalForEvent({
+      matchId,
+      scorerPlayerId: scorerId,
+      assistPlayerId: assistId === "none" ? null : assistId,
+      period: currentPeriod || 1,
+      matchSecond: totalElapsedSeconds,
+      matchMinute: Math.floor(totalElapsedSeconds / 60),
     });
 
-    events.forEach((event) => {
+    if (!result.success || !result.event) {
+      setMessage(result.errorMessage ?? "Nepodařilo se uložit gól.");
+      setSavingEvent(false);
+      return;
+    }
+
+    setEvents((prev) => [...prev, result.event!]);
+    setScorerId("");
+    setAssistId("none");
+    setMessage("Gól byl uložen do live průběhu.");
+    setSavingEvent(false);
+  };
+
+  const handleAddGoalAgainst = async () => {
+    if (!matchState || matchState.status !== "live") {
+      setMessage("Nejdřív zahaj zápas.");
+      return;
+    }
+
+    setSavingEvent(true);
+    setMessage("");
+
+    const result = await addGoalAgainstEvent({
+      matchId,
+      period: currentPeriod || 1,
+      matchSecond: totalElapsedSeconds,
+      matchMinute: Math.floor(totalElapsedSeconds / 60),
+    });
+
+    if (!result.success || !result.event) {
+      setMessage(result.errorMessage ?? "Nepodařilo se uložit inkasovaný gól.");
+      setSavingEvent(false);
+      return;
+    }
+
+    setEvents((prev) => [...prev, result.event!]);
+    setMessage("Inkasovaný gól byl uložen do live průběhu.");
+    setSavingEvent(false);
+  };
+
+  const handleFinishMatch = async () => {
+    if (selectedPlayerObjects.length === 0) {
+      setMessage("Zápas nemá načtenou sestavu.");
+      return;
+    }
+
+    setFinishingMatch(true);
+    setMessage("");
+
+    const statsMap = new Map<number, { goals: number; assists: number }>();
+
+    selectedPlayerObjects.forEach((player) => {
+      statsMap.set(player.number, { goals: 0, assists: 0 });
+    });
+
+    const mappedEvents: FinishedMatch["events"] = events.map((event) => {
       if (event.type === "goal_for") {
-        const scorerStats = statsMap.get(event.scorer);
-        if (scorerStats) {
-          scorerStats.goals += 1;
+        const scorerNumber = getPlayerNumberById(event.scorer_player_id);
+        const assistNumber = getPlayerNumberById(event.assist_player_id);
+
+        if (scorerNumber !== null) {
+          const scorerStats = statsMap.get(scorerNumber);
+          if (scorerStats) scorerStats.goals += 1;
         }
 
-        if (event.assist !== null) {
-          const assistStats = statsMap.get(event.assist);
-          if (assistStats) {
-            assistStats.assists += 1;
-          }
+        if (assistNumber !== null) {
+          const assistStats = statsMap.get(assistNumber);
+          if (assistStats) assistStats.assists += 1;
         }
+
+        return {
+          type: "goal_for",
+          scorer: scorerNumber ?? 0,
+          assist: assistNumber,
+        };
       }
+
+      return {
+        type: "goal_against",
+      };
     });
 
     const playerStats = Array.from(statsMap.entries()).map(([playerNumber, stats]) => ({
@@ -130,18 +274,37 @@ export default function MatchLiveScreen({
       assists: stats.assists,
     }));
 
-    onFinishMatch({
+    const result = await onFinishMatch({
       id: matchId,
       matchTitle,
       team,
       date,
-      score: `${homeScore}:${awayScore}`,
+      score: `${scoreFor}:${scoreAgainst}`,
       goalkeeperNumber: goalkeeper,
-      goalsAgainst: awayScore,
+      goalsAgainst: scoreAgainst,
       playerStats,
-      events,
+      events: mappedEvents,
     });
+
+    if (!result.success) {
+      setMessage(result.errorMessage ?? "Nepodařilo se ukončit zápas.");
+      setFinishingMatch(false);
+      return;
+    }
+
+    setFinishingMatch(false);
   };
+
+  if (loading) {
+    return (
+      <div>
+        <h2 style={styles.screenTitle}>LIVE zápas</h2>
+        <div style={styles.card}>
+          <div style={{ color: "#b8b8b8" }}>Načítám live zápas...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -154,11 +317,35 @@ export default function MatchLiveScreen({
             {date} — {team}-tým
           </div>
 
-          {goalkeeper !== null && (
+          {displayedGoalkeeperName && (
             <div style={{ fontSize: "12px", color: "#ffdc73", marginTop: "6px" }}>
-              Brankář: {getPlayerName(goalkeeper)}
+              Brankář: {displayedGoalkeeperName}
             </div>
           )}
+
+          <div
+            style={{
+              marginTop: "10px",
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "6px 10px",
+              borderRadius: "999px",
+              fontSize: "12px",
+              fontWeight: "bold",
+              background:
+                matchState?.status === "live"
+                  ? "rgba(61, 214, 140, 0.16)"
+                  : "rgba(255,255,255,0.08)",
+              color:
+                matchState?.status === "live" ? "#7dffbc" : "#d5d5d5",
+              border:
+                matchState?.status === "live"
+                  ? "1px solid rgba(61, 214, 140, 0.28)"
+                  : "1px solid rgba(255,255,255,0.08)",
+            }}
+          >
+            {matchState?.status === "live" ? "LIVE" : "PŘIPRAVENÝ"}
+          </div>
         </div>
 
         <div
@@ -172,6 +359,26 @@ export default function MatchLiveScreen({
             border: "1px solid rgba(255,255,255,0.08)",
           }}
         >
+          <div style={{ fontSize: "14px", color: "#b8b8b8", marginBottom: "10px" }}>
+            Čas zápasu
+          </div>
+
+          <div
+            style={{
+              fontSize: "34px",
+              lineHeight: 1,
+              fontWeight: 800,
+              letterSpacing: "2px",
+              marginBottom: "12px",
+            }}
+          >
+            {formatMatchClock(totalElapsedSeconds)}
+          </div>
+
+          <div style={{ fontSize: "14px", color: "#b8b8b8", marginBottom: "14px" }}>
+            {currentPeriod === 1 ? "1. poločas" : currentPeriod === 2 ? "2. poločas" : "Před zápasem"}
+          </div>
+
           <div
             style={{
               fontSize: "52px",
@@ -180,11 +387,25 @@ export default function MatchLiveScreen({
               letterSpacing: "2px",
             }}
           >
-            {homeScore}:{awayScore}
+            {scoreFor}:{scoreAgainst}
           </div>
         </div>
 
-        <div style={{ marginBottom: "14px" }}>
+        {matchState?.status !== "live" && (
+          <button
+            style={{
+              ...styles.primaryButton,
+              background: primaryColor,
+              opacity: startingMatch ? 0.7 : 1,
+            }}
+            onClick={() => void handleStartMatch()}
+            disabled={startingMatch}
+          >
+            {startingMatch ? "Zahajuji zápas..." : "ZAHÁJIT ZÁPAS"}
+          </button>
+        )}
+
+        <div style={{ marginTop: "14px", marginBottom: "14px" }}>
           <div style={{ fontWeight: "bold", marginBottom: "8px" }}>
             Přidat náš gól
           </div>
@@ -203,14 +424,13 @@ export default function MatchLiveScreen({
           ) : (
             <div style={{ display: "grid", gap: "10px" }}>
               <select
-                value={scorer}
-                onChange={(e) =>
-                  setScorer(e.target.value === "" ? "" : Number(e.target.value))
-                }
+                value={scorerId}
+                onChange={(e) => setScorerId(e.target.value)}
                 style={{
                   ...styles.input,
                   appearance: "none",
                 }}
+                disabled={matchState?.status !== "live" || savingEvent}
               >
                 <option value="" style={{ color: "black" }}>
                   Vyber střelce
@@ -218,7 +438,7 @@ export default function MatchLiveScreen({
                 {selectedPlayerObjects.map((player) => (
                   <option
                     key={`scorer-${player.id}`}
-                    value={player.number}
+                    value={player.id}
                     style={{ color: "black" }}
                   >
                     {player.number} — {player.name}
@@ -227,18 +447,15 @@ export default function MatchLiveScreen({
               </select>
 
               <select
-                value={assist}
+                value={assistId}
                 onChange={(e) =>
-                  setAssist(
-                    e.target.value === "none" || e.target.value === ""
-                      ? (e.target.value as "none" | "")
-                      : Number(e.target.value)
-                  )
+                  setAssistId(e.target.value === "none" ? "none" : e.target.value)
                 }
                 style={{
                   ...styles.input,
                   appearance: "none",
                 }}
+                disabled={matchState?.status !== "live" || savingEvent}
               >
                 <option value="none" style={{ color: "black" }}>
                   Bez asistence
@@ -246,7 +463,7 @@ export default function MatchLiveScreen({
                 {selectedPlayerObjects.map((player) => (
                   <option
                     key={`assist-${player.id}`}
-                    value={player.number}
+                    value={player.id}
                     style={{ color: "black" }}
                   >
                     {player.number} — {player.name}
@@ -258,8 +475,10 @@ export default function MatchLiveScreen({
                 style={{
                   ...styles.primaryButton,
                   background: primaryColor,
+                  opacity: savingEvent || matchState?.status !== "live" ? 0.7 : 1,
                 }}
-                onClick={addGoalFor}
+                onClick={() => void handleAddGoalFor()}
+                disabled={savingEvent || matchState?.status !== "live"}
               >
                 Uložit gól + asistenci
               </button>
@@ -272,8 +491,10 @@ export default function MatchLiveScreen({
             style={{
               ...styles.primaryButton,
               background: "#c62828",
+              opacity: savingEvent || matchState?.status !== "live" ? 0.7 : 1,
             }}
-            onClick={addGoalAgainst}
+            onClick={() => void handleAddGoalAgainst()}
+            disabled={savingEvent || matchState?.status !== "live"}
           >
             Inkasovaný gól
           </button>
@@ -306,9 +527,9 @@ export default function MatchLiveScreen({
               </div>
             )}
 
-            {events.map((event, index) => (
+            {events.map((event) => (
               <div
-                key={index}
+                key={event.id}
                 style={{
                   padding: "12px",
                   borderRadius: "12px",
@@ -322,10 +543,14 @@ export default function MatchLiveScreen({
                       : "1px solid rgba(198,40,40,0.35)",
                 }}
               >
+                <div style={{ fontSize: "12px", color: "#b8b8b8", marginBottom: "4px" }}>
+                  {event.match_minute}'. minuta
+                </div>
+
                 {event.type === "goal_for" ? (
                   <div>
                     <div style={{ fontWeight: "bold" }}>
-                      Gól: {getPlayerName(event.scorer)}
+                      Gól: {getPlayerNameById(event.scorer_player_id)}
                     </div>
                     <div
                       style={{
@@ -334,8 +559,8 @@ export default function MatchLiveScreen({
                         marginTop: "4px",
                       }}
                     >
-                      {event.assist !== null
-                        ? `Asistence: ${getPlayerName(event.assist)}`
+                      {event.assist_player_id
+                        ? `Asistence: ${getPlayerNameById(event.assist_player_id)}`
                         : "Bez asistence"}
                     </div>
                   </div>
@@ -347,14 +572,32 @@ export default function MatchLiveScreen({
           </div>
         </div>
 
+        <div
+          style={{
+            marginBottom: "14px",
+            padding: "12px",
+            borderRadius: "12px",
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            color: "#d9d9d9",
+            fontSize: "14px",
+            lineHeight: 1.5,
+          }}
+        >
+          Každý gól se ukládá hned do databáze. Když zavřeš telefon nebo odejdeš z aplikace,
+          průběh zápasu zůstane uložený.
+        </div>
+
         <button
           style={{
             ...styles.primaryButton,
             background: primaryColor,
+            opacity: finishingMatch ? 0.7 : 1,
           }}
-          onClick={finishMatch}
+          onClick={() => void handleFinishMatch()}
+          disabled={finishingMatch}
         >
-          Konec zápasu a uložit
+          {finishingMatch ? "Ukončuji zápas..." : "Konec zápasu a uložit"}
         </button>
 
         <button
@@ -365,8 +608,12 @@ export default function MatchLiveScreen({
           }}
           onClick={onBack}
         >
-          Zpět na sestavu
+          Zpět na zápasy
         </button>
+
+        {message && (
+          <p style={{ marginTop: "12px", color: "#d9d9d9" }}>{message}</p>
+        )}
       </div>
     </div>
   );
