@@ -8,6 +8,7 @@ type MatchLineupRow = {
 type SaveMatchLineupParams = {
   matchId: string;
   playerIds: string[];
+  goalkeeperPlayerId: string | null;
 };
 
 type SaveMatchLineupResult = {
@@ -38,6 +39,7 @@ export async function getMatchLineupPlayerIds(matchId: string): Promise<string[]
 export async function saveMatchLineup({
   matchId,
   playerIds,
+  goalkeeperPlayerId,
 }: SaveMatchLineupParams): Promise<SaveMatchLineupResult> {
   try {
     const uniquePlayerIds = Array.from(new Set(playerIds));
@@ -80,17 +82,20 @@ export async function saveMatchLineup({
       .from("planned_matches")
       .update({
         status: "prepared",
+        goalkeeper_player_id: goalkeeperPlayerId,
       })
       .eq("id", matchId)
       .select("*")
       .single();
 
     if (updateError || !updatedMatch) {
-      console.error("Chyba při přepnutí zápasu do prepared:", updateError);
+      console.error("Chyba při přepnutí zápasu do prepared:", updateError, updatedMatch);
       return {
         success: false,
         match: null,
-        errorMessage: "Sestava se uložila, ale nepodařilo se připravit zápas.",
+        errorMessage:
+          updateError?.message ??
+          "Sestava se uložila, ale nepodařilo se připravit zápas.",
       };
     }
 
@@ -113,6 +118,8 @@ export async function saveMatchLineup({
           (updatedMatch.second_half_started_at as string | null) ?? null,
         second_half_elapsed_seconds:
           (updatedMatch.second_half_elapsed_seconds as number | null) ?? 0,
+        goalkeeper_player_id:
+          (updatedMatch.goalkeeper_player_id as string | null) ?? null,
       },
     };
   } catch (error) {

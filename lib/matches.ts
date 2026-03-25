@@ -37,6 +37,7 @@ export async function getPlannedMatchesByClubId(clubId: string): Promise<Planned
         second_half_started_at: (row.second_half_started_at as string | null) ?? null,
         second_half_elapsed_seconds:
           (row.second_half_elapsed_seconds as number | null) ?? 0,
+        goalkeeper_player_id: (row.goalkeeper_player_id as string | null) ?? null,
       })) ?? []
     );
   } catch (error) {
@@ -94,6 +95,7 @@ export async function createPlannedMatch(input: {
         second_half_started_at: (data.second_half_started_at as string | null) ?? null,
         second_half_elapsed_seconds:
           (data.second_half_elapsed_seconds as number | null) ?? 0,
+        goalkeeper_player_id: (data.goalkeeper_player_id as string | null) ?? null,
       },
     };
   } catch (error) {

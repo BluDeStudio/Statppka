@@ -86,11 +86,18 @@ export default function MatchDetail({
       .map((player) => player.id);
   }, [players, selectedPlayers]);
 
+  const goalkeeperPlayerId = useMemo(() => {
+    if (goalkeeper === null) return null;
+    return players.find((player) => player.number === goalkeeper)?.id ?? null;
+  }, [goalkeeper, players]);
+
   const togglePlayer = (number: number) => {
     if (!lineupEditable) return;
 
     if (selectedPlayers.includes(number)) {
-      setSelectedPlayers((prev) => prev.filter((playerNumber) => playerNumber !== number));
+      setSelectedPlayers((prev) =>
+        prev.filter((playerNumber) => playerNumber !== number)
+      );
 
       if (goalkeeper === number) {
         setGoalkeeper(null);
@@ -127,6 +134,7 @@ export default function MatchDetail({
     const result = await saveMatchLineup({
       matchId,
       playerIds: selectedPlayerIds,
+      goalkeeperPlayerId,
     });
 
     if (!result.success || !result.match) {
@@ -259,13 +267,13 @@ export default function MatchDetail({
                     border: isGoalkeeper
                       ? "2px solid #ffcc00"
                       : isSelected
-                      ? `2px solid ${primaryColor}`
-                      : "1px solid rgba(255,255,255,0.1)",
+                        ? `2px solid ${primaryColor}`
+                        : "1px solid rgba(255,255,255,0.1)",
                     background: isGoalkeeper
                       ? "rgba(255,204,0,0.14)"
                       : isSelected
-                      ? "rgba(255,255,255,0.08)"
-                      : "rgba(255,255,255,0.04)",
+                        ? "rgba(255,255,255,0.08)"
+                        : "rgba(255,255,255,0.04)",
                     opacity: lineupEditable ? 1 : 0.82,
                   }}
                 >
@@ -331,7 +339,9 @@ export default function MatchDetail({
             opacity: savingLineup || !lineupEditable ? 0.7 : 1,
           }}
           onClick={() => void handleSave()}
-          disabled={playersLoading || players.length === 0 || savingLineup || !lineupEditable}
+          disabled={
+            playersLoading || players.length === 0 || savingLineup || !lineupEditable
+          }
         >
           {savingLineup ? "Ukládám sestavu..." : "Uložit sestavu"}
         </button>

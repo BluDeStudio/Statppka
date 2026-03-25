@@ -70,6 +70,7 @@ export type PlannedMatch = {
   first_half_elapsed_seconds?: number;
   second_half_started_at?: string | null;
   second_half_elapsed_seconds?: number;
+  goalkeeper_player_id?: string | null;
 };
 
 function clearSupabaseStorage() {

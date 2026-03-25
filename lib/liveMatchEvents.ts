@@ -29,6 +29,7 @@ function mapPlannedMatch(row: Record<string, unknown>): PlannedMatch {
     second_half_started_at: (row.second_half_started_at as string | null) ?? null,
     second_half_elapsed_seconds:
       (row.second_half_elapsed_seconds as number | null) ?? 0,
+    goalkeeper_player_id: (row.goalkeeper_player_id as string | null) ?? null,
   };
 }
 
@@ -84,8 +85,7 @@ export async function startPreparedMatch(matchId: string): Promise<{
       .update({
         status: "live",
         current_period: 1,
-        first_half_started_at:
-          currentMatch.first_half_started_at ?? startIso,
+        first_half_started_at: currentMatch.first_half_started_at ?? startIso,
       })
       .eq("id", matchId)
       .select("*")
@@ -110,6 +110,92 @@ export async function startPreparedMatch(matchId: string): Promise<{
       success: false,
       match: null,
       errorMessage: "Při zahájení zápasu nastala chyba.",
+    };
+  }
+}
+
+export async function endFirstHalf(input: {
+  matchId: string;
+  elapsedSeconds: number;
+}): Promise<{
+  success: boolean;
+  match: PlannedMatch | null;
+  errorMessage?: string;
+}> {
+  try {
+    const { data, error } = await supabase
+      .from("planned_matches")
+      .update({
+        status: "halftime",
+        current_period: 1,
+        first_half_elapsed_seconds: input.elapsedSeconds,
+        first_half_started_at: null,
+      })
+      .eq("id", input.matchId)
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      console.error("Nepodařilo se ukončit 1. poločas:", error);
+      return {
+        success: false,
+        match: null,
+        errorMessage: "Nepodařilo se ukončit 1. poločas.",
+      };
+    }
+
+    return {
+      success: true,
+      match: mapPlannedMatch(data as Record<string, unknown>),
+    };
+  } catch (error) {
+    console.error("Chyba v endFirstHalf:", error);
+    return {
+      success: false,
+      match: null,
+      errorMessage: "Při ukončení 1. poločasu nastala chyba.",
+    };
+  }
+}
+
+export async function startSecondHalf(matchId: string): Promise<{
+  success: boolean;
+  match: PlannedMatch | null;
+  errorMessage?: string;
+}> {
+  try {
+    const startIso = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from("planned_matches")
+      .update({
+        status: "live",
+        current_period: 2,
+        second_half_started_at: startIso,
+      })
+      .eq("id", matchId)
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      console.error("Nepodařilo se zahájit 2. poločas:", error);
+      return {
+        success: false,
+        match: null,
+        errorMessage: "Nepodařilo se zahájit 2. poločas.",
+      };
+    }
+
+    return {
+      success: true,
+      match: mapPlannedMatch(data as Record<string, unknown>),
+    };
+  } catch (error) {
+    console.error("Chyba v startSecondHalf:", error);
+    return {
+      success: false,
+      match: null,
+      errorMessage: "Při zahájení 2. poločasu nastala chyba.",
     };
   }
 }
