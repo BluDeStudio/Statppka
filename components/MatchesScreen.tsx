@@ -82,6 +82,7 @@ export default function MatchesScreen({
   const [newTeam, setNewTeam] = useState<"A" | "B">("A");
   const [newOpponent, setNewOpponent] = useState("");
   const [newDate, setNewDate] = useState("");
+  const [newTime, setNewTime] = useState(""); // ✅ NOVÉ
   const [newVenue, setNewVenue] = useState<"home" | "away">("home");
   const [message, setMessage] = useState("");
   const [deletingMatchId, setDeletingMatchId] = useState<string | null>(null);
@@ -178,6 +179,7 @@ export default function MatchesScreen({
     const newMatch: PlannedMatch = {
       id: createMatchId(newDate, homeTeam, awayTeam, newTeam),
       date: newDate,
+      time: newTime || undefined, // ✅ NOVÉ
       opponent: newOpponent.trim(),
       team: newTeam,
       homeTeam,
@@ -195,6 +197,7 @@ export default function MatchesScreen({
     setNewTeam("A");
     setNewOpponent("");
     setNewDate("");
+    setNewTime(""); // ✅ RESET
     setNewVenue("home");
     setShowAddForm(false);
     setSavingMatch(false);
@@ -300,31 +303,17 @@ export default function MatchesScreen({
       </div>
 
       {showAddForm && isAdmin && (
-        <div
-          style={{
-            ...styles.card,
-            marginBottom: "12px",
-          }}
-        >
+        <div style={{ ...styles.card, marginBottom: "12px" }}>
           <h3 style={{ marginTop: 0, marginBottom: "12px" }}>Přidat zápas</h3>
 
           <div style={{ display: "grid", gap: "10px" }}>
             <select
               value={newTeam}
               onChange={(e) => setNewTeam(e.target.value as "A" | "B")}
-              style={{
-                ...styles.input,
-                appearance: "none",
-              }}
+              style={{ ...styles.input, appearance: "none" }}
             >
-              <option value="A" style={{ color: "black" }}>
-                A-tým
-              </option>
-              {hasBTeam && (
-                <option value="B" style={{ color: "black" }}>
-                  B-tým
-                </option>
-              )}
+              <option value="A" style={{ color: "black" }}>A-tým</option>
+              {hasBTeam && <option value="B" style={{ color: "black" }}>B-tým</option>}
             </select>
 
             <input
@@ -342,27 +331,25 @@ export default function MatchesScreen({
               style={styles.input}
             />
 
+            {/* ✅ NOVÉ – ČAS */}
+            <input
+              type="time"
+              value={newTime}
+              onChange={(e) => setNewTime(e.target.value)}
+              style={styles.input}
+            />
+
             <select
               value={newVenue}
               onChange={(e) => setNewVenue(e.target.value as "home" | "away")}
-              style={{
-                ...styles.input,
-                appearance: "none",
-              }}
+              style={{ ...styles.input, appearance: "none" }}
             >
-              <option value="home" style={{ color: "black" }}>
-                Doma
-              </option>
-              <option value="away" style={{ color: "black" }}>
-                Venku
-              </option>
+              <option value="home" style={{ color: "black" }}>Doma</option>
+              <option value="away" style={{ color: "black" }}>Venku</option>
             </select>
 
             <button
-              style={{
-                ...primaryButtonStyle,
-                opacity: savingMatch ? 0.7 : 1,
-              }}
+              style={{ ...primaryButtonStyle, opacity: savingMatch ? 0.7 : 1 }}
               onClick={() => void handleAddMatch()}
               disabled={savingMatch}
             >
@@ -370,10 +357,7 @@ export default function MatchesScreen({
             </button>
 
             <button
-              style={{
-                ...styles.primaryButton,
-                background: "rgba(255,255,255,0.12)",
-              }}
+              style={{ ...styles.primaryButton, background: "rgba(255,255,255,0.12)" }}
               onClick={() => setShowAddForm(false)}
             >
               Zrušit
@@ -407,131 +391,20 @@ export default function MatchesScreen({
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: "10px" }}>
-                    <div
-                      style={{
-                        flex: 1,
-                      }}
-                    >
+                    <div style={{ flex: 1 }}>
                       <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
-                        {formatDisplayDate(match.date)} — {match.team}-tým
+                        {formatDisplayDate(match.date)}
+                        {match.time && ` • ${match.time}`} {/* ✅ ZOBRAZENÍ ČASU */}
+                        {" — "}
+                        {match.team}-tým
                       </div>
 
                       <div style={{ fontWeight: "bold", marginTop: "4px" }}>
                         {match.homeTeam} vs. {match.awayTeam}
                       </div>
 
-                      <div
-                        style={{
-                          marginTop: "8px",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          padding: "5px 9px",
-                          borderRadius: "999px",
-                          fontSize: "11px",
-                          fontWeight: "bold",
-                          background:
-                            match.status === "prepared" || match.status === "live"
-                              ? "rgba(61, 214, 140, 0.16)"
-                              : "rgba(255,255,255,0.08)",
-                          color:
-                            match.status === "prepared" || match.status === "live"
-                              ? "#7dffbc"
-                              : "#d5d5d5",
-                          border:
-                            match.status === "prepared" || match.status === "live"
-                              ? "1px solid rgba(61, 214, 140, 0.28)"
-                              : "1px solid rgba(255,255,255,0.08)",
-                        }}
-                      >
-                        {statusLabel}
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: "8px",
-                          fontSize: "13px",
-                          color: "#d4d4d4",
-                        }}
-                      >
-                        {match.status === "prepared"
-                          ? "Sestava je uložená. Můžeš jít do live zápasu."
-                          : match.status === "live"
-                          ? "Zápas už běží. Můžeš se do něj vrátit."
-                          : "Klikni na správu zápasu."}
-                      </div>
+                      <div style={{ marginTop: "8px" }}>{statusLabel}</div>
                     </div>
-
-                    {isAdmin && (
-                      <div style={{ display: "grid", gap: "6px" }}>
-                        <button
-                          style={{
-                            minWidth: "92px",
-                            height: "36px",
-                            borderRadius: "8px",
-                            border: "none",
-                            background: primaryColor,
-                            color: "white",
-                            cursor: "pointer",
-                            fontWeight: "bold",
-                            padding: "0 10px",
-                          }}
-                          onClick={() => {
-                            setSelectedMatchId(match.id);
-                            setSelectedMode("detail");
-                            setMessage("");
-                          }}
-                        >
-                          Správa
-                        </button>
-
-                        {canOpenLive && (
-                          <button
-                            style={{
-                              minWidth: "92px",
-                              height: "36px",
-                              borderRadius: "8px",
-                              border: "none",
-                              background: "#16a34a",
-                              color: "white",
-                              cursor: "pointer",
-                              fontWeight: "bold",
-                              padding: "0 10px",
-                            }}
-                            onClick={() => {
-                              setSelectedMatchId(match.id);
-                              setSelectedMode("live");
-                              setMessage("");
-                            }}
-                          >
-                            LIVE
-                          </button>
-                        )}
-
-                        <button
-                          style={{
-                            minWidth: "92px",
-                            height: "36px",
-                            borderRadius: "8px",
-                            border: "none",
-                            background: "#ff3b3b",
-                            color: "white",
-                            cursor: deletingMatchId === match.id ? "default" : "pointer",
-                            fontWeight: "bold",
-                            padding: "0 10px",
-                            opacity: deletingMatchId === match.id ? 0.7 : 1,
-                          }}
-                          onClick={() =>
-                            void handleDeleteMatch(
-                              match.id,
-                              `${match.homeTeam} vs. ${match.awayTeam}`
-                            )
-                          }
-                          disabled={deletingMatchId === match.id}
-                        >
-                          {deletingMatchId === match.id ? "..." : "Smazat"}
-                        </button>
-                      </div>
-                    )}
                   </div>
                 </div>
               );
@@ -539,28 +412,10 @@ export default function MatchesScreen({
           </div>
         )}
 
-        {isAdmin ? (
-          !showAddForm && (
-            <button
-              style={primaryButtonStyle}
-              onClick={() => setShowAddForm(true)}
-            >
-              Přidat zápas
-            </button>
-          )
-        ) : (
-          <div
-            style={{
-              marginTop: "14px",
-              padding: "12px",
-              borderRadius: "12px",
-              background: "rgba(255,255,255,0.04)",
-              color: "#b8b8b8",
-              fontSize: "14px",
-            }}
-          >
-            Jako člen týmu můžeš plánované zápasy zatím pouze sledovat.
-          </div>
+        {!showAddForm && isAdmin && (
+          <button style={primaryButtonStyle} onClick={() => setShowAddForm(true)}>
+            Přidat zápas
+          </button>
         )}
 
         {message && (

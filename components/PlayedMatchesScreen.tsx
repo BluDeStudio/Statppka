@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { styles } from "@/styles/appStyles";
 import type { FinishedMatch } from "@/app/page";
 
@@ -26,8 +26,17 @@ export default function PlayedMatchesScreen({
   onDeleteMatch,
   primaryColor = "#888888",
 }: PlayedMatchesScreenProps) {
+  const [filter, setFilter] = useState<"ALL" | "A" | "B">("ALL");
   const [message, setMessage] = useState("");
   const [deletingMatchId, setDeletingMatchId] = useState<string | null>(null);
+
+  const filteredMatches = useMemo(() => {
+    if (filter === "ALL") {
+      return finishedMatches;
+    }
+
+    return finishedMatches.filter((match) => match.team === filter);
+  }, [finishedMatches, filter]);
 
   const handleDelete = async (matchId: string, matchTitle: string) => {
     const confirmed = window.confirm(`Opravdu chceš smazat zápas "${matchTitle}"?`);
@@ -49,13 +58,43 @@ export default function PlayedMatchesScreen({
     setDeletingMatchId(null);
   };
 
+  const filterButtonBaseStyle: React.CSSProperties = {
+    border: "none",
+    borderRadius: "10px",
+    padding: "10px",
+    background: "rgba(255,255,255,0.1)",
+    color: "white",
+    fontWeight: "bold",
+    cursor: "pointer",
+    flex: 1,
+  };
+
+  const getFilterButtonStyle = (value: "ALL" | "A" | "B"): React.CSSProperties => ({
+    ...filterButtonBaseStyle,
+    background: filter === value ? primaryColor : "rgba(255,255,255,0.1)",
+  });
+
   return (
     <div style={styles.card}>
       <h2 style={styles.screenTitle}>Odehrané zápasy</h2>
 
-      {finishedMatches.length === 0 ? (
+      <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+        <button onClick={() => setFilter("ALL")} style={getFilterButtonStyle("ALL")}>
+          Vše
+        </button>
+
+        <button onClick={() => setFilter("A")} style={getFilterButtonStyle("A")}>
+          A-tým
+        </button>
+
+        <button onClick={() => setFilter("B")} style={getFilterButtonStyle("B")}>
+          B-tým
+        </button>
+      </div>
+
+      {filteredMatches.length === 0 ? (
         <div style={{ color: "#b9c4bb" }}>
-          Zatím žádný odehraný zápas.
+          Zatím žádný odehraný zápas pro tento filtr.
         </div>
       ) : (
         <div
@@ -67,7 +106,7 @@ export default function PlayedMatchesScreen({
             paddingRight: "4px",
           }}
         >
-          {finishedMatches.map((match) => (
+          {filteredMatches.map((match) => (
             <div
               key={match.id}
               style={{
@@ -116,6 +155,7 @@ export default function PlayedMatchesScreen({
                     }}
                   >
                     {formatDisplayDate(match.date)}
+                    {match.time ? ` • ${match.time}` : ""}
                   </div>
 
                   <div
