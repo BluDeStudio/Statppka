@@ -47,6 +47,7 @@ export type FinishedMatch = {
   team: "A" | "B";
   date: string;
   time?: string;
+  location?: string;
   score: string;
   goalkeeperNumber: number | null;
   goalsAgainst: number;
@@ -62,6 +63,7 @@ export type PlannedMatch = {
   id: string;
   date: string;
   time?: string;
+  location?: string;
   opponent: string;
   team: "A" | "B";
   homeTeam: string;

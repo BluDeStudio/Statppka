@@ -106,7 +106,7 @@ export default function MatchDetail({
       return;
     }
 
-    if (selectedPlayers.length >= 12) return;
+    if (selectedPlayers.length >= 18) return;
 
     setSelectedPlayers((prev) => [...prev, number]);
   };
