@@ -83,6 +83,7 @@ export default function MatchesScreen({
   const [newOpponent, setNewOpponent] = useState("");
   const [newDate, setNewDate] = useState("");
   const [newTime, setNewTime] = useState("");
+  const [newLocation, setNewLocation] = useState("");
   const [newVenue, setNewVenue] = useState<"home" | "away">("home");
   const [message, setMessage] = useState("");
   const [deletingMatchId, setDeletingMatchId] = useState<string | null>(null);
@@ -184,6 +185,7 @@ export default function MatchesScreen({
       id: createMatchId(newDate, homeTeam, awayTeam, newTeam),
       date: newDate,
       time: newTime || undefined,
+      location: newLocation.trim() || undefined,
       opponent: newOpponent.trim(),
       team: newTeam,
       homeTeam,
@@ -202,6 +204,7 @@ export default function MatchesScreen({
     setNewOpponent("");
     setNewDate("");
     setNewTime("");
+    setNewLocation("");
     setNewVenue("home");
     setShowAddForm(false);
     setSavingMatch(false);
@@ -350,6 +353,9 @@ export default function MatchesScreen({
               style={styles.input}
             />
 
+            <div style={{ fontSize: "13px", color: "#b8b8b8", marginBottom: "-2px" }}>
+              Datum zápasu
+            </div>
             <input
               type="date"
               value={newDate}
@@ -357,11 +363,28 @@ export default function MatchesScreen({
               style={styles.input}
             />
 
+            <div style={{ fontSize: "13px", color: "#b8b8b8", marginBottom: "-2px" }}>
+              Čas zápasu
+            </div>
             <input
               type="time"
               value={newTime}
               onChange={(e) => setNewTime(e.target.value)}
               style={styles.input}
+            />
+
+            <div style={{ fontSize: "13px", color: "#b8b8b8", marginBottom: "-2px" }}>
+              Hřiště / místo
+            </div>
+            <input
+              type="text"
+              placeholder="Např. Sport Arena Klatovy"
+              value={newLocation}
+              onChange={(e) => setNewLocation(e.target.value)}
+              style={{
+                ...styles.input,
+                color: "white",
+              }}
             />
 
             <select
@@ -444,6 +467,18 @@ export default function MatchesScreen({
                       <div style={{ fontWeight: "bold", marginTop: "4px" }}>
                         {match.homeTeam} vs. {match.awayTeam}
                       </div>
+
+                      {match.location && (
+                        <div
+                          style={{
+                            marginTop: "6px",
+                            fontSize: "13px",
+                            color: "#b9c4bb",
+                          }}
+                        >
+                          Hřiště: {match.location}
+                        </div>
+                      )}
 
                       <div
                         style={{
