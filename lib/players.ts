@@ -6,6 +6,7 @@ export type Player = {
   name: string;
   number: number;
   position: string;
+  profile_id?: string | null;
   created_at?: string;
 };
 

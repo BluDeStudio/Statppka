@@ -28,6 +28,7 @@ import {
   getPlannedMatchesByClubId,
   saveFinishedMatch,
 } from "@/lib/matches";
+import type { Player } from "@/lib/players";
 
 type Screen = "team" | "players" | "planned" | "played" | "stats";
 
@@ -139,6 +140,12 @@ export default function Home() {
   const [currentMembership, setCurrentMembership] = useState<ClubMember | null>(null);
   const [inviteMessage, setInviteMessage] = useState("");
 
+  const [linkedPlayer, setLinkedPlayer] = useState<Player | null>(null);
+  const [availablePlayersToLink, setAvailablePlayersToLink] = useState<Player[]>([]);
+  const [playerLinkLoading, setPlayerLinkLoading] = useState(false);
+  const [playerLinkSavingId, setPlayerLinkSavingId] = useState<string | null>(null);
+  const [playerLinkMessage, setPlayerLinkMessage] = useState("");
+
   const isMainMenuVisible =
     !isLiveMatch && selectedPlayedMatchId === null && screen === "team";
 
@@ -158,6 +165,62 @@ export default function Home() {
     setFinishedMatches(finished);
   }, []);
 
+  const loadLinkedPlayerState = useCallback(
+    async (clubId: string, userId: string) => {
+      try {
+        setPlayerLinkLoading(true);
+        setPlayerLinkMessage("");
+
+        const { data: linkedRow, error: linkedError } = await supabase
+          .from("players")
+          .select("*")
+          .eq("club_id", clubId)
+          .eq("profile_id", userId)
+          .maybeSingle();
+
+        if (linkedError) {
+          console.error("Nepodařilo se načíst propojeného hráče:", linkedError);
+          setLinkedPlayer(null);
+          setAvailablePlayersToLink([]);
+          setPlayerLinkMessage("Nepodařilo se načíst hráčský profil.");
+          return;
+        }
+
+        if (linkedRow) {
+          setLinkedPlayer(linkedRow as Player);
+          setAvailablePlayersToLink([]);
+          return;
+        }
+
+        setLinkedPlayer(null);
+
+        const { data: freePlayers, error: freePlayersError } = await supabase
+          .from("players")
+          .select("*")
+          .eq("club_id", clubId)
+          .is("profile_id", null)
+          .order("number", { ascending: true });
+
+        if (freePlayersError) {
+          console.error("Nepodařilo se načíst volné hráče:", freePlayersError);
+          setAvailablePlayersToLink([]);
+          setPlayerLinkMessage("Nepodařilo se načíst seznam hráčů.");
+          return;
+        }
+
+        setAvailablePlayersToLink((freePlayers as Player[]) ?? []);
+      } catch (error) {
+        console.error("Chyba v loadLinkedPlayerState:", error);
+        setLinkedPlayer(null);
+        setAvailablePlayersToLink([]);
+        setPlayerLinkMessage("Při načítání hráčů nastala chyba.");
+      } finally {
+        setPlayerLinkLoading(false);
+      }
+    },
+    []
+  );
+
   const loadAppState = useCallback(
     async (currentSession: Session | null) => {
       try {
@@ -170,6 +233,9 @@ export default function Home() {
           setCurrentMembership(null);
           setPlannedMatches([]);
           setFinishedMatches([]);
+          setLinkedPlayer(null);
+          setAvailablePlayersToLink([]);
+          setPlayerLinkMessage("");
           return;
         }
 
@@ -185,6 +251,9 @@ export default function Home() {
           setCurrentClub(null);
           setPlannedMatches([]);
           setFinishedMatches([]);
+          setLinkedPlayer(null);
+          setAvailablePlayersToLink([]);
+          setPlayerLinkMessage("");
           return;
         }
 
@@ -192,10 +261,16 @@ export default function Home() {
         setCurrentClub(club);
 
         if (club) {
-          await loadClubMatchData(club.id);
+          await Promise.all([
+            loadClubMatchData(club.id),
+            loadLinkedPlayerState(club.id, currentSession.user.id),
+          ]);
         } else {
           setPlannedMatches([]);
           setFinishedMatches([]);
+          setLinkedPlayer(null);
+          setAvailablePlayersToLink([]);
+          setPlayerLinkMessage("");
         }
       } catch (error) {
         console.error("Chyba při načítání aplikace:", error);
@@ -205,9 +280,12 @@ export default function Home() {
         setCurrentMembership(null);
         setPlannedMatches([]);
         setFinishedMatches([]);
+        setLinkedPlayer(null);
+        setAvailablePlayersToLink([]);
+        setPlayerLinkMessage("");
       }
     },
-    [loadClubMatchData]
+    [loadClubMatchData, loadLinkedPlayerState]
   );
 
   useEffect(() => {
@@ -275,6 +353,9 @@ export default function Home() {
       setIsLiveMatch(false);
       setPlannedMatches([]);
       setFinishedMatches([]);
+      setLinkedPlayer(null);
+      setAvailablePlayersToLink([]);
+      setPlayerLinkMessage("");
       setScreen("team");
       setBootLoading(false);
       window.location.replace("/");
@@ -296,6 +377,59 @@ export default function Home() {
       setInviteMessage("Pozvánkový odkaz byl zkopírován.");
     } catch {
       setInviteMessage(link);
+    }
+  };
+
+  const handleLinkPlayer = async (player: Player) => {
+    if (!session || !currentClub) return;
+
+    try {
+      setPlayerLinkSavingId(player.id);
+      setPlayerLinkMessage("");
+
+      const { data: currentPlayerRow, error: currentPlayerError } = await supabase
+        .from("players")
+        .select("*")
+        .eq("id", player.id)
+        .maybeSingle();
+
+      if (currentPlayerError || !currentPlayerRow) {
+        console.error("Nepodařilo se ověřit hráče:", currentPlayerError);
+        setPlayerLinkMessage("Nepodařilo se načíst hráče.");
+        return;
+      }
+
+      if (currentPlayerRow.profile_id) {
+        setPlayerLinkMessage("Tento hráč už je propojený s jiným účtem.");
+        await loadLinkedPlayerState(currentClub.id, session.user.id);
+        return;
+      }
+
+      const { data: updatedPlayer, error: updateError } = await supabase
+        .from("players")
+        .update({
+          profile_id: session.user.id,
+        })
+        .eq("id", player.id)
+        .is("profile_id", null)
+        .select("*")
+        .single();
+
+      if (updateError || !updatedPlayer) {
+        console.error("Nepodařilo se propojit hráče:", updateError);
+        setPlayerLinkMessage("Nepodařilo se propojit hráče s účtem.");
+        await loadLinkedPlayerState(currentClub.id, session.user.id);
+        return;
+      }
+
+      setLinkedPlayer(updatedPlayer as Player);
+      setAvailablePlayersToLink([]);
+      setPlayerLinkMessage("");
+    } catch (error) {
+      console.error("Chyba v handleLinkPlayer:", error);
+      setPlayerLinkMessage("Při propojení hráče nastala chyba.");
+    } finally {
+      setPlayerLinkSavingId(null);
     }
   };
 
@@ -562,8 +696,213 @@ export default function Home() {
               setCurrentMembership(membership);
               setAppError("");
               await loadClubMatchData(club.id);
+              await loadLinkedPlayerState(club.id, session.user.id);
             }}
           />
+        </div>
+      </main>
+    );
+  }
+
+  if (!linkedPlayer) {
+    return (
+      <main
+        style={{
+          ...styles.page,
+          background: dynamicTheme.pageBackground,
+        }}
+      >
+        <div
+          style={{
+            ...styles.phone,
+            background: dynamicTheme.phoneBackground,
+            border: `1px solid ${dynamicTheme.cardBorder}`,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: "16px",
+              marginBottom: "20px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "16px",
+                minWidth: 0,
+              }}
+            >
+              <img
+                src="/logo-icon.png"
+                alt="StAtppka icon"
+                style={iconLogoStyle}
+              />
+
+              <div style={{ minWidth: 0 }}>
+                <h1
+                  style={{
+                    ...styles.title,
+                    margin: 0,
+                    lineHeight: 1.1,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {currentDisplayName}
+                </h1>
+                <p style={{ color: teamTheme.mutedText, marginTop: "8px" }}>
+                  {session.user.email}
+                </p>
+              </div>
+            </div>
+
+            <button onClick={handleLogout} style={logoutButtonStyle}>
+              Odhlásit
+            </button>
+          </div>
+
+          <div
+            style={{
+              ...styles.card,
+              background: dynamicTheme.cardBackground,
+              border: `1px solid ${dynamicTheme.cardBorder}`,
+              padding: "18px 16px",
+            }}
+          >
+            <h2 style={styles.screenTitle}>Vyber se ze soupisky</h2>
+
+            <div
+              style={{
+                marginTop: "8px",
+                color: "#d9d9d9",
+                lineHeight: 1.5,
+                fontSize: "14px",
+              }}
+            >
+              Aby šly v budoucnu ankety, přihlášky na zápasy a hlasování správně
+              přiřadit ke konkrétnímu hráči, vyber svoje jméno ze seznamu hráčů.
+            </div>
+
+            {playerLinkMessage && (
+              <div
+                style={{
+                  marginTop: "14px",
+                  padding: "12px 14px",
+                  borderRadius: "12px",
+                  background: "rgba(255,255,255,0.04)",
+                  border: `1px solid ${dynamicTheme.cardBorder}`,
+                  color: "#ffb3b3",
+                  fontSize: "14px",
+                  lineHeight: 1.45,
+                }}
+              >
+                {playerLinkMessage}
+              </div>
+            )}
+
+            {playerLinkLoading ? (
+              <div
+                style={{
+                  marginTop: "16px",
+                  padding: "16px",
+                  borderRadius: "12px",
+                  background: "rgba(255,255,255,0.04)",
+                  border: `1px solid ${dynamicTheme.cardBorder}`,
+                  textAlign: "center",
+                  color: "#b8b8b8",
+                }}
+              >
+                Načítám hráče...
+              </div>
+            ) : availablePlayersToLink.length === 0 ? (
+              <div
+                style={{
+                  marginTop: "16px",
+                  padding: "16px",
+                  borderRadius: "12px",
+                  background: "rgba(255,255,255,0.04)",
+                  border: `1px solid ${dynamicTheme.cardBorder}`,
+                  textAlign: "center",
+                  color: "#b8b8b8",
+                  lineHeight: 1.45,
+                }}
+              >
+                V týmu teď není žádný volný hráč pro propojení.
+                <br />
+                Nejdřív přidej hráče v sekci HRÁČI, nebo počkej, až to udělá někdo z týmu.
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gap: "10px",
+                  marginTop: "16px",
+                  maxHeight: "460px",
+                  overflowY: "auto",
+                  paddingRight: "4px",
+                }}
+              >
+                {availablePlayersToLink.map((player) => (
+                  <button
+                    key={player.id}
+                    onClick={() => void handleLinkPlayer(player)}
+                    disabled={playerLinkSavingId !== null}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      width: "100%",
+                      textAlign: "left",
+                      background: "rgba(255,255,255,0.04)",
+                      borderRadius: "14px",
+                      padding: "10px 12px",
+                      border: "1px solid rgba(255,255,255,0.05)",
+                      color: "white",
+                      cursor: playerLinkSavingId ? "default" : "pointer",
+                      opacity: playerLinkSavingId && playerLinkSavingId !== player.id ? 0.65 : 1,
+                    }}
+                  >
+                    <div
+                      style={{
+                        minWidth: "42px",
+                        height: "42px",
+                        borderRadius: "10px",
+                        background: dynamicTheme.primary,
+                        color: dynamicTheme.primaryText,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {player.number}
+                    </div>
+
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: "bold" }}>{player.name}</div>
+                      <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
+                        {player.position}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: "bold",
+                        color: "#ffffff",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {playerLinkSavingId === player.id ? "Propojuji..." : "Vybrat"}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </main>
     );
@@ -619,6 +958,15 @@ export default function Home() {
               </h1>
               <p style={{ color: teamTheme.mutedText, marginTop: "8px" }}>
                 {session.user.email}
+              </p>
+              <p
+                style={{
+                  color: teamTheme.mutedText,
+                  marginTop: "4px",
+                  fontSize: "12px",
+                }}
+              >
+                Přihlášený hráč: {linkedPlayer.name}
               </p>
             </div>
           </div>
