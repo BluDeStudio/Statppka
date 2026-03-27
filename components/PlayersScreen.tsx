@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { styles } from "@/styles/appStyles";
 import { createPlayer, getPlayersByClubId, type Player } from "@/lib/players";
+import { supabase } from "@/lib/supabaseClient";
 
 type PlayersScreenProps = {
   clubId: string;
@@ -12,7 +13,7 @@ type PlayersScreenProps = {
 const defaultPositions = [
   "Brankář",
   "Obránce",
-  "Univerzál",
+  "Útočník",
   "Křídlo",
   "Pivot",
 ];
@@ -24,6 +25,7 @@ export default function PlayersScreen({
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [number, setNumber] = useState("");
@@ -37,11 +39,20 @@ export default function PlayersScreen({
       setLoading(true);
       setMessage("");
 
-      const loadedPlayers = await getPlayersByClubId(clubId);
+      const [
+        loadedPlayers,
+        {
+          data: { user },
+        },
+      ] = await Promise.all([
+        getPlayersByClubId(clubId),
+        supabase.auth.getUser(),
+      ]);
 
       if (!active) return;
 
       setPlayers(loadedPlayers);
+      setCurrentUserId(user?.id ?? null);
       setLoading(false);
     };
 
@@ -51,6 +62,11 @@ export default function PlayersScreen({
       active = false;
     };
   }, [clubId]);
+
+  const linkedCount = useMemo(
+    () => players.filter((player) => player.profile_id).length,
+    [players]
+  );
 
   const handleAddPlayer = async () => {
     if (!name.trim()) {
@@ -105,8 +121,21 @@ export default function PlayersScreen({
       <h2 style={styles.screenTitle}>Soupiska</h2>
 
       <div style={styles.card}>
-        <div style={{ marginBottom: "12px" }}>
-          Celkem hráčů: <strong>{players.length}</strong>
+        <div
+          style={{
+            marginBottom: "12px",
+            display: "grid",
+            gap: "6px",
+            color: "#d7d7d7",
+            fontSize: "14px",
+          }}
+        >
+          <div>
+            Celkem hráčů: <strong>{players.length}</strong>
+          </div>
+          <div>
+            Propojeno s účtem: <strong>{linkedCount}</strong>
+          </div>
         </div>
 
         <div
@@ -208,43 +237,96 @@ export default function PlayersScreen({
               paddingRight: "4px",
             }}
           >
-            {players.map((player) => (
-              <div
-                key={player.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  background: "rgba(255,255,255,0.04)",
-                  borderRadius: "14px",
-                  padding: "10px 12px",
-                  border: "1px solid rgba(255,255,255,0.05)",
-                }}
-              >
+            {players.map((player) => {
+              const isMe =
+                currentUserId !== null && player.profile_id === currentUserId;
+              const isLinked = Boolean(player.profile_id);
+
+              return (
                 <div
+                  key={player.id}
                   style={{
-                    minWidth: "42px",
-                    height: "42px",
-                    borderRadius: "10px",
-                    background: primaryColor,
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: "bold",
-                    color: "white",
+                    gap: "12px",
+                    background: isMe
+                      ? "rgba(61, 214, 140, 0.10)"
+                      : "rgba(255,255,255,0.04)",
+                    borderRadius: "14px",
+                    padding: "10px 12px",
+                    border: isMe
+                      ? "1px solid rgba(61, 214, 140, 0.30)"
+                      : "1px solid rgba(255,255,255,0.05)",
                   }}
                 >
-                  {player.number}
-                </div>
+                  <div
+                    style={{
+                      minWidth: "42px",
+                      height: "42px",
+                      borderRadius: "10px",
+                      background: primaryColor,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: "bold",
+                      color: "white",
+                    }}
+                  >
+                    {player.number}
+                  </div>
 
-                <div>
-                  <div style={{ fontWeight: "bold" }}>{player.name}</div>
-                  <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
-                    {player.position}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: "bold" }}>{player.name}</div>
+                    <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
+                      {player.position}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: "6px",
+                      justifyItems: "end",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {isMe ? (
+                      <div
+                        style={{
+                          padding: "5px 9px",
+                          borderRadius: "999px",
+                          fontSize: "11px",
+                          fontWeight: "bold",
+                          background: "rgba(61, 214, 140, 0.18)",
+                          color: "#7dffbc",
+                          border: "1px solid rgba(61, 214, 140, 0.30)",
+                        }}
+                      >
+                        JÁ
+                      </div>
+                    ) : null}
+
+                    <div
+                      style={{
+                        padding: "5px 9px",
+                        borderRadius: "999px",
+                        fontSize: "11px",
+                        fontWeight: "bold",
+                        background: isLinked
+                          ? "rgba(255,255,255,0.10)"
+                          : "rgba(255,255,255,0.05)",
+                        color: isLinked ? "#ffffff" : "#b8b8b8",
+                        border: isLinked
+                          ? "1px solid rgba(255,255,255,0.12)"
+                          : "1px solid rgba(255,255,255,0.08)",
+                      }}
+                    >
+                      {isLinked ? "PROPOJENÝ" : "VOLNÝ"}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
