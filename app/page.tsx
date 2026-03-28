@@ -58,6 +58,7 @@ export type FinishedMatch = {
     assists: number;
   }[];
   events: FinishedMatchEvent[];
+  finished_at?: string | null;
 };
 
 export type PlannedMatch = {
@@ -1145,10 +1146,15 @@ export default function Home() {
                   };
                 }
 
+                const matchWithTime: FinishedMatch = {
+                  ...finishedMatch,
+                  finished_at: new Date().toISOString(),
+                };
+
                 const result = await saveFinishedMatch({
                   clubId: currentClub.id,
                   createdBy: session.user.id,
-                  finishedMatch,
+                  finishedMatch: matchWithTime,
                 });
 
                 if (!result.finishedMatch) {

@@ -20,9 +20,64 @@ type PlayedMatchDetailScreenProps = {
 };
 
 const ratingOptions = Array.from({ length: 19 }, (_, index) => 1 + index * 0.5);
+const VOTING_WINDOW_HOURS = 3;
 
 function formatRatingValue(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function getVotingDeadline(finishedAt?: string | null) {
+  if (!finishedAt) return null;
+
+  const finishedDate = new Date(finishedAt);
+  if (Number.isNaN(finishedDate.getTime())) return null;
+
+  return new Date(finishedDate.getTime() + VOTING_WINDOW_HOURS * 60 * 60 * 1000);
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return date.toLocaleString("cs-CZ", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getRemainingVotingTime(finishedAt?: string | null, nowMs?: number) {
+  const deadline = getVotingDeadline(finishedAt);
+  if (!deadline) return null;
+
+  const diffMs = deadline.getTime() - (nowMs ?? Date.now());
+
+  if (diffMs <= 0) {
+    return {
+      isOpen: false,
+      text: "Hodnocení je uzavřené.",
+    };
+  }
+
+  const totalMinutes = Math.ceil(diffMs / (1000 * 60));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours > 0) {
+    return {
+      isOpen: true,
+      text: `Hodnocení je otevřené ještě ${hours} h ${minutes} min.`,
+    };
+  }
+
+  return {
+    isOpen: true,
+    text: `Hodnocení je otevřené ještě ${minutes} min.`,
+  };
 }
 
 export default function PlayedMatchDetailScreen({
@@ -36,6 +91,7 @@ export default function PlayedMatchDetailScreen({
   const [selectedRatings, setSelectedRatings] = useState<Record<number, number>>({});
   const [message, setMessage] = useState("");
   const [savingPlayerNumber, setSavingPlayerNumber] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState(Date.now());
 
   useEffect(() => {
     let active = true;
@@ -78,6 +134,18 @@ export default function PlayedMatchDetailScreen({
     };
   }, [clubId, match.id]);
 
+  useEffect(() => {
+    setNowMs(Date.now());
+
+    const interval = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 30000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, []);
+
   const getPlayerName = (number: number) => {
     return players.find((player) => player.number === number)?.name ?? `#${number}`;
   };
@@ -108,9 +176,24 @@ export default function PlayedMatchDetailScreen({
     return match.playerStats.filter((player) => player.goals > 0 || player.assists > 0);
   }, [match.playerStats]);
 
+  const votingStatus = useMemo(() => {
+    return getRemainingVotingTime(match.finished_at, nowMs);
+  }, [match.finished_at, nowMs]);
+
+  const votingDeadline = useMemo(() => {
+    return getVotingDeadline(match.finished_at);
+  }, [match.finished_at]);
+
+  const isVotingOpen = votingStatus?.isOpen ?? false;
+
   const handleSaveRating = async (playerNumber: number, ratingValue: number) => {
     if (!currentUserId) {
       setMessage("Chybí přihlášený uživatel.");
+      return;
+    }
+
+    if (!isVotingOpen) {
+      setMessage("Hodnocení už je uzavřené.");
       return;
     }
 
@@ -326,6 +409,47 @@ export default function PlayedMatchDetailScreen({
             Hodnocení hráčů
           </div>
 
+          <div
+            style={{
+              marginBottom: "12px",
+              padding: "12px",
+              borderRadius: "12px",
+              background: isVotingOpen
+                ? "rgba(61, 214, 140, 0.10)"
+                : "rgba(255,120,120,0.08)",
+              border: isVotingOpen
+                ? "1px solid rgba(61, 214, 140, 0.24)"
+                : "1px solid rgba(255,120,120,0.22)",
+              color: isVotingOpen ? "#bff5d8" : "#ffbdbd",
+              fontSize: "13px",
+              lineHeight: 1.5,
+            }}
+          >
+            <div style={{ fontWeight: "bold", marginBottom: "4px" }}>
+              {isVotingOpen ? "Hodnocení je otevřené" : "Hodnocení je uzavřené"}
+            </div>
+
+            {votingStatus?.text && <div>{votingStatus.text}</div>}
+
+            {match.finished_at && (
+              <div style={{ marginTop: "4px", opacity: 0.9 }}>
+                Ukončení zápasu: {formatDateTime(match.finished_at)}
+              </div>
+            )}
+
+            {votingDeadline && (
+              <div style={{ marginTop: "4px", opacity: 0.9 }}>
+                Konec hlasování: {formatDateTime(votingDeadline.toISOString())}
+              </div>
+            )}
+
+            {!match.finished_at && (
+              <div>
+                U tohoto zápasu zatím není uložený čas ukončení, proto je hlasování uzavřené.
+              </div>
+            )}
+          </div>
+
           <div style={{ display: "grid", gap: "10px" }}>
             {matchPlayerNumbers.map((playerNumber) => {
               const summary = summaryMap.get(playerNumber);
@@ -395,7 +519,22 @@ export default function PlayedMatchDetailScreen({
                     </div>
                   </div>
 
-                  {isSelf ? (
+                  {!isVotingOpen ? (
+                    <div
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: "10px",
+                        background: "rgba(255,255,255,0.06)",
+                        color: "#9f9f9f",
+                        fontSize: "12px",
+                        fontWeight: "bold",
+                        textAlign: "center",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                      }}
+                    >
+                      Hlasování pro tento zápas už skončilo
+                    </div>
+                  ) : isSelf ? (
                     <div
                       style={{
                         padding: "10px 12px",
@@ -427,7 +566,7 @@ export default function PlayedMatchDetailScreen({
                             key={`${playerNumber}-${ratingValue}`}
                             type="button"
                             onClick={() => void handleSaveRating(playerNumber, ratingValue)}
-                            disabled={isSaving}
+                            disabled={isSaving || !isVotingOpen}
                             style={{
                               minWidth: "48px",
                               height: "36px",

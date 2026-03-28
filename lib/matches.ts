@@ -215,6 +215,9 @@ export async function getFinishedMatchesByClubId(clubId: string): Promise<Finish
         goalsAgainst: match.goals_against as number,
         playerStats,
         events,
+
+        // ✅ NOVÉ
+        finished_at: (match.finished_at as string | null) ?? null,
       };
     });
   } catch (error) {
@@ -244,6 +247,9 @@ export async function saveFinishedMatch(input: {
         goalkeeper_number: finishedMatch.goalkeeperNumber,
         goals_against: finishedMatch.goalsAgainst,
         created_by: input.createdBy,
+
+        // ✅ NOVÉ
+        finished_at: finishedMatch.finished_at ?? new Date().toISOString(),
       },
     ]);
 
