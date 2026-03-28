@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { styles } from "@/styles/appStyles";
-import { createPlayer, getPlayersByClubId, type Player } from "@/lib/players";
+import {
+  createPlayer,
+  getPlayersByClubId,
+  updatePlayer,
+  type Player,
+} from "@/lib/players";
 import { supabase } from "@/lib/supabaseClient";
 
 type PlayersScreenProps = {
@@ -18,6 +23,34 @@ const defaultPositions = [
   "Pivot",
 ];
 
+function getAge(birthDate?: string | null) {
+  if (!birthDate) return null;
+
+  const birth = new Date(birthDate);
+  const today = new Date();
+
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age--;
+  }
+
+  return age;
+}
+
+function isBirthdayToday(birthDate?: string | null) {
+  if (!birthDate) return false;
+
+  const birth = new Date(birthDate);
+  const today = new Date();
+
+  return (
+    birth.getDate() === today.getDate() &&
+    birth.getMonth() === today.getMonth()
+  );
+}
+
 export default function PlayersScreen({
   clubId,
   primaryColor = "#888888",
@@ -27,9 +60,12 @@ export default function PlayersScreen({
   const [saving, setSaving] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
+  const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+
   const [name, setName] = useState("");
   const [number, setNumber] = useState("");
   const [position, setPosition] = useState(defaultPositions[2]);
+  const [birthDate, setBirthDate] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -68,6 +104,15 @@ export default function PlayersScreen({
     [players]
   );
 
+  const resetForm = () => {
+    setEditingPlayer(null);
+    setName("");
+    setNumber("");
+    setPosition(defaultPositions[2]);
+    setBirthDate("");
+    setMessage("");
+  };
+
   const handleAddPlayer = async () => {
     if (!name.trim()) {
       setMessage("Zadej jméno hráče.");
@@ -99,15 +144,14 @@ export default function PlayersScreen({
       name,
       number: parsedNumber,
       position,
+      birth_date: birthDate || null,
     });
 
     if (result.player) {
       setPlayers((prev) =>
         [...prev, result.player as Player].sort((a, b) => a.number - b.number)
       );
-      setName("");
-      setNumber("");
-      setPosition(defaultPositions[2]);
+      resetForm();
       setMessage("Hráč byl přidán.");
     } else {
       setMessage(result.errorMessage ?? "Nepodařilo se přidat hráče.");
@@ -116,9 +160,78 @@ export default function PlayersScreen({
     setSaving(false);
   };
 
+  const startEditingPlayer = (player: Player) => {
+    setEditingPlayer(player);
+    setName(player.name);
+    setNumber(String(player.number));
+    setPosition(player.position);
+    setBirthDate(player.birth_date ?? "");
+    setMessage("");
+  };
+
+  const handleUpdatePlayer = async () => {
+    if (!editingPlayer) return;
+
+    if (!name.trim()) {
+      setMessage("Zadej jméno hráče.");
+      return;
+    }
+
+    if (!number.trim()) {
+      setMessage("Zadej číslo hráče.");
+      return;
+    }
+
+    const parsedNumber = Number(number);
+
+    if (!Number.isInteger(parsedNumber) || parsedNumber <= 0) {
+      setMessage("Číslo hráče musí být kladné celé číslo.");
+      return;
+    }
+
+    if (
+      players.some(
+        (player) =>
+          player.id !== editingPlayer.id && player.number === parsedNumber
+      )
+    ) {
+      setMessage("Hráč s tímto číslem už v týmu existuje.");
+      return;
+    }
+
+    setSaving(true);
+    setMessage("");
+
+    const result = await updatePlayer({
+      playerId: editingPlayer.id,
+      name,
+      number: parsedNumber,
+      position,
+      birth_date: birthDate || null,
+    });
+
+    if (result.player) {
+      setPlayers((prev) =>
+        prev
+          .map((player) =>
+            player.id === editingPlayer.id ? (result.player as Player) : player
+          )
+          .sort((a, b) => a.number - b.number)
+      );
+      resetForm();
+      setMessage("Hráč byl upraven.");
+    } else {
+      setMessage(result.errorMessage ?? "Nepodařilo se upravit hráče.");
+    }
+
+    setSaving(false);
+  };
+
   return (
     <div>
-      <h2 style={styles.screenTitle}>Soupiska</h2>
+      <h2 style={styles.screenTitle}>
+        {editingPlayer ? "Upravit hráče" : "Soupiska"}
+      </h2>
 
       <div style={styles.card}>
         <div
@@ -181,18 +294,57 @@ export default function PlayersScreen({
             ))}
           </select>
 
-          <button
-            style={{
-              ...styles.primaryButton,
-              marginTop: 0,
-              background: primaryColor,
-              opacity: saving ? 0.7 : 1,
-            }}
-            onClick={handleAddPlayer}
-            disabled={saving}
-          >
-            {saving ? "Ukládám..." : "Přidat hráče"}
-          </button>
+          <input
+            type="date"
+            value={birthDate}
+            onChange={(e) => setBirthDate(e.target.value)}
+            style={styles.input}
+          />
+
+          {editingPlayer ? (
+            <>
+              <button
+                type="button"
+                style={{
+                  ...styles.primaryButton,
+                  marginTop: 0,
+                  background: primaryColor,
+                  opacity: saving ? 0.7 : 1,
+                }}
+                onClick={handleUpdatePlayer}
+                disabled={saving}
+              >
+                {saving ? "Ukládám..." : "Uložit změny"}
+              </button>
+
+              <button
+                type="button"
+                style={{
+                  ...styles.primaryButton,
+                  marginTop: 0,
+                  background: "rgba(255,255,255,0.12)",
+                }}
+                onClick={resetForm}
+                disabled={saving}
+              >
+                Zrušit úpravu
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              style={{
+                ...styles.primaryButton,
+                marginTop: 0,
+                background: primaryColor,
+                opacity: saving ? 0.7 : 1,
+              }}
+              onClick={handleAddPlayer}
+              disabled={saving}
+            >
+              {saving ? "Ukládám..." : "Přidat hráče"}
+            </button>
+          )}
 
           {message && (
             <p style={{ margin: 0, color: "#cfcfcf", fontSize: "14px" }}>
@@ -241,6 +393,8 @@ export default function PlayersScreen({
               const isMe =
                 currentUserId !== null && player.profile_id === currentUserId;
               const isLinked = Boolean(player.profile_id);
+              const age = getAge(player.birth_date);
+              const hasBirthdayToday = isBirthdayToday(player.birth_date);
 
               return (
                 <div
@@ -277,9 +431,24 @@ export default function PlayersScreen({
 
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: "bold" }}>{player.name}</div>
+
                     <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
                       {player.position}
+                      {age !== null ? ` • ${age} let` : ""}
                     </div>
+
+                    {hasBirthdayToday && (
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "#ffd54f",
+                          marginTop: "2px",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        🎂 Dnes má narozeniny!
+                      </div>
+                    )}
                   </div>
 
                   <div
@@ -291,19 +460,38 @@ export default function PlayersScreen({
                     }}
                   >
                     {isMe ? (
-                      <div
-                        style={{
-                          padding: "5px 9px",
-                          borderRadius: "999px",
-                          fontSize: "11px",
-                          fontWeight: "bold",
-                          background: "rgba(61, 214, 140, 0.18)",
-                          color: "#7dffbc",
-                          border: "1px solid rgba(61, 214, 140, 0.30)",
-                        }}
-                      >
-                        JÁ
-                      </div>
+                      <>
+                        <div
+                          style={{
+                            padding: "5px 9px",
+                            borderRadius: "999px",
+                            fontSize: "11px",
+                            fontWeight: "bold",
+                            background: "rgba(61, 214, 140, 0.18)",
+                            color: "#7dffbc",
+                            border: "1px solid rgba(61, 214, 140, 0.30)",
+                          }}
+                        >
+                          JÁ
+                        </div>
+
+                        <button
+                          type="button"
+                          style={{
+                            border: "none",
+                            borderRadius: "8px",
+                            padding: "6px 10px",
+                            background: primaryColor,
+                            color: "white",
+                            cursor: "pointer",
+                            fontWeight: "bold",
+                            fontSize: "11px",
+                          }}
+                          onClick={() => startEditingPlayer(player)}
+                        >
+                          UPRAVIT
+                        </button>
+                      </>
                     ) : null}
 
                     <div

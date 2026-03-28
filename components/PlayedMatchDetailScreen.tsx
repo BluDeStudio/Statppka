@@ -82,6 +82,10 @@ export default function PlayedMatchDetailScreen({
     return players.find((player) => player.number === number)?.name ?? `#${number}`;
   };
 
+  const getPlayerByNumber = (number: number) => {
+    return players.find((player) => player.number === number) ?? null;
+  };
+
   const matchPlayerNumbers = useMemo(() => {
     const base = match.playerStats.map((player) => player.playerNumber);
 
@@ -107,6 +111,14 @@ export default function PlayedMatchDetailScreen({
   const handleSaveRating = async (playerNumber: number, ratingValue: number) => {
     if (!currentUserId) {
       setMessage("Chybí přihlášený uživatel.");
+      return;
+    }
+
+    const player = getPlayerByNumber(playerNumber);
+    const isSelf = player?.profile_id === currentUserId;
+
+    if (isSelf) {
+      setMessage("Nemůžeš hodnotit sám sebe.");
       return;
     }
 
@@ -319,6 +331,8 @@ export default function PlayedMatchDetailScreen({
               const summary = summaryMap.get(playerNumber);
               const badgeStyles = getRatingBadgeStyles(summary?.color ?? "neutral");
               const selectedValue = selectedRatings[playerNumber];
+              const player = getPlayerByNumber(playerNumber);
+              const isSelf = player?.profile_id === currentUserId;
 
               return (
                 <div
@@ -381,46 +395,63 @@ export default function PlayedMatchDetailScreen({
                     </div>
                   </div>
 
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "6px",
-                    }}
-                  >
-                    {ratingOptions.map((ratingValue) => {
-                      const isSelected = selectedValue === ratingValue;
-                      const isSaving = savingPlayerNumber === playerNumber;
+                  {isSelf ? (
+                    <div
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: "10px",
+                        background: "rgba(255,255,255,0.06)",
+                        color: "#9f9f9f",
+                        fontSize: "12px",
+                        fontWeight: "bold",
+                        textAlign: "center",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                      }}
+                    >
+                      Nelze hodnotit sám sebe
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "6px",
+                      }}
+                    >
+                      {ratingOptions.map((ratingValue) => {
+                        const isSelected = selectedValue === ratingValue;
+                        const isSaving = savingPlayerNumber === playerNumber;
 
-                      return (
-                        <button
-                          key={`${playerNumber}-${ratingValue}`}
-                          type="button"
-                          onClick={() => void handleSaveRating(playerNumber, ratingValue)}
-                          disabled={isSaving}
-                          style={{
-                            minWidth: "48px",
-                            height: "36px",
-                            padding: "0 8px",
-                            borderRadius: "10px",
-                            border: isSelected
-                              ? "1px solid rgba(255,255,255,0.32)"
-                              : "1px solid rgba(255,255,255,0.08)",
-                            background: isSelected
-                              ? "rgba(255,255,255,0.18)"
-                              : "rgba(255,255,255,0.08)",
-                            color: "white",
-                            fontWeight: "bold",
-                            fontSize: "13px",
-                            cursor: isSaving ? "default" : "pointer",
-                            opacity: isSaving ? 0.7 : 1,
-                          }}
-                        >
-                          {formatRatingValue(ratingValue)}
-                        </button>
-                      );
-                    })}
-                  </div>
+                        return (
+                          <button
+                            key={`${playerNumber}-${ratingValue}`}
+                            type="button"
+                            onClick={() => void handleSaveRating(playerNumber, ratingValue)}
+                            disabled={isSaving}
+                            style={{
+                              minWidth: "48px",
+                              height: "36px",
+                              padding: "0 8px",
+                              borderRadius: "10px",
+                              border: isSelected
+                                ? "1px solid rgba(255,255,255,0.32)"
+                                : "1px solid rgba(255,255,255,0.08)",
+                              background: isSelected
+                                ? "rgba(255,255,255,0.18)"
+                                : "rgba(255,255,255,0.08)",
+                              color: "white",
+                              fontWeight: "bold",
+                              fontSize: "13px",
+                              cursor: isSaving ? "default" : "pointer",
+                              opacity: isSaving ? 0.7 : 1,
+                            }}
+                          >
+                            {formatRatingValue(ratingValue)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
