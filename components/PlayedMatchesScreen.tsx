@@ -101,9 +101,6 @@ export default function PlayedMatchesScreen({
           style={{
             display: "grid",
             gap: "10px",
-            maxHeight: "420px",
-            overflowY: "auto",
-            paddingRight: "4px",
           }}
         >
           {filteredMatches.map((match) => (
