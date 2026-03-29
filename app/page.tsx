@@ -522,12 +522,13 @@ export default function Home() {
   const iconLogoStyle: React.CSSProperties = {
     width: "72px",
     height: "72px",
-    borderRadius: "18px",
-    objectFit: "cover",
+    borderRadius: "0",
+    objectFit: "contain",
     display: "block",
-    boxShadow: "0 10px 24px rgba(0,0,0,0.25)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    background: "rgba(255,255,255,0.04)",
+    boxShadow: "none",
+    border: "none",
+    background: "transparent",
+    padding: 0,
   };
 
   if (bootLoading) {

@@ -384,9 +384,6 @@ export default function PlayersScreen({
             style={{
               display: "grid",
               gap: "10px",
-              maxHeight: "420px",
-              overflowY: "auto",
-              paddingRight: "4px",
             }}
           >
             {players.map((player) => {

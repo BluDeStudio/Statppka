@@ -248,9 +248,6 @@ export default function StatsScreen({
   const listWrapStyle: React.CSSProperties = {
     display: "grid",
     gap: "10px",
-    maxHeight: "420px",
-    overflowY: "auto",
-    paddingRight: "4px",
   };
 
   return (
