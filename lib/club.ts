@@ -45,7 +45,7 @@ function getAppBaseUrl() {
     return window.location.origin.replace(/\/+$/, "");
   }
 
-  return "https://statppka.vercel.app";
+  return "https://myteamhub.cz";
 }
 
 export async function getMyClubMembership(userId: string): Promise<ClubMember | null> {

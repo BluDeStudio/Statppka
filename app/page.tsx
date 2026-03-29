@@ -437,6 +437,12 @@ export default function Home() {
   const appTitle = teamTheme.appName ?? "MyTeamHub";
   const currentDisplayName = currentClub?.name ?? "Bez týmu";
 
+  const shouldForcePlayerLink =
+    !linkedPlayer && availablePlayersToLink.length > 0;
+
+  const showMissingPlayerInfo =
+    !linkedPlayer && availablePlayersToLink.length === 0;
+
   const dynamicTheme = useMemo(() => {
     const primary = currentClub?.primary_color || teamTheme.primary;
     const secondary = currentClub?.secondary_color || teamTheme.secondary;
@@ -706,7 +712,7 @@ export default function Home() {
     );
   }
 
-  if (!linkedPlayer) {
+  if (shouldForcePlayerLink) {
     return (
       <main
         style={{
@@ -818,23 +824,6 @@ export default function Home() {
                 }}
               >
                 Načítám hráče...
-              </div>
-            ) : availablePlayersToLink.length === 0 ? (
-              <div
-                style={{
-                  marginTop: "16px",
-                  padding: "16px",
-                  borderRadius: "12px",
-                  background: "rgba(255,255,255,0.04)",
-                  border: `1px solid ${dynamicTheme.cardBorder}`,
-                  textAlign: "center",
-                  color: "#b8b8b8",
-                  lineHeight: 1.45,
-                }}
-              >
-                V týmu teď není žádný volný hráč pro propojení.
-                <br />
-                Nejdřív přidej hráče v sekci HRÁČI, nebo počkej, až to udělá někdo z týmu.
               </div>
             ) : (
               <div
@@ -961,15 +950,28 @@ export default function Home() {
               <p style={{ color: teamTheme.mutedText, marginTop: "8px" }}>
                 {session.user.email}
               </p>
-              <p
-                style={{
-                  color: teamTheme.mutedText,
-                  marginTop: "4px",
-                  fontSize: "12px",
-                }}
-              >
-                Přihlášený hráč: {linkedPlayer.name}
-              </p>
+              {linkedPlayer ? (
+                <p
+                  style={{
+                    color: teamTheme.mutedText,
+                    marginTop: "4px",
+                    fontSize: "12px",
+                  }}
+                >
+                  Přihlášený hráč: {linkedPlayer.name}
+                </p>
+              ) : (
+                <p
+                  style={{
+                    color: "#ffd98a",
+                    marginTop: "4px",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                  }}
+                >
+                  Profil zatím není propojený s hráčem
+                </p>
+              )}
             </div>
           </div>
 
@@ -977,6 +979,39 @@ export default function Home() {
             Odhlásit
           </button>
         </div>
+
+        {showMissingPlayerInfo && (
+          <div
+            style={{
+              ...styles.card,
+              marginBottom: "14px",
+              padding: "14px 16px",
+              background: "rgba(255, 193, 7, 0.08)",
+              border: "1px solid rgba(255, 193, 7, 0.22)",
+              color: "#ffe7a8",
+            }}
+          >
+            <div
+              style={{
+                fontWeight: "bold",
+                fontSize: "14px",
+                marginBottom: "6px",
+              }}
+            >
+              Profil zatím není propojený s hráčem
+            </div>
+
+            <div
+              style={{
+                fontSize: "13px",
+                lineHeight: 1.5,
+              }}
+            >
+              V týmu zatím není žádný hráč k propojení. Nejdřív si vytvoř soupisku
+              v sekci HRÁČI a potom svůj účet napojíš na konkrétního hráče.
+            </div>
+          </div>
+        )}
 
         {isMainMenuVisible && (
           <div style={{ display: "grid", gap: "10px" }}>
