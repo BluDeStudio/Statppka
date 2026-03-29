@@ -1,5 +1,5 @@
 export const teamTheme = {
-  appName: "StAtppka",
+  appName: "MyTeamHub",
 
   primary: "#8f8f8f",
   primaryDark: "#5f5f5f",

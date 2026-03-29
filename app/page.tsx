@@ -434,7 +434,7 @@ export default function Home() {
     }
   };
 
-  const appTitle = teamTheme.appName ?? "StAtppka";
+  const appTitle = teamTheme.appName ?? "MyTeamHub";
   const currentDisplayName = currentClub?.name ?? "Bez týmu";
 
   const dynamicTheme = useMemo(() => {
@@ -586,8 +586,8 @@ export default function Home() {
             }}
           >
             <img
-              src="/logo-main.png"
-              alt="StAtppka logo"
+              src="/logo.png"
+              alt="MyTeamHub logo"
               style={mainLogoStyle}
             />
 
@@ -649,8 +649,8 @@ export default function Home() {
               }}
             >
               <img
-                src="/logo-icon.png"
-                alt="StAtppka icon"
+                src="/icon.png"
+                alt="MyTeamHub icon"
                 style={iconLogoStyle}
               />
 
@@ -738,8 +738,8 @@ export default function Home() {
               }}
             >
               <img
-                src="/logo-icon.png"
-                alt="StAtppka icon"
+                src="/icon.png"
+                alt="MyTeamHub icon"
                 style={iconLogoStyle}
               />
 
@@ -941,8 +941,8 @@ export default function Home() {
             }}
           >
             <img
-              src="/logo-icon.png"
-              alt="StAtppka icon"
+              src="/icon.png"
+              alt="MyTeamHub icon"
               style={iconLogoStyle}
             />
 
