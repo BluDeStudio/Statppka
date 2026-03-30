@@ -30,7 +30,9 @@ import {
 } from "@/lib/matches";
 import type { Player } from "@/lib/players";
 
-type Screen = "team" | "players" | "planned" | "played" | "stats";
+type Screen = "home" | "team" | "matches" | "trainings" | "stats";
+type TeamTab = "overview" | "players";
+type MatchesTab = "planned" | "played";
 
 export type FinishedMatchEvent =
   | {
@@ -97,13 +99,11 @@ function clearSupabaseStorage() {
 function getScreenTitle(screen: Screen) {
   switch (screen) {
     case "team":
-      return "MŮJ TÝM";
-    case "players":
-      return "HRÁČI";
-    case "planned":
-      return "PLÁNOVANÉ ZÁPASY";
-    case "played":
-      return "ODEHRANÉ ZÁPASY";
+      return "TÝM";
+    case "matches":
+      return "ZÁPASY";
+    case "trainings":
+      return "TRÉNINKY";
     case "stats":
       return "STATISTIKY";
     default:
@@ -126,7 +126,9 @@ function getContrastTextColor(hexColor?: string | null) {
 }
 
 export default function Home() {
-  const [screen, setScreen] = useState<Screen>("team");
+  const [screen, setScreen] = useState<Screen>("home");
+  const [teamTab, setTeamTab] = useState<TeamTab>("overview");
+  const [matchesTab, setMatchesTab] = useState<MatchesTab>("planned");
   const [isLiveMatch, setIsLiveMatch] = useState(false);
   const [finishedMatches, setFinishedMatches] = useState<FinishedMatch[]>([]);
   const [selectedPlayedMatchId, setSelectedPlayedMatchId] = useState<string | null>(null);
@@ -148,7 +150,7 @@ export default function Home() {
   const [playerLinkMessage, setPlayerLinkMessage] = useState("");
 
   const isMainMenuVisible =
-    !isLiveMatch && selectedPlayedMatchId === null && screen === "team";
+    !isLiveMatch && selectedPlayedMatchId === null && screen === "home";
 
   const selectedPlayedMatch = finishedMatches.find(
     (match) => match.id === selectedPlayedMatchId
@@ -357,7 +359,9 @@ export default function Home() {
       setLinkedPlayer(null);
       setAvailablePlayersToLink([]);
       setPlayerLinkMessage("");
-      setScreen("team");
+      setScreen("home");
+      setTeamTab("overview");
+      setMatchesTab("planned");
       setBootLoading(false);
       window.location.replace("/");
     }
@@ -536,6 +540,23 @@ export default function Home() {
     background: "transparent",
     padding: 0,
   };
+
+  const subTabBaseStyle: React.CSSProperties = {
+    flex: 1,
+    border: "none",
+    borderRadius: "10px",
+    padding: "10px 12px",
+    background: "rgba(255,255,255,0.08)",
+    color: "white",
+    fontWeight: "bold",
+    cursor: "pointer",
+  };
+
+  const getSubTabStyle = (active: boolean): React.CSSProperties => ({
+    ...subTabBaseStyle,
+    background: active ? dynamicTheme.primary : "rgba(255,255,255,0.08)",
+    color: active ? dynamicTheme.primaryText : "white",
+  });
 
   if (bootLoading) {
     return (
@@ -1008,30 +1029,44 @@ export default function Home() {
               }}
             >
               V týmu zatím není žádný hráč k propojení. Nejdřív si vytvoř soupisku
-              v sekci HRÁČI a potom svůj účet napojíš na konkrétního hráče.
+              v sekci TÝM → HRÁČI a potom svůj účet napojíš na konkrétního hráče.
             </div>
           </div>
         )}
 
         {isMainMenuVisible && (
           <div style={{ display: "grid", gap: "10px" }}>
-            <button style={menuButtonStyle} onClick={() => setScreen("team")}>
-              MŮJ TÝM
+            <button
+              style={menuButtonStyle}
+              onClick={() => {
+                setScreen("team");
+                setTeamTab("overview");
+              }}
+            >
+              TÝM
             </button>
 
-            <button style={menuButtonStyle} onClick={() => setScreen("players")}>
-              HRÁČI
+            <button
+              style={menuButtonStyle}
+              onClick={() => {
+                setScreen("matches");
+                setMatchesTab("planned");
+              }}
+            >
+              ZÁPASY
             </button>
 
-            <button style={menuButtonStyle} onClick={() => setScreen("planned")}>
-              PLÁNOVANÉ ZÁPASY
+            <button
+              style={menuButtonStyle}
+              onClick={() => setScreen("trainings")}
+            >
+              TRÉNINKY
             </button>
 
-            <button style={menuButtonStyle} onClick={() => setScreen("played")}>
-              ODEHRANÉ ZÁPASY
-            </button>
-
-            <button style={menuButtonStyle} onClick={() => setScreen("stats")}>
+            <button
+              style={menuButtonStyle}
+              onClick={() => setScreen("stats")}
+            >
               STATISTIKY
             </button>
           </div>
@@ -1046,7 +1081,7 @@ export default function Home() {
                 gap: "12px",
               }}
             >
-              <button onClick={() => setScreen("team")} style={backButtonStyle}>
+              <button onClick={() => setScreen("home")} style={backButtonStyle}>
                 ← Zpět
               </button>
 
@@ -1057,6 +1092,250 @@ export default function Home() {
 
         <div style={{ marginTop: isMainMenuVisible ? "20px" : "0px" }}>
           {screen === "team" && selectedPlayedMatchId === null && !isLiveMatch && (
+            <div style={{ display: "grid", gap: "12px" }}>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  style={getSubTabStyle(teamTab === "overview")}
+                  onClick={() => setTeamTab("overview")}
+                >
+                  PŘEHLED
+                </button>
+
+                <button
+                  style={getSubTabStyle(teamTab === "players")}
+                  onClick={() => setTeamTab("players")}
+                >
+                  HRÁČI
+                </button>
+              </div>
+
+              {teamTab === "overview" && (
+                <div
+                  style={{
+                    ...styles.card,
+                    background: dynamicTheme.cardBackground,
+                    border: `1px solid ${dynamicTheme.cardBorder}`,
+                    padding: "18px 16px",
+                  }}
+                >
+                  <div style={{ display: "grid", gap: "14px" }}>
+                    <div
+                      style={{
+                        padding: "16px",
+                        borderRadius: "16px",
+                        background: "rgba(255,255,255,0.04)",
+                        border: `1px solid ${dynamicTheme.cardBorder}`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "14px",
+                          color: "#d9d9d9",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        Sdílej pozvánkový odkaz s hráči a členy týmu, aby se mohli
+                        připojit do stejného klubu.
+                      </div>
+                    </div>
+
+                    <button style={primaryButtonStyle} onClick={handleCreateInvite}>
+                      Vygenerovat pozvánkový odkaz
+                    </button>
+
+                    {inviteMessage && (
+                      <div
+                        style={{
+                          padding: "12px 14px",
+                          borderRadius: "12px",
+                          background: "rgba(255,255,255,0.04)",
+                          border: `1px solid ${dynamicTheme.cardBorder}`,
+                          color: "#d9d9d9",
+                          fontSize: "14px",
+                          lineHeight: 1.45,
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {inviteMessage}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {teamTab === "players" && (
+                <PlayersScreen
+                  clubId={currentClub.id}
+                  primaryColor={currentClub.primary_color}
+                />
+              )}
+            </div>
+          )}
+
+          {screen === "matches" && selectedPlayedMatchId === null && (
+            <div style={{ display: "grid", gap: "12px" }}>
+              {!isLiveMatch && (
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    style={getSubTabStyle(matchesTab === "planned")}
+                    onClick={() => setMatchesTab("planned")}
+                  >
+                    PLÁNOVANÉ
+                  </button>
+
+                  <button
+                    style={getSubTabStyle(matchesTab === "played")}
+                    onClick={() => setMatchesTab("played")}
+                  >
+                    ODEHRANÉ
+                  </button>
+                </div>
+              )}
+
+              {matchesTab === "planned" && (
+                <MatchesScreen
+                  clubId={currentClub.id}
+                  clubName={currentClub.name}
+                  hasBTeam={currentClub.has_b_team}
+                  primaryColor={currentClub.primary_color}
+                  plannedMatches={plannedMatches}
+                  finishedMatchIds={finishedMatchIds}
+                  onLiveModeChange={setIsLiveMatch}
+                  onAddMatch={async (newMatch) => {
+                    if (!session) {
+                      return {
+                        success: false,
+                        errorMessage: "Chybí přihlášený uživatel.",
+                      };
+                    }
+
+                    const result = await createPlannedMatch({
+                      clubId: currentClub.id,
+                      createdBy: session.user.id,
+                      match: newMatch,
+                    });
+
+                    if (!result.match) {
+                      setAppError(result.errorMessage ?? "Nepodařilo se uložit zápas.");
+                      return {
+                        success: false,
+                        errorMessage:
+                          result.errorMessage ?? "Nepodařilo se uložit zápas.",
+                      };
+                    }
+
+                    setPlannedMatches((prev) => [...prev, result.match as PlannedMatch]);
+                    setAppError("");
+
+                    return {
+                      success: true,
+                    };
+                  }}
+                  onDeleteMatch={async (matchId) => {
+                    const result = await deletePlannedMatch(matchId);
+
+                    if (!result.success) {
+                      setAppError(result.errorMessage ?? "Nepodařilo se smazat zápas.");
+                      return {
+                        success: false,
+                        errorMessage: result.errorMessage ?? "Nepodařilo se smazat zápas.",
+                      };
+                    }
+
+                    setPlannedMatches((prev) => prev.filter((match) => match.id !== matchId));
+                    setAppError("");
+
+                    return {
+                      success: true,
+                    };
+                  }}
+                  onMatchFinished={async (finishedMatch) => {
+                    if (!session) {
+                      return {
+                        success: false,
+                        errorMessage: "Chybí přihlášený uživatel.",
+                      };
+                    }
+
+                    const matchWithTime: FinishedMatch = {
+                      ...finishedMatch,
+                      finished_at: new Date().toISOString(),
+                    };
+
+                    const result = await saveFinishedMatch({
+                      clubId: currentClub.id,
+                      createdBy: session.user.id,
+                      finishedMatch: matchWithTime,
+                    });
+
+                    if (!result.finishedMatch) {
+                      setAppError(
+                        result.errorMessage ?? "Nepodařilo se uložit odehraný zápas."
+                      );
+                      return {
+                        success: false,
+                        errorMessage:
+                          result.errorMessage ??
+                          "Nepodařilo se uložit odehraný zápas.",
+                      };
+                    }
+
+                    setFinishedMatches((prev) => [
+                      result.finishedMatch as FinishedMatch,
+                      ...prev,
+                    ]);
+                    setPlannedMatches((prev) =>
+                      prev.filter((match) => match.id !== finishedMatch.id)
+                    );
+                    setScreen("matches");
+                    setMatchesTab("played");
+                    setIsLiveMatch(false);
+                    setAppError("");
+
+                    return {
+                      success: true,
+                    };
+                  }}
+                  isAdmin={true}
+                />
+              )}
+
+              {matchesTab === "played" && !isLiveMatch && (
+                <PlayedMatchesScreen
+                  finishedMatches={finishedMatches}
+                  onSelectMatch={(matchId) => setSelectedPlayedMatchId(matchId)}
+                  onDeleteMatch={async (matchId) => {
+                    const result = await deleteFinishedMatch(matchId);
+
+                    if (!result.success) {
+                      setAppError(result.errorMessage ?? "Nepodařilo se smazat zápas.");
+                      return {
+                        success: false,
+                        errorMessage: result.errorMessage ?? "Nepodařilo se smazat zápas.",
+                      };
+                    }
+
+                    setFinishedMatches((prev) =>
+                      prev.filter((match) => match.id !== matchId)
+                    );
+
+                    if (selectedPlayedMatchId === matchId) {
+                      setSelectedPlayedMatchId(null);
+                    }
+
+                    setAppError("");
+
+                    return {
+                      success: true,
+                    };
+                  }}
+                  primaryColor={currentClub.primary_color}
+                />
+              )}
+            </div>
+          )}
+
+          {screen === "trainings" && selectedPlayedMatchId === null && !isLiveMatch && (
             <div
               style={{
                 ...styles.card,
@@ -1065,196 +1344,27 @@ export default function Home() {
                 padding: "18px 16px",
               }}
             >
-              <div style={{ display: "grid", gap: "14px" }}>
-                <div
-                  style={{
-                    padding: "16px",
-                    borderRadius: "16px",
-                    background: "rgba(255,255,255,0.04)",
-                    border: `1px solid ${dynamicTheme.cardBorder}`,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: "14px",
-                      color: "#d9d9d9",
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    Sdílej pozvánkový odkaz s hráči a členy týmu, aby se mohli
-                    připojit do stejného klubu.
-                  </div>
-                </div>
+              <div
+                style={{
+                  fontWeight: "bold",
+                  fontSize: "16px",
+                  marginBottom: "10px",
+                }}
+              >
+                Tréninky a ankety
+              </div>
 
-                <button style={primaryButtonStyle} onClick={handleCreateInvite}>
-                  Vygenerovat pozvánkový odkaz
-                </button>
-
-                {inviteMessage && (
-                  <div
-                    style={{
-                      padding: "12px 14px",
-                      borderRadius: "12px",
-                      background: "rgba(255,255,255,0.04)",
-                      border: `1px solid ${dynamicTheme.cardBorder}`,
-                      color: "#d9d9d9",
-                      fontSize: "14px",
-                      lineHeight: 1.45,
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {inviteMessage}
-                  </div>
-                )}
+              <div
+                style={{
+                  color: "#d9d9d9",
+                  fontSize: "14px",
+                  lineHeight: 1.55,
+                }}
+              >
+                Tady připravíme plánované tréninky a ankety BUDE / NEBUDE.
+                Další krok bude nový seznam tréninků, detail tréninku a docházka hráčů.
               </div>
             </div>
-          )}
-
-          {screen === "players" && selectedPlayedMatchId === null && !isLiveMatch && (
-            <PlayersScreen
-              clubId={currentClub.id}
-              primaryColor={currentClub.primary_color}
-            />
-          )}
-
-          {screen === "planned" && selectedPlayedMatchId === null && (
-            <MatchesScreen
-              clubId={currentClub.id}
-              clubName={currentClub.name}
-              hasBTeam={currentClub.has_b_team}
-              primaryColor={currentClub.primary_color}
-              plannedMatches={plannedMatches}
-              finishedMatchIds={finishedMatchIds}
-              onLiveModeChange={setIsLiveMatch}
-              onAddMatch={async (newMatch) => {
-                if (!session) {
-                  return {
-                    success: false,
-                    errorMessage: "Chybí přihlášený uživatel.",
-                  };
-                }
-
-                const result = await createPlannedMatch({
-                  clubId: currentClub.id,
-                  createdBy: session.user.id,
-                  match: newMatch,
-                });
-
-                if (!result.match) {
-                  setAppError(result.errorMessage ?? "Nepodařilo se uložit zápas.");
-                  return {
-                    success: false,
-                    errorMessage:
-                      result.errorMessage ?? "Nepodařilo se uložit zápas.",
-                  };
-                }
-
-                setPlannedMatches((prev) => [...prev, result.match as PlannedMatch]);
-                setAppError("");
-
-                return {
-                  success: true,
-                };
-              }}
-              onDeleteMatch={async (matchId) => {
-                const result = await deletePlannedMatch(matchId);
-
-                if (!result.success) {
-                  setAppError(result.errorMessage ?? "Nepodařilo se smazat zápas.");
-                  return {
-                    success: false,
-                    errorMessage: result.errorMessage ?? "Nepodařilo se smazat zápas.",
-                  };
-                }
-
-                setPlannedMatches((prev) => prev.filter((match) => match.id !== matchId));
-                setAppError("");
-
-                return {
-                  success: true,
-                };
-              }}
-              onMatchFinished={async (finishedMatch) => {
-                if (!session) {
-                  return {
-                    success: false,
-                    errorMessage: "Chybí přihlášený uživatel.",
-                  };
-                }
-
-                const matchWithTime: FinishedMatch = {
-                  ...finishedMatch,
-                  finished_at: new Date().toISOString(),
-                };
-
-                const result = await saveFinishedMatch({
-                  clubId: currentClub.id,
-                  createdBy: session.user.id,
-                  finishedMatch: matchWithTime,
-                });
-
-                if (!result.finishedMatch) {
-                  setAppError(
-                    result.errorMessage ?? "Nepodařilo se uložit odehraný zápas."
-                  );
-                  return {
-                    success: false,
-                    errorMessage:
-                      result.errorMessage ??
-                      "Nepodařilo se uložit odehraný zápas.",
-                  };
-                }
-
-                setFinishedMatches((prev) => [
-                  result.finishedMatch as FinishedMatch,
-                  ...prev,
-                ]);
-                setPlannedMatches((prev) =>
-                  prev.filter((match) => match.id !== finishedMatch.id)
-                );
-                setScreen("played");
-                setIsLiveMatch(false);
-                setAppError("");
-
-                return {
-                  success: true,
-                };
-              }}
-              isAdmin={true}
-            />
-          )}
-
-          {screen === "played" && selectedPlayedMatchId === null && !isLiveMatch && (
-            <PlayedMatchesScreen
-              finishedMatches={finishedMatches}
-              onSelectMatch={(matchId) => setSelectedPlayedMatchId(matchId)}
-              onDeleteMatch={async (matchId) => {
-                const result = await deleteFinishedMatch(matchId);
-
-                if (!result.success) {
-                  setAppError(result.errorMessage ?? "Nepodařilo se smazat zápas.");
-                  return {
-                    success: false,
-                    errorMessage: result.errorMessage ?? "Nepodařilo se smazat zápas.",
-                  };
-                }
-
-                setFinishedMatches((prev) =>
-                  prev.filter((match) => match.id !== matchId)
-                );
-
-                if (selectedPlayedMatchId === matchId) {
-                  setSelectedPlayedMatchId(null);
-                }
-
-                setAppError("");
-
-                return {
-                  success: true,
-                };
-              }}
-              primaryColor={currentClub.primary_color}
-            />
           )}
 
           {screen === "stats" && selectedPlayedMatchId === null && !isLiveMatch && (
@@ -1289,3 +1399,4 @@ export default function Home() {
     </main>
   );
 }
+
