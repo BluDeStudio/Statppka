@@ -35,17 +35,17 @@ function ValueBadge({
   return (
     <div
       style={{
-        minWidth: "86px",
-        height: "58px",
-        borderRadius: "16px",
+        minWidth: "58px",
+        height: "40px",
+        borderRadius: "12px",
         background,
         color,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontSize: "18px",
+        fontSize: "16px",
         fontWeight: "bold",
-        padding: "0 14px",
+        padding: "0 10px",
         boxSizing: "border-box",
       }}
     >
