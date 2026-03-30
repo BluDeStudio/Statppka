@@ -9,6 +9,7 @@ import PlayedMatchesScreen from "@/components/PlayedMatchesScreen";
 import StatsScreen from "@/components/StatsScreen";
 import LoginScreen from "@/components/LoginScreen";
 import TeamSetupScreen from "@/components/TeamSetupScreen";
+import TrainingsScreen from "@/components/TrainingsScreen";
 import { styles } from "@/styles/appStyles";
 import { teamTheme } from "@/data/teamTheme";
 import { supabase } from "@/lib/supabaseClient";
@@ -1336,35 +1337,10 @@ export default function Home() {
           )}
 
           {screen === "trainings" && selectedPlayedMatchId === null && !isLiveMatch && (
-            <div
-              style={{
-                ...styles.card,
-                background: dynamicTheme.cardBackground,
-                border: `1px solid ${dynamicTheme.cardBorder}`,
-                padding: "18px 16px",
-              }}
-            >
-              <div
-                style={{
-                  fontWeight: "bold",
-                  fontSize: "16px",
-                  marginBottom: "10px",
-                }}
-              >
-                Tréninky a ankety
-              </div>
-
-              <div
-                style={{
-                  color: "#d9d9d9",
-                  fontSize: "14px",
-                  lineHeight: 1.55,
-                }}
-              >
-                Tady připravíme plánované tréninky a ankety BUDE / NEBUDE.
-                Další krok bude nový seznam tréninků, detail tréninku a docházka hráčů.
-              </div>
-            </div>
+            <TrainingsScreen
+              clubId={currentClub.id}
+              primaryColor={currentClub.primary_color}
+            />
           )}
 
           {screen === "stats" && selectedPlayedMatchId === null && !isLiveMatch && (
