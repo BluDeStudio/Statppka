@@ -92,6 +92,7 @@ export default function TrainingsScreen({
   const [editingTrainingId, setEditingTrainingId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [linkedPlayer, setLinkedPlayer] = useState<Player | null>(null);
+  const [showForm, setShowForm] = useState(false);
 
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -260,11 +261,13 @@ export default function TrainingsScreen({
       [created.id]: [],
     }));
     resetForm();
+    setShowForm(false);
     setMessage("Trénink byl vytvořen.");
     setSaving(false);
   };
 
   const handleStartEdit = (training: Training) => {
+    setShowForm(true);
     setEditingTrainingId(training.id);
     setDate(training.date);
     setStartTime(normalizeTimeValue(training.start_time));
@@ -321,6 +324,7 @@ export default function TrainingsScreen({
       prev.map((item) => (item.id === editingTrainingId ? (updated as Training) : item))
     );
     resetForm();
+    setShowForm(false);
     setMessage("Trénink byl upraven.");
     setSaving(false);
   };
@@ -354,6 +358,7 @@ export default function TrainingsScreen({
 
     if (editingTrainingId === trainingId) {
       resetForm();
+      setShowForm(false);
     }
 
     setMessage("Trénink byl smazán.");
@@ -388,7 +393,11 @@ export default function TrainingsScreen({
       [trainingId]: (rows as AttendanceRow[]) ?? [],
     }));
 
-    setMessage(status === "yes" ? "Potvrdil jsi účast na tréninku." : "Označil jsi, že nepřijdeš.");
+    setMessage(
+      status === "yes"
+        ? "Potvrdil jsi účast na tréninku."
+        : "Označil jsi, že nepřijdeš."
+    );
     setSaving(false);
   };
 
@@ -411,99 +420,122 @@ export default function TrainingsScreen({
   return (
     <div style={{ display: "grid", gap: "12px" }}>
       <div style={styles.card}>
-        <h2 style={styles.screenTitle}>
-          {editingTrainingId ? "Upravit trénink" : "Vytvořit trénink"}
-        </h2>
+        <button
+          onClick={() => {
+            if (editingTrainingId) {
+              resetForm();
+            }
+            setShowForm((prev) => !prev);
+          }}
+          style={{
+            ...styles.primaryButton,
+            marginTop: 0,
+            background: primaryColor,
+          }}
+        >
+          {showForm ? "Zavřít formulář" : "Vytvořit trénink"}
+        </button>
 
-        <div style={{ display: "grid", gap: "10px" }}>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            style={styles.input}
-          />
+        {(showForm || editingTrainingId) && (
+          <>
+            <h2 style={{ ...styles.screenTitle, marginTop: "16px" }}>
+              {editingTrainingId ? "Upravit trénink" : "Nový trénink"}
+            </h2>
 
-          <div style={{ display: "flex", gap: "10px" }}>
-            <input
-              type="time"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              style={{ ...styles.input, flex: 1 }}
-            />
+            <div style={{ display: "grid", gap: "10px" }}>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                style={styles.input}
+              />
 
-            <input
-              type="time"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-              style={{ ...styles.input, flex: 1 }}
-            />
-          </div>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  style={{ ...styles.input, flex: 1 }}
+                />
 
-          <input
-            type="text"
-            placeholder="Místo"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            style={styles.input}
-          />
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  style={{ ...styles.input, flex: 1 }}
+                />
+              </div>
 
-          <textarea
-            placeholder="Poznámka k tréninku"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            style={{
-              ...styles.input,
-              minHeight: "90px",
-              resize: "vertical",
-              fontFamily: "inherit",
-            }}
-          />
+              <input
+                type="text"
+                placeholder="Místo"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                style={styles.input}
+              />
 
-          {editingTrainingId ? (
-            <>
-              <button
-                type="button"
+              <textarea
+                placeholder="Poznámka k tréninku"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
                 style={{
-                  ...styles.primaryButton,
-                  marginTop: 0,
-                  background: primaryColor,
-                  opacity: saving ? 0.7 : 1,
+                  ...styles.input,
+                  minHeight: "90px",
+                  resize: "vertical",
+                  fontFamily: "inherit",
                 }}
-                onClick={handleUpdateTraining}
-                disabled={saving}
-              >
-                {saving ? "Ukládám..." : "Uložit změny"}
-              </button>
+              />
 
-              <button
-                type="button"
-                style={{
-                  ...styles.primaryButton,
-                  marginTop: 0,
-                  background: "rgba(255,255,255,0.12)",
-                }}
-                onClick={resetForm}
-                disabled={saving}
-              >
-                Zrušit úpravu
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              style={{
-                ...styles.primaryButton,
-                marginTop: 0,
-                background: primaryColor,
-                opacity: saving ? 0.7 : 1,
-              }}
-              onClick={handleCreateTraining}
-              disabled={saving}
-            >
-              {saving ? "Ukládám..." : "Vytvořit trénink"}
-            </button>
-          )}
-        </div>
+              {editingTrainingId ? (
+                <>
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.primaryButton,
+                      marginTop: 0,
+                      background: primaryColor,
+                      opacity: saving ? 0.7 : 1,
+                    }}
+                    onClick={handleUpdateTraining}
+                    disabled={saving}
+                  >
+                    {saving ? "Ukládám..." : "Uložit změny"}
+                  </button>
+
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.primaryButton,
+                      marginTop: 0,
+                      background: "rgba(255,255,255,0.12)",
+                    }}
+                    onClick={() => {
+                      resetForm();
+                      setShowForm(false);
+                    }}
+                    disabled={saving}
+                  >
+                    Zrušit úpravu
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  style={{
+                    ...styles.primaryButton,
+                    marginTop: 0,
+                    background: primaryColor,
+                    opacity: saving ? 0.7 : 1,
+                  }}
+                  onClick={handleCreateTraining}
+                  disabled={saving}
+                >
+                  {saving ? "Ukládám..." : "Vytvořit trénink"}
+                </button>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       <div style={styles.card}>
@@ -545,13 +577,19 @@ export default function TrainingsScreen({
               const yesRows = attendanceRows
                 .filter((row) => row.status === "yes")
                 .sort((a, b) =>
-                  getPlayerName(a.player_id).localeCompare(getPlayerName(b.player_id), "cs")
+                  getPlayerName(a.player_id).localeCompare(
+                    getPlayerName(b.player_id),
+                    "cs"
+                  )
                 );
 
               const noRows = attendanceRows
                 .filter((row) => row.status === "no")
                 .sort((a, b) =>
-                  getPlayerName(a.player_id).localeCompare(getPlayerName(b.player_id), "cs")
+                  getPlayerName(a.player_id).localeCompare(
+                    getPlayerName(b.player_id),
+                    "cs"
+                  )
                 );
 
               const isExpanded = expandedTrainingId === training.id;
@@ -569,7 +607,9 @@ export default function TrainingsScreen({
                   <button
                     type="button"
                     onClick={() =>
-                      setExpandedTrainingId((prev) => (prev === training.id ? null : training.id))
+                      setExpandedTrainingId((prev) =>
+                        prev === training.id ? null : training.id
+                      )
                     }
                     style={{
                       width: "100%",
