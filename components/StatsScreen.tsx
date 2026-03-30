@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { getPlayersByClubId, type Player } from "@/lib/players";
 import {
   buildMatchRatingSummary,
+  getRatingBadgeColor,
+  getRatingBadgeStyles,
   getRatingsForMatches,
   type PlayerRatingRow,
 } from "@/lib/ratings";
@@ -21,6 +23,37 @@ type StatsScreenProps = {
   primaryColor?: string;
 };
 
+function ValueBadge({
+  value,
+  background,
+  color,
+}: {
+  value: string | number;
+  background: string;
+  color: string;
+}) {
+  return (
+    <div
+      style={{
+        minWidth: "86px",
+        height: "58px",
+        borderRadius: "16px",
+        background,
+        color,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: "18px",
+        fontWeight: "bold",
+        padding: "0 14px",
+        boxSizing: "border-box",
+      }}
+    >
+      {value}
+    </div>
+  );
+}
+
 export default function StatsScreen({
   clubId,
   finishedMatches,
@@ -30,7 +63,8 @@ export default function StatsScreen({
   const [ratings, setRatings] = useState<PlayerRatingRow[]>([]);
   const [statsMode, setStatsMode] = useState<StatsMode>("players");
   const [playerSort, setPlayerSort] = useState<PlayerSort>("points");
-  const [goalkeeperSort, setGoalkeeperSort] = useState<GoalkeeperSort>("matches");
+  const [goalkeeperSort, setGoalkeeperSort] =
+    useState<GoalkeeperSort>("matches");
   const [statsTeamFilter, setStatsTeamFilter] = useState<TeamFilter>("ALL");
 
   useEffect(() => {
@@ -78,7 +112,9 @@ export default function StatsScreen({
     >();
 
     filteredStatsMatches.forEach((match) => {
-      const matchRatings = ratings.filter((rating) => rating.finished_match_id === match.id);
+      const matchRatings = ratings.filter(
+        (rating) => rating.finished_match_id === match.id
+      );
       const matchSummary = buildMatchRatingSummary(
         match.playerStats.map((player) => player.playerNumber),
         matchRatings
@@ -250,6 +286,50 @@ export default function StatsScreen({
     gap: "10px",
   };
 
+  const getPlayerDisplayValue = (player: (typeof fieldPlayerStats)[number]) => {
+    if (playerSort === "goals") return player.goals;
+    if (playerSort === "assists") return player.assists;
+    if (playerSort === "rating") {
+      return player.averageRating !== null ? player.averageRating.toFixed(1) : "--";
+    }
+    if (playerSort === "motm") return player.motmCount;
+    return player.points;
+  };
+
+  const getPlayerBadgeStyle = (player: (typeof fieldPlayerStats)[number]) => {
+    if (playerSort === "rating") {
+      const colorKey = getRatingBadgeColor(player.averageRating, false);
+      return getRatingBadgeStyles(colorKey);
+    }
+
+    return {
+      background: primaryColor,
+      color: "#ffffff",
+    };
+  };
+
+  const getGoalkeeperDisplayValue = (
+    goalkeeper: (typeof goalkeeperStats)[number]
+  ) => {
+    if (goalkeeperSort === "matches") return goalkeeper.matches;
+    if (goalkeeperSort === "goalsAgainst") return goalkeeper.goalsAgainst;
+    return goalkeeper.average;
+  };
+
+  const getGoalkeeperBadgeStyle = (
+    goalkeeper: (typeof goalkeeperStats)[number]
+  ) => {
+    if (goalkeeperSort === "average") {
+      const colorKey = getRatingBadgeColor(goalkeeper.average, false);
+      return getRatingBadgeStyles(colorKey);
+    }
+
+    return {
+      background: primaryColor,
+      color: "#ffffff",
+    };
+  };
+
   return (
     <div style={styles.card}>
       <h2 style={styles.screenTitle}>Statistiky</h2>
@@ -374,35 +454,30 @@ export default function StatsScreen({
                     <div>
                       <div style={{ fontWeight: "bold" }}>{player.name}</div>
                       <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
-                        Z {player.matches} / G {player.goals} / A {player.assists} / B {player.points}
+                        Z {player.matches} / G {player.goals} / A {player.assists} / B{" "}
+                        {player.points}
                       </div>
-                      <div style={{ fontSize: "12px", color: "#b8b8b8", marginTop: "2px" }}>
-                        Ø {player.averageRating !== null ? player.averageRating.toFixed(1) : "--"} / HZ {player.motmCount}
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          color: "#b8b8b8",
+                          marginTop: "2px",
+                        }}
+                      >
+                        Ø{" "}
+                        {player.averageRating !== null
+                          ? player.averageRating.toFixed(1)
+                          : "--"}{" "}
+                        / HZ {player.motmCount}
                       </div>
                     </div>
                   </div>
 
-                  <div
-                    style={{
-                      minWidth: "52px",
-                      textAlign: "right",
-                      fontSize: "18px",
-                      fontWeight: "bold",
-                      color: primaryColor,
-                    }}
-                  >
-                    {playerSort === "goals"
-                      ? player.goals
-                      : playerSort === "assists"
-                      ? player.assists
-                      : playerSort === "rating"
-                      ? player.averageRating !== null
-                        ? player.averageRating.toFixed(1)
-                        : "--"
-                      : playerSort === "motm"
-                      ? player.motmCount
-                      : player.points}
-                  </div>
+                  <ValueBadge
+                    value={getPlayerDisplayValue(player)}
+                    background={getPlayerBadgeStyle(player).background}
+                    color={getPlayerBadgeStyle(player).color}
+                  />
                 </div>
               ))}
             </div>
@@ -473,26 +548,17 @@ export default function StatsScreen({
                     <div>
                       <div style={{ fontWeight: "bold" }}>{goalkeeper.name}</div>
                       <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
-                        Z {goalkeeper.matches} / G {goalkeeper.goalsAgainst} / Ø {goalkeeper.average}
+                        Z {goalkeeper.matches} / G {goalkeeper.goalsAgainst} / Ø{" "}
+                        {goalkeeper.average}
                       </div>
                     </div>
                   </div>
 
-                  <div
-                    style={{
-                      minWidth: "42px",
-                      textAlign: "right",
-                      fontSize: "18px",
-                      fontWeight: "bold",
-                      color: primaryColor,
-                    }}
-                  >
-                    {goalkeeperSort === "matches"
-                      ? goalkeeper.matches
-                      : goalkeeperSort === "goalsAgainst"
-                      ? goalkeeper.goalsAgainst
-                      : goalkeeper.average}
-                  </div>
+                  <ValueBadge
+                    value={getGoalkeeperDisplayValue(goalkeeper)}
+                    background={getGoalkeeperBadgeStyle(goalkeeper).background}
+                    color={getGoalkeeperBadgeStyle(goalkeeper).color}
+                  />
                 </div>
               ))}
             </div>
