@@ -7,9 +7,13 @@ import {
   createTraining,
   deleteTraining,
   getTrainingAttendance,
+  getTrainingPresence,
   getTrainingsByClubId,
+  saveTrainingPresence,
   setTrainingAttendance,
   updateTraining,
+  type TrainingAttendanceRow,
+  type TrainingPresenceRow,
 } from "@/lib/trainings";
 import { styles } from "@/styles/appStyles";
 
@@ -24,13 +28,6 @@ type Training = {
   time?: string | null;
   location?: string | null;
   note?: string | null;
-};
-
-type AttendanceRow = {
-  id?: string;
-  training_id: string;
-  player_id: string;
-  status: AttendanceStatus;
 };
 
 type TrainingsScreenProps = {
@@ -83,13 +80,16 @@ export default function TrainingsScreen({
 }: TrainingsScreenProps) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [trainings, setTrainings] = useState<Training[]>([]);
-  const [attendanceMap, setAttendanceMap] = useState<Record<string, AttendanceRow[]>>({});
+  const [attendanceMap, setAttendanceMap] = useState<Record<string, TrainingAttendanceRow[]>>({});
+  const [presenceMap, setPresenceMap] = useState<Record<string, TrainingPresenceRow[]>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [tab, setTab] = useState<TrainingTab>("planned");
   const [expandedTrainingId, setExpandedTrainingId] = useState<string | null>(null);
   const [editingTrainingId, setEditingTrainingId] = useState<string | null>(null);
+  const [editingPresenceTrainingId, setEditingPresenceTrainingId] = useState<string | null>(null);
+  const [presenceDraft, setPresenceDraft] = useState<string[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [linkedPlayer, setLinkedPlayer] = useState<Player | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -121,11 +121,17 @@ export default function TrainingsScreen({
 
       if (!active) return;
 
-      const nextAttendanceMap: Record<string, AttendanceRow[]> = {};
+      const nextAttendanceMap: Record<string, TrainingAttendanceRow[]> = {};
+      const nextPresenceMap: Record<string, TrainingPresenceRow[]> = {};
 
       for (const training of loadedTrainings ?? []) {
-        const rows = await getTrainingAttendance(training.id);
-        nextAttendanceMap[training.id] = (rows as AttendanceRow[]) ?? [];
+        const [attendanceRows, presenceRows] = await Promise.all([
+          getTrainingAttendance(training.id),
+          getTrainingPresence(training.id),
+        ]);
+
+        nextAttendanceMap[training.id] = attendanceRows ?? [];
+        nextPresenceMap[training.id] = presenceRows ?? [];
       }
 
       const currentLinkedPlayer =
@@ -134,6 +140,7 @@ export default function TrainingsScreen({
       setTrainings((loadedTrainings as Training[]) ?? []);
       setPlayers(loadedPlayers);
       setAttendanceMap(nextAttendanceMap);
+      setPresenceMap(nextPresenceMap);
       setCurrentUserId(user?.id ?? null);
       setLinkedPlayer(currentLinkedPlayer);
       setLoading(false);
@@ -186,6 +193,10 @@ export default function TrainingsScreen({
     return attendanceMap[trainingId] ?? [];
   };
 
+  const getTrainingPresenceRows = (trainingId: string) => {
+    return presenceMap[trainingId] ?? [];
+  };
+
   const getTrainingSummary = (trainingId: string) => {
     const rows = getTrainingAttendanceRows(trainingId);
     const yesCount = rows.filter((row) => row.status === "yes").length;
@@ -196,6 +207,11 @@ export default function TrainingsScreen({
       yesCount,
       noCount,
     };
+  };
+
+  const getPresenceSummary = (trainingId: string) => {
+    const rows = getTrainingPresenceRows(trainingId);
+    return rows.filter((row) => row.present).length;
   };
 
   const getMyAttendanceStatus = (trainingId: string): AttendanceStatus | null => {
@@ -257,6 +273,10 @@ export default function TrainingsScreen({
 
     setTrainings((prev) => [...prev, created as Training]);
     setAttendanceMap((prev) => ({
+      ...prev,
+      [created.id]: [],
+    }));
+    setPresenceMap((prev) => ({
       ...prev,
       [created.id]: [],
     }));
@@ -351,6 +371,11 @@ export default function TrainingsScreen({
       delete next[trainingId];
       return next;
     });
+    setPresenceMap((prev) => {
+      const next = { ...prev };
+      delete next[trainingId];
+      return next;
+    });
 
     if (expandedTrainingId === trainingId) {
       setExpandedTrainingId(null);
@@ -359,6 +384,11 @@ export default function TrainingsScreen({
     if (editingTrainingId === trainingId) {
       resetForm();
       setShowForm(false);
+    }
+
+    if (editingPresenceTrainingId === trainingId) {
+      setEditingPresenceTrainingId(null);
+      setPresenceDraft([]);
     }
 
     setMessage("Trénink byl smazán.");
@@ -390,7 +420,7 @@ export default function TrainingsScreen({
 
     setAttendanceMap((prev) => ({
       ...prev,
-      [trainingId]: (rows as AttendanceRow[]) ?? [],
+      [trainingId]: rows ?? [],
     }));
 
     setMessage(
@@ -398,6 +428,63 @@ export default function TrainingsScreen({
         ? "Potvrdil jsi účast na tréninku."
         : "Označil jsi, že nepřijdeš."
     );
+    setSaving(false);
+  };
+
+  const handleStartPresenceEdit = (trainingId: string) => {
+    const existingPresence = getTrainingPresenceRows(trainingId)
+      .filter((row) => row.present)
+      .map((row) => row.player_id);
+
+    if (existingPresence.length > 0) {
+      setPresenceDraft(existingPresence);
+      setEditingPresenceTrainingId(trainingId);
+      setMessage("");
+      return;
+    }
+
+    const defaultFromAttendance = getTrainingAttendanceRows(trainingId)
+      .filter((row) => row.status === "yes")
+      .map((row) => row.player_id);
+
+    setPresenceDraft(defaultFromAttendance);
+    setEditingPresenceTrainingId(trainingId);
+    setMessage("");
+  };
+
+  const togglePresenceDraftPlayer = (playerId: string) => {
+    setPresenceDraft((prev) =>
+      prev.includes(playerId)
+        ? prev.filter((id) => id !== playerId)
+        : [...prev, playerId]
+    );
+  };
+
+  const handleSavePresence = async (trainingId: string) => {
+    setSaving(true);
+    setMessage("");
+
+    const success = await saveTrainingPresence({
+      trainingId,
+      playerIds: presenceDraft,
+    });
+
+    if (!success) {
+      setMessage("Nepodařilo se uložit reálnou docházku.");
+      setSaving(false);
+      return;
+    }
+
+    const rows = await getTrainingPresence(trainingId);
+
+    setPresenceMap((prev) => ({
+      ...prev,
+      [trainingId]: rows ?? [],
+    }));
+
+    setEditingPresenceTrainingId(null);
+    setPresenceDraft([]);
+    setMessage("Reálná docházka byla uložena.");
     setSaving(false);
   };
 
@@ -571,28 +658,31 @@ export default function TrainingsScreen({
           <div style={{ display: "grid", gap: "10px" }}>
             {visibleTrainings.map((training) => {
               const summary = getTrainingSummary(training.id);
+              const presenceCount = getPresenceSummary(training.id);
               const myStatus = getMyAttendanceStatus(training.id);
               const attendanceRows = getTrainingAttendanceRows(training.id);
+              const presenceRows = getTrainingPresenceRows(training.id);
 
               const yesRows = attendanceRows
                 .filter((row) => row.status === "yes")
                 .sort((a, b) =>
-                  getPlayerName(a.player_id).localeCompare(
-                    getPlayerName(b.player_id),
-                    "cs"
-                  )
+                  getPlayerName(a.player_id).localeCompare(getPlayerName(b.player_id), "cs")
                 );
 
               const noRows = attendanceRows
                 .filter((row) => row.status === "no")
                 .sort((a, b) =>
-                  getPlayerName(a.player_id).localeCompare(
-                    getPlayerName(b.player_id),
-                    "cs"
-                  )
+                  getPlayerName(a.player_id).localeCompare(getPlayerName(b.player_id), "cs")
+                );
+
+              const presentRows = presenceRows
+                .filter((row) => row.present)
+                .sort((a, b) =>
+                  getPlayerName(a.player_id).localeCompare(getPlayerName(b.player_id), "cs")
                 );
 
               const isExpanded = expandedTrainingId === training.id;
+              const isEditingPresence = editingPresenceTrainingId === training.id;
 
               return (
                 <div
@@ -630,12 +720,7 @@ export default function TrainingsScreen({
                       }}
                     >
                       <div style={{ flex: 1 }}>
-                        <div
-                          style={{
-                            fontWeight: "bold",
-                            fontSize: "16px",
-                          }}
-                        >
+                        <div style={{ fontWeight: "bold", fontSize: "16px" }}>
                           Trénink
                         </div>
 
@@ -711,6 +796,22 @@ export default function TrainingsScreen({
                           >
                             NEBUDU: {summary.noCount}
                           </div>
+
+                          {!isTrainingPlanned(training) && (
+                            <div
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: "999px",
+                                background: "rgba(52, 152, 219, 0.16)",
+                                border: "1px solid rgba(52, 152, 219, 0.24)",
+                                color: "#9fd3ff",
+                                fontSize: "12px",
+                                fontWeight: "bold",
+                              }}
+                            >
+                              ZÚČASTNILI SE: {presenceCount}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -744,51 +845,53 @@ export default function TrainingsScreen({
                         </div>
                       )}
 
-                      <div style={{ display: "flex", gap: "8px" }}>
-                        <button
-                          type="button"
-                          onClick={() => void handleVote(training.id, "yes")}
-                          disabled={saving}
-                          style={{
-                            flex: 1,
-                            border: "none",
-                            borderRadius: "12px",
-                            padding: "12px",
-                            background:
-                              myStatus === "yes"
-                                ? "rgba(46, 204, 113, 0.95)"
-                                : "rgba(46, 204, 113, 0.18)",
-                            color: "white",
-                            fontWeight: "bold",
-                            cursor: saving ? "default" : "pointer",
-                            opacity: saving ? 0.7 : 1,
-                          }}
-                        >
-                          BUDU
-                        </button>
+                      {isTrainingPlanned(training) && (
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          <button
+                            type="button"
+                            onClick={() => void handleVote(training.id, "yes")}
+                            disabled={saving}
+                            style={{
+                              flex: 1,
+                              border: "none",
+                              borderRadius: "12px",
+                              padding: "12px",
+                              background:
+                                myStatus === "yes"
+                                  ? "rgba(46, 204, 113, 0.95)"
+                                  : "rgba(46, 204, 113, 0.18)",
+                              color: "white",
+                              fontWeight: "bold",
+                              cursor: saving ? "default" : "pointer",
+                              opacity: saving ? 0.7 : 1,
+                            }}
+                          >
+                            BUDU
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => void handleVote(training.id, "no")}
-                          disabled={saving}
-                          style={{
-                            flex: 1,
-                            border: "none",
-                            borderRadius: "12px",
-                            padding: "12px",
-                            background:
-                              myStatus === "no"
-                                ? "rgba(231, 76, 60, 0.95)"
-                                : "rgba(231, 76, 60, 0.18)",
-                            color: "white",
-                            fontWeight: "bold",
-                            cursor: saving ? "default" : "pointer",
-                            opacity: saving ? 0.7 : 1,
-                          }}
-                        >
-                          NEBUDU
-                        </button>
-                      </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleVote(training.id, "no")}
+                            disabled={saving}
+                            style={{
+                              flex: 1,
+                              border: "none",
+                              borderRadius: "12px",
+                              padding: "12px",
+                              background:
+                                myStatus === "no"
+                                  ? "rgba(231, 76, 60, 0.95)"
+                                  : "rgba(231, 76, 60, 0.18)",
+                              color: "white",
+                              fontWeight: "bold",
+                              cursor: saving ? "default" : "pointer",
+                              opacity: saving ? 0.7 : 1,
+                            }}
+                          >
+                            NEBUDU
+                          </button>
+                        </div>
+                      )}
 
                       <div style={{ display: "flex", gap: "8px" }}>
                         <button
@@ -830,6 +933,151 @@ export default function TrainingsScreen({
                         </button>
                       </div>
 
+                      {!isTrainingPlanned(training) && (
+                        <div style={{ display: "grid", gap: "10px" }}>
+                          <button
+                            type="button"
+                            onClick={() => handleStartPresenceEdit(training.id)}
+                            disabled={saving}
+                            style={{
+                              ...styles.primaryButton,
+                              marginTop: 0,
+                              background: "rgba(52, 152, 219, 0.95)",
+                              border: "none",
+                              opacity: saving ? 0.7 : 1,
+                            }}
+                          >
+                            {isEditingPresence ? "Upravuji docházku" : "Upravit docházku"}
+                          </button>
+
+                          {isEditingPresence && (
+                            <div
+                              style={{
+                                display: "grid",
+                                gap: "10px",
+                                padding: "12px",
+                                borderRadius: "12px",
+                                background: "rgba(255,255,255,0.04)",
+                                border: "1px solid rgba(255,255,255,0.06)",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontWeight: "bold",
+                                  fontSize: "14px",
+                                }}
+                              >
+                                Kdo se zúčastnil
+                              </div>
+
+                              <div
+                                style={{
+                                  fontSize: "13px",
+                                  color: "#cfcfcf",
+                                  lineHeight: 1.5,
+                                }}
+                              >
+                                Výchozí stav se vezme z hráčů, kteří dali BUDU. Můžeš kohokoliv odebrat nebo přidat, i hráče bez hlasování.
+                              </div>
+
+                              <div style={{ display: "grid", gap: "8px" }}>
+                                {players
+                                  .slice()
+                                  .sort((a, b) => a.number - b.number)
+                                  .map((player) => {
+                                    const checked = presenceDraft.includes(player.id);
+
+                                    return (
+                                      <label
+                                        key={player.id}
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: "10px",
+                                          padding: "10px 12px",
+                                          borderRadius: "12px",
+                                          background: checked
+                                            ? "rgba(46, 204, 113, 0.12)"
+                                            : "rgba(255,255,255,0.03)",
+                                          border: checked
+                                            ? "1px solid rgba(46, 204, 113, 0.22)"
+                                            : "1px solid rgba(255,255,255,0.05)",
+                                          cursor: "pointer",
+                                        }}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => togglePresenceDraftPlayer(player.id)}
+                                        />
+
+                                        <div
+                                          style={{
+                                            minWidth: "34px",
+                                            height: "34px",
+                                            borderRadius: "8px",
+                                            background: primaryColor,
+                                            color: "white",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            fontWeight: "bold",
+                                            fontSize: "13px",
+                                          }}
+                                        >
+                                          {player.number}
+                                        </div>
+
+                                        <div style={{ flex: 1 }}>
+                                          <div style={{ fontWeight: "bold" }}>{player.name}</div>
+                                          <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
+                                            {player.position}
+                                          </div>
+                                        </div>
+                                      </label>
+                                    );
+                                  })}
+                              </div>
+
+                              <div style={{ display: "flex", gap: "8px" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleSavePresence(training.id)}
+                                  disabled={saving}
+                                  style={{
+                                    flex: 1,
+                                    ...styles.primaryButton,
+                                    marginTop: 0,
+                                    background: "rgba(46, 204, 113, 0.95)",
+                                    border: "none",
+                                    opacity: saving ? 0.7 : 1,
+                                  }}
+                                >
+                                  {saving ? "Ukládám..." : "Potvrdit docházku"}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingPresenceTrainingId(null);
+                                    setPresenceDraft([]);
+                                  }}
+                                  disabled={saving}
+                                  style={{
+                                    flex: 1,
+                                    ...styles.primaryButton,
+                                    marginTop: 0,
+                                    background: "rgba(255,255,255,0.12)",
+                                  }}
+                                >
+                                  Zrušit edit
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <div style={{ display: "grid", gap: "10px" }}>
                         <div
                           style={{
@@ -846,7 +1094,7 @@ export default function TrainingsScreen({
                               marginBottom: "8px",
                             }}
                           >
-                            BUDE ({yesRows.length})
+                            BUDU ({yesRows.length})
                           </div>
 
                           {yesRows.length === 0 ? (
@@ -882,7 +1130,7 @@ export default function TrainingsScreen({
                               marginBottom: "8px",
                             }}
                           >
-                            NEBUDE ({noRows.length})
+                            NEBUDU ({noRows.length})
                           </div>
 
                           {noRows.length === 0 ? (
@@ -902,6 +1150,44 @@ export default function TrainingsScreen({
                             </div>
                           )}
                         </div>
+
+                        {!isTrainingPlanned(training) && (
+                          <div
+                            style={{
+                              padding: "10px 12px",
+                              borderRadius: "12px",
+                              background: "rgba(52, 152, 219, 0.10)",
+                              border: "1px solid rgba(52, 152, 219, 0.20)",
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontWeight: "bold",
+                                color: "#9fd3ff",
+                                marginBottom: "8px",
+                              }}
+                            >
+                              ZÚČASTNILI SE ({presentRows.length})
+                            </div>
+
+                            {presentRows.length === 0 ? (
+                              <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
+                                Zatím nepotvrzeno.
+                              </div>
+                            ) : (
+                              <div style={{ display: "grid", gap: "6px" }}>
+                                {presentRows.map((row) => (
+                                  <div
+                                    key={`${training.id}-present-${row.player_id}`}
+                                    style={{ fontSize: "13px", color: "white" }}
+                                  >
+                                    {getPlayerName(row.player_id)}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
