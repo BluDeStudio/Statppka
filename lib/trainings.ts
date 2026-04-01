@@ -23,6 +23,14 @@ export type TrainingAttendanceRow = {
   created_at?: string | null;
 };
 
+export type TrainingPresenceRow = {
+  id?: string;
+  training_id: string;
+  player_id: string;
+  present: boolean;
+  created_at?: string | null;
+};
+
 export async function getTrainingsByClubId(clubId: string): Promise<TrainingRow[]> {
   const { data, error } = await supabase
     .from("trainings")
@@ -175,5 +183,60 @@ export async function getTrainingAttendance(
   }
 
   return (data as TrainingAttendanceRow[]) ?? [];
+}
+
+export async function getTrainingPresence(
+  trainingId: string
+): Promise<TrainingPresenceRow[]> {
+  const { data, error } = await supabase
+    .from("training_presence")
+    .select("*")
+    .eq("training_id", trainingId);
+
+  if (error) {
+    console.error("Nepodařilo se načíst reálnou účast na tréninku:", error);
+    return [];
+  }
+
+  return (data as TrainingPresenceRow[]) ?? [];
+}
+
+export async function saveTrainingPresence({
+  trainingId,
+  playerIds,
+}: {
+  trainingId: string;
+  playerIds: string[];
+}): Promise<boolean> {
+  const { error: deleteError } = await supabase
+    .from("training_presence")
+    .delete()
+    .eq("training_id", trainingId);
+
+  if (deleteError) {
+    console.error("Nepodařilo se smazat původní účast:", deleteError);
+    return false;
+  }
+
+  if (playerIds.length === 0) {
+    return true;
+  }
+
+  const rows = playerIds.map((playerId) => ({
+    training_id: trainingId,
+    player_id: playerId,
+    present: true,
+  }));
+
+  const { error: insertError } = await supabase
+    .from("training_presence")
+    .insert(rows);
+
+  if (insertError) {
+    console.error("Nepodařilo se uložit reálnou účast:", insertError);
+    return false;
+  }
+
+  return true;
 }
 
