@@ -31,7 +31,14 @@ import {
 } from "@/lib/matches";
 import type { Player } from "@/lib/players";
 
-type Screen = "home" | "team" | "matches" | "trainings" | "stats";
+type Screen =
+  | "home"
+  | "team"
+  | "matches"
+  | "trainings"
+  | "stats"
+  | "discipline";
+
 type TeamTab = "overview" | "players";
 type MatchesTab = "planned" | "played";
 
@@ -107,6 +114,8 @@ function getScreenTitle(screen: Screen) {
       return "TRÉNINKY";
     case "stats":
       return "STATISTIKY";
+    case "discipline":
+      return "DISCIPLÍNA";
     default:
       return "";
   }
@@ -1070,6 +1079,13 @@ export default function Home() {
             >
               STATISTIKY
             </button>
+
+            <button
+              style={menuButtonStyle}
+              onClick={() => setScreen("discipline")}
+            >
+              DISCIPLÍNA
+            </button>
           </div>
         )}
 
@@ -1349,6 +1365,75 @@ export default function Home() {
               finishedMatches={finishedMatches}
               primaryColor={currentClub.primary_color}
             />
+          )}
+
+          {screen === "discipline" && selectedPlayedMatchId === null && !isLiveMatch && (
+            <div
+              style={{
+                ...styles.card,
+                padding: "18px 16px",
+              }}
+            >
+              <div style={{ display: "grid", gap: "12px" }}>
+                <div
+                  style={{
+                    padding: "14px 16px",
+                    borderRadius: "14px",
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: "bold",
+                      fontSize: "15px",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    Docházka
+                  </div>
+
+                  <div
+                    style={{
+                      color: "#cfcfcf",
+                      fontSize: "13px",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    Sem napojíme statistiku účasti na trénincích, procenta docházky a řazení podle nejlepší i nejhorší účasti.
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    padding: "14px 16px",
+                    borderRadius: "14px",
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: "bold",
+                      fontSize: "15px",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    Pokuty
+                  </div>
+
+                  <div
+                    style={{
+                      color: "#cfcfcf",
+                      fontSize: "13px",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    Sem pak přidáme evidenci pokut, neomluvených absencí a další týmovou disciplínu.
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
 
           {selectedPlayedMatchId !== null && selectedPlayedMatch && (
