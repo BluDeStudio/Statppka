@@ -68,6 +68,16 @@ function formatMoney(value: number) {
   return `${Number(value).toFixed(0)} Kč`;
 }
 
+function formatFineNote(note?: string | null) {
+  if (!note) return "";
+
+  if (note.startsWith("training:")) {
+    return "Automatická pokuta za nehlasování v anketě na trénink.";
+  }
+
+  return note;
+}
+
 export default function DisciplineScreen({
   clubId,
   primaryColor = "#888",
@@ -201,7 +211,7 @@ export default function DisciplineScreen({
       if (!anketyTemplate) return;
 
       const olderPollTrainings = trainings.filter(
-        (training) => isOlderTraining(training) && training.poll_enabled
+        (training) => isOlderTraining(training) && training.poll_enabled === true
       );
 
       if (olderPollTrainings.length === 0) return;
@@ -210,15 +220,11 @@ export default function DisciplineScreen({
 
       for (const training of olderPollTrainings) {
         const attendanceRows = attendanceMap[training.id] ?? [];
-        const presenceRows = presenceMap[training.id] ?? [];
 
         for (const player of players) {
           const voted = attendanceRows.some((row) => row.player_id === player.id);
-          const present = presenceRows.some(
-            (row) => row.player_id === player.id && row.present
-          );
 
-          if (voted || present) {
+          if (voted) {
             continue;
           }
 
@@ -263,7 +269,6 @@ export default function DisciplineScreen({
     currentUserId,
     fineTemplates,
     players,
-    presenceMap,
     trainings,
   ]);
 
@@ -1325,7 +1330,7 @@ export default function DisciplineScreen({
                                                   lineHeight: 1.45,
                                                 }}
                                               >
-                                                {fine.note}
+                                                {formatFineNote(fine.note)}
                                               </div>
                                             )}
                                           </div>
@@ -1611,4 +1616,3 @@ export default function DisciplineScreen({
     </div>
   );
 }
-
