@@ -29,6 +29,7 @@ import {
 import {
   createFineTemplate,
   deleteFineTemplate,
+  ensureDefaultFineTemplates,
   getFineTemplatesByClubId,
   updateFineTemplate,
   type FineTemplateRow,
@@ -120,7 +121,6 @@ export default function DisciplineScreen({
         playersData,
         trainingsData,
         periodData,
-        templatesData,
         {
           data: { user },
         },
@@ -128,7 +128,6 @@ export default function DisciplineScreen({
         getPlayersByClubId(clubId),
         getTrainingsByClubId(clubId),
         getActivePeriod(clubId),
-        getFineTemplatesByClubId(clubId),
         supabase.auth.getUser(),
       ]);
 
@@ -137,8 +136,12 @@ export default function DisciplineScreen({
       setPlayers(playersData);
       setTrainings(trainingsData);
       setActivePeriod(periodData);
-      setFineTemplates(templatesData);
       setCurrentUserId(user?.id ?? null);
+
+      const templatesData = await ensureDefaultFineTemplates(clubId);
+
+      if (!active) return;
+      setFineTemplates(templatesData);
 
       const map: Record<string, TrainingPresenceRow[]> = {};
 
