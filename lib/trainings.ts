@@ -12,6 +12,7 @@ export type TrainingRow = {
   end_time?: string | null;
   location?: string | null;
   note?: string | null;
+  poll_enabled?: boolean;
   created_at?: string | null;
 };
 
@@ -60,6 +61,7 @@ export async function createTraining({
     end_time?: string | null;
     location?: string | null;
     note?: string | null;
+    poll_enabled?: boolean;
   };
 }): Promise<TrainingRow | null> {
   const payload = {
@@ -71,6 +73,7 @@ export async function createTraining({
     end_time: training.end_time ?? null,
     location: training.location ?? null,
     note: training.note ?? null,
+    poll_enabled: training.poll_enabled ?? true,
   };
 
   const { data, error } = await supabase
@@ -99,6 +102,7 @@ export async function updateTraining({
     end_time?: string | null;
     location?: string | null;
     note?: string | null;
+    poll_enabled?: boolean;
   };
 }): Promise<TrainingRow | null> {
   const payload = {
@@ -108,6 +112,9 @@ export async function updateTraining({
     end_time: training.end_time ?? null,
     location: training.location ?? null,
     note: training.note ?? null,
+    ...(typeof training.poll_enabled === "boolean"
+      ? { poll_enabled: training.poll_enabled }
+      : {}),
   };
 
   const { data, error } = await supabase

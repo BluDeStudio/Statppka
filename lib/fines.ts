@@ -89,6 +89,37 @@ export async function createFine({
     : null;
 }
 
+export async function findExistingPollFine({
+  periodId,
+  playerId,
+  trainingId,
+}: {
+  periodId: string;
+  playerId: string;
+  trainingId: string;
+}): Promise<FineRow | null> {
+  const { data, error } = await supabase
+    .from("fines")
+    .select("*")
+    .eq("period_id", periodId)
+    .eq("player_id", playerId)
+    .eq("reason", "Ankety")
+    .eq("note", `training:${trainingId}`)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Nepodařilo se ověřit existující pokutu za anketu:", error);
+    return null;
+  }
+
+  if (!data) return null;
+
+  return {
+    ...(data as FineRow),
+    amount: Number((data as FineRow).amount),
+  };
+}
+
 export async function updateFine({
   fineId,
   amount,
