@@ -173,7 +173,13 @@ export default function PlayedMatchDetailScreen({
   }, [ratingSummary]);
 
   const playersWithStats = useMemo(() => {
-    return match.playerStats.filter((player) => player.goals > 0 || player.assists > 0);
+    return match.playerStats.filter(
+      (player) =>
+        player.goals > 0 ||
+        player.assists > 0 ||
+        (player.yellowCards ?? 0) > 0 ||
+        (player.redCards ?? 0) > 0
+    );
   }, [match.playerStats]);
 
   const votingStatus = useMemo(() => {
@@ -341,11 +347,19 @@ export default function PlayedMatchDetailScreen({
                     background:
                       event.type === "goal_for"
                         ? "rgba(255,255,255,0.06)"
-                        : "rgba(198,40,40,0.14)",
+                        : event.type === "goal_against"
+                          ? "rgba(198,40,40,0.14)"
+                          : event.type === "yellow_card"
+                            ? "rgba(245, 158, 11, 0.16)"
+                            : "rgba(185, 28, 28, 0.18)",
                     border:
                       event.type === "goal_for"
                         ? "1px solid rgba(255,255,255,0.08)"
-                        : "1px solid rgba(198,40,40,0.35)",
+                        : event.type === "goal_against"
+                          ? "1px solid rgba(198,40,40,0.35)"
+                          : event.type === "yellow_card"
+                            ? "1px solid rgba(245, 158, 11, 0.30)"
+                            : "1px solid rgba(185, 28, 28, 0.35)",
                   }}
                 >
                   {event.type === "goal_for" ? (
@@ -355,8 +369,16 @@ export default function PlayedMatchDetailScreen({
                         ? ` (asistence ${getPlayerName(event.assist)})`
                         : ""}
                     </div>
-                  ) : (
+                  ) : event.type === "goal_against" ? (
                     <div style={{ fontWeight: "bold" }}>Inkasovaný gól</div>
+                  ) : event.type === "yellow_card" ? (
+                    <div style={{ fontWeight: "bold" }}>
+                      Žlutá karta: {getPlayerName(event.playerNumber)}
+                    </div>
+                  ) : (
+                    <div style={{ fontWeight: "bold" }}>
+                      Červená karta: {getPlayerName(event.playerNumber)}
+                    </div>
                   )}
                 </div>
               ))
@@ -383,8 +405,13 @@ export default function PlayedMatchDetailScreen({
                 }}
               >
                 <div>{getPlayerName(stat.playerNumber)}</div>
-                <div>
-                  {stat.goals}G / {stat.assists}A
+                <div style={{ textAlign: "right" }}>
+                  <div>
+                    {stat.goals}G / {stat.assists}A
+                  </div>
+                  <div style={{ fontSize: "12px", color: "#b8b8b8", marginTop: "4px" }}>
+                    ŽK: {stat.yellowCards ?? 0} / ČK: {stat.redCards ?? 0}
+                  </div>
                 </div>
               </div>
             ))}
@@ -398,7 +425,7 @@ export default function PlayedMatchDetailScreen({
                   color: "#b8b8b8",
                 }}
               >
-                Nikdo nezapsal gól ani asistenci.
+                Nikdo nezapsal gól, asistenci ani kartu.
               </div>
             )}
           </div>
@@ -604,3 +631,4 @@ export default function PlayedMatchDetailScreen({
     </div>
   );
 }
+

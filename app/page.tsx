@@ -51,6 +51,14 @@ export type FinishedMatchEvent =
     }
   | {
       type: "goal_against";
+    }
+  | {
+      type: "yellow_card";
+      playerNumber: number;
+    }
+  | {
+      type: "red_card";
+      playerNumber: number;
     };
 
 export type FinishedMatch = {
@@ -67,6 +75,8 @@ export type FinishedMatch = {
     playerNumber: number;
     goals: number;
     assists: number;
+    yellowCards?: number;
+    redCards?: number;
   }[];
   events: FinishedMatchEvent[];
   finished_at?: string | null;
@@ -1399,4 +1409,3 @@ export default function Home() {
     </main>
   );
 }
-

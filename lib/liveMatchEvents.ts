@@ -4,9 +4,10 @@ import type { PlannedMatch } from "@/app/page";
 export type LiveMatchEventRecord = {
   id: string;
   planned_match_id: string;
-  type: "goal_for" | "goal_against";
+  type: "goal_for" | "goal_against" | "yellow_card" | "red_card";
   scorer_player_id: string | null;
   assist_player_id: string | null;
+  card_player_id: string | null;
   period: number;
   match_second: number;
   match_minute: number;
@@ -243,6 +244,7 @@ export async function addGoalForEvent(input: {
           type: "goal_for",
           scorer_player_id: input.scorerPlayerId,
           assist_player_id: input.assistPlayerId,
+          card_player_id: null,
           period: input.period,
           match_second: input.matchSecond,
           match_minute: input.matchMinute,
@@ -293,6 +295,7 @@ export async function addGoalAgainstEvent(input: {
           type: "goal_against",
           scorer_player_id: null,
           assist_player_id: null,
+          card_player_id: null,
           period: input.period,
           match_second: input.matchSecond,
           match_minute: input.matchMinute,
@@ -323,3 +326,108 @@ export async function addGoalAgainstEvent(input: {
     };
   }
 }
+
+export async function addYellowCardEvent(input: {
+  matchId: string;
+  playerId: string;
+  period: number;
+  matchSecond: number;
+  matchMinute: number;
+}): Promise<{
+  success: boolean;
+  event: LiveMatchEventRecord | null;
+  errorMessage?: string;
+}> {
+  try {
+    const { data, error } = await supabase
+      .from("live_match_events")
+      .insert([
+        {
+          planned_match_id: input.matchId,
+          type: "yellow_card",
+          scorer_player_id: null,
+          assist_player_id: null,
+          card_player_id: input.playerId,
+          period: input.period,
+          match_second: input.matchSecond,
+          match_minute: input.matchMinute,
+        },
+      ])
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      console.error("Nepodařilo se uložit žlutou kartu:", error);
+      return {
+        success: false,
+        event: null,
+        errorMessage: "Nepodařilo se uložit žlutou kartu.",
+      };
+    }
+
+    return {
+      success: true,
+      event: data as LiveMatchEventRecord,
+    };
+  } catch (error) {
+    console.error("Chyba v addYellowCardEvent:", error);
+    return {
+      success: false,
+      event: null,
+      errorMessage: "Při ukládání žluté karty nastala chyba.",
+    };
+  }
+}
+
+export async function addRedCardEvent(input: {
+  matchId: string;
+  playerId: string;
+  period: number;
+  matchSecond: number;
+  matchMinute: number;
+}): Promise<{
+  success: boolean;
+  event: LiveMatchEventRecord | null;
+  errorMessage?: string;
+}> {
+  try {
+    const { data, error } = await supabase
+      .from("live_match_events")
+      .insert([
+        {
+          planned_match_id: input.matchId,
+          type: "red_card",
+          scorer_player_id: null,
+          assist_player_id: null,
+          card_player_id: input.playerId,
+          period: input.period,
+          match_second: input.matchSecond,
+          match_minute: input.matchMinute,
+        },
+      ])
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      console.error("Nepodařilo se uložit červenou kartu:", error);
+      return {
+        success: false,
+        event: null,
+        errorMessage: "Nepodařilo se uložit červenou kartu.",
+      };
+    }
+
+    return {
+      success: true,
+      event: data as LiveMatchEventRecord,
+    };
+  } catch (error) {
+    console.error("Chyba v addRedCardEvent:", error);
+    return {
+      success: false,
+      event: null,
+      errorMessage: "Při ukládání červené karty nastala chyba.",
+    };
+  }
+}
+

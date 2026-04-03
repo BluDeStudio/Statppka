@@ -200,6 +200,20 @@ export async function getFinishedMatchesByClubId(clubId: string): Promise<Finish
               };
             }
 
+            if (row.type === "yellow_card") {
+              return {
+                type: "yellow_card",
+                playerNumber: row.card_player_number as number,
+              };
+            }
+
+            if (row.type === "red_card") {
+              return {
+                type: "red_card",
+                playerNumber: row.card_player_number as number,
+              };
+            }
+
             return { type: "goal_against" };
           }) ?? [];
 
@@ -215,8 +229,6 @@ export async function getFinishedMatchesByClubId(clubId: string): Promise<Finish
         goalsAgainst: match.goals_against as number,
         playerStats,
         events,
-
-        // ✅ NOVÉ
         finished_at: (match.finished_at as string | null) ?? null,
       };
     });
@@ -247,8 +259,6 @@ export async function saveFinishedMatch(input: {
         goalkeeper_number: finishedMatch.goalkeeperNumber,
         goals_against: finishedMatch.goalsAgainst,
         created_by: input.createdBy,
-
-        // ✅ NOVÉ
         finished_at: finishedMatch.finished_at ?? new Date().toISOString(),
       },
     ]);
@@ -291,6 +301,10 @@ export async function saveFinishedMatch(input: {
             type: event.type,
             scorer: event.type === "goal_for" ? event.scorer : null,
             assist: event.type === "goal_for" ? event.assist : null,
+            card_player_number:
+              event.type === "yellow_card" || event.type === "red_card"
+                ? event.playerNumber
+                : null,
           }))
         );
 
@@ -396,3 +410,4 @@ export function getRatingColor(value: number, isBest: boolean): MatchRatingColor
   if (value <= 7.9) return "light_green";
   return "dark_green";
 }
+

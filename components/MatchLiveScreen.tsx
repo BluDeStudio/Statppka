@@ -6,6 +6,8 @@ import { getMatchLineupPlayerIds } from "@/lib/matchLineups";
 import {
   addGoalAgainstEvent,
   addGoalForEvent,
+  addRedCardEvent,
+  addYellowCardEvent,
   endFirstHalf,
   getLiveMatchEvents,
   getPlannedMatchById,
@@ -62,6 +64,8 @@ export default function MatchLiveScreen({
   const [tick, setTick] = useState(0);
   const [scorerId, setScorerId] = useState("");
   const [assistId, setAssistId] = useState<"none" | string>("none");
+  const [yellowCardPlayerId, setYellowCardPlayerId] = useState("");
+  const [redCardPlayerId, setRedCardPlayerId] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -280,6 +284,74 @@ export default function MatchLiveScreen({
     setSavingEvent(false);
   };
 
+  const handleAddYellowCard = async () => {
+    if (!matchState || matchState.status !== "live") {
+      setMessage("Nejdřív zahaj zápas.");
+      return;
+    }
+
+    if (!yellowCardPlayerId) {
+      setMessage("Vyber hráče pro žlutou kartu.");
+      return;
+    }
+
+    setSavingEvent(true);
+    setMessage("");
+
+    const result = await addYellowCardEvent({
+      matchId,
+      playerId: yellowCardPlayerId,
+      period: currentPeriod || 1,
+      matchSecond: totalElapsedSeconds,
+      matchMinute: Math.floor(totalElapsedSeconds / 60),
+    });
+
+    if (!result.success || !result.event) {
+      setMessage(result.errorMessage ?? "Nepodařilo se uložit žlutou kartu.");
+      setSavingEvent(false);
+      return;
+    }
+
+    setEvents((prev) => [...prev, result.event!]);
+    setYellowCardPlayerId("");
+    setMessage("Žlutá karta byla uložena.");
+    setSavingEvent(false);
+  };
+
+  const handleAddRedCard = async () => {
+    if (!matchState || matchState.status !== "live") {
+      setMessage("Nejdřív zahaj zápas.");
+      return;
+    }
+
+    if (!redCardPlayerId) {
+      setMessage("Vyber hráče pro červenou kartu.");
+      return;
+    }
+
+    setSavingEvent(true);
+    setMessage("");
+
+    const result = await addRedCardEvent({
+      matchId,
+      playerId: redCardPlayerId,
+      period: currentPeriod || 1,
+      matchSecond: totalElapsedSeconds,
+      matchMinute: Math.floor(totalElapsedSeconds / 60),
+    });
+
+    if (!result.success || !result.event) {
+      setMessage(result.errorMessage ?? "Nepodařilo se uložit červenou kartu.");
+      setSavingEvent(false);
+      return;
+    }
+
+    setEvents((prev) => [...prev, result.event!]);
+    setRedCardPlayerId("");
+    setMessage("Červená karta byla uložena.");
+    setSavingEvent(false);
+  };
+
   const handleFinishMatch = async () => {
     if (selectedPlayerObjects.length === 0) {
       setMessage("Zápas nemá načtenou sestavu.");
@@ -289,10 +361,18 @@ export default function MatchLiveScreen({
     setFinishingMatch(true);
     setMessage("");
 
-    const statsMap = new Map<number, { goals: number; assists: number }>();
+    const statsMap = new Map<
+      number,
+      { goals: number; assists: number; yellowCards: number; redCards: number }
+    >();
 
     selectedPlayerObjects.forEach((player) => {
-      statsMap.set(player.number, { goals: 0, assists: 0 });
+      statsMap.set(player.number, {
+        goals: 0,
+        assists: 0,
+        yellowCards: 0,
+        redCards: 0,
+      });
     });
 
     const mappedEvents: FinishedMatch["events"] = events.map((event) => {
@@ -317,6 +397,34 @@ export default function MatchLiveScreen({
         };
       }
 
+      if (event.type === "yellow_card") {
+        const playerNumber = getPlayerNumberById(event.card_player_id);
+
+        if (playerNumber !== null) {
+          const playerStats = statsMap.get(playerNumber);
+          if (playerStats) playerStats.yellowCards += 1;
+        }
+
+        return {
+          type: "yellow_card",
+          playerNumber: playerNumber ?? 0,
+        };
+      }
+
+      if (event.type === "red_card") {
+        const playerNumber = getPlayerNumberById(event.card_player_id);
+
+        if (playerNumber !== null) {
+          const playerStats = statsMap.get(playerNumber);
+          if (playerStats) playerStats.redCards += 1;
+        }
+
+        return {
+          type: "red_card",
+          playerNumber: playerNumber ?? 0,
+        };
+      }
+
       return {
         type: "goal_against",
       };
@@ -326,6 +434,8 @@ export default function MatchLiveScreen({
       playerNumber,
       goals: stats.goals,
       assists: stats.assists,
+      yellowCards: stats.yellowCards,
+      redCards: stats.redCards,
     }));
 
     const goalkeeperNumberToSave =
@@ -609,6 +719,92 @@ export default function MatchLiveScreen({
 
         <div style={{ marginBottom: "14px" }}>
           <div style={{ fontWeight: "bold", marginBottom: "8px" }}>
+            Přidat žlutou kartu
+          </div>
+
+          <div style={{ display: "grid", gap: "10px" }}>
+            <select
+              value={yellowCardPlayerId}
+              onChange={(e) => setYellowCardPlayerId(e.target.value)}
+              style={{
+                ...styles.input,
+                appearance: "none",
+              }}
+              disabled={matchState?.status !== "live" || savingEvent}
+            >
+              <option value="" style={{ color: "black" }}>
+                Vyber hráče
+              </option>
+              {selectedPlayerObjects.map((player) => (
+                <option
+                  key={`yellow-${player.id}`}
+                  value={player.id}
+                  style={{ color: "black" }}
+                >
+                  {player.number} — {player.name}
+                </option>
+              ))}
+            </select>
+
+            <button
+              style={{
+                ...styles.primaryButton,
+                background: "#f59e0b",
+                opacity: savingEvent || matchState?.status !== "live" ? 0.7 : 1,
+              }}
+              onClick={() => void handleAddYellowCard()}
+              disabled={savingEvent || matchState?.status !== "live"}
+            >
+              Uložit žlutou kartu
+            </button>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: "14px" }}>
+          <div style={{ fontWeight: "bold", marginBottom: "8px" }}>
+            Přidat červenou kartu
+          </div>
+
+          <div style={{ display: "grid", gap: "10px" }}>
+            <select
+              value={redCardPlayerId}
+              onChange={(e) => setRedCardPlayerId(e.target.value)}
+              style={{
+                ...styles.input,
+                appearance: "none",
+              }}
+              disabled={matchState?.status !== "live" || savingEvent}
+            >
+              <option value="" style={{ color: "black" }}>
+                Vyber hráče
+              </option>
+              {selectedPlayerObjects.map((player) => (
+                <option
+                  key={`red-${player.id}`}
+                  value={player.id}
+                  style={{ color: "black" }}
+                >
+                  {player.number} — {player.name}
+                </option>
+              ))}
+            </select>
+
+            <button
+              style={{
+                ...styles.primaryButton,
+                background: "#b91c1c",
+                opacity: savingEvent || matchState?.status !== "live" ? 0.7 : 1,
+              }}
+              onClick={() => void handleAddRedCard()}
+              disabled={savingEvent || matchState?.status !== "live"}
+            >
+              Uložit červenou kartu
+            </button>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: "14px" }}>
+          <div style={{ fontWeight: "bold", marginBottom: "8px" }}>
             Průběh zápasu
           </div>
 
@@ -643,11 +839,19 @@ export default function MatchLiveScreen({
                   background:
                     event.type === "goal_for"
                       ? "rgba(255,255,255,0.06)"
-                      : "rgba(198,40,40,0.14)",
+                      : event.type === "goal_against"
+                        ? "rgba(198,40,40,0.14)"
+                        : event.type === "yellow_card"
+                          ? "rgba(245, 158, 11, 0.16)"
+                          : "rgba(185, 28, 28, 0.18)",
                   border:
                     event.type === "goal_for"
                       ? "1px solid rgba(255,255,255,0.08)"
-                      : "1px solid rgba(198,40,40,0.35)",
+                      : event.type === "goal_against"
+                        ? "1px solid rgba(198,40,40,0.35)"
+                        : event.type === "yellow_card"
+                          ? "1px solid rgba(245, 158, 11, 0.30)"
+                          : "1px solid rgba(185, 28, 28, 0.35)",
                 }}
               >
                 <div style={{ fontSize: "12px", color: "#b8b8b8", marginBottom: "4px" }}>
@@ -671,8 +875,16 @@ export default function MatchLiveScreen({
                         : "Bez asistence"}
                     </div>
                   </div>
-                ) : (
+                ) : event.type === "goal_against" ? (
                   <div style={{ fontWeight: "bold" }}>Inkasovaný gól</div>
+                ) : event.type === "yellow_card" ? (
+                  <div style={{ fontWeight: "bold" }}>
+                    Žlutá karta: {getPlayerNameById(event.card_player_id)}
+                  </div>
+                ) : (
+                  <div style={{ fontWeight: "bold" }}>
+                    Červená karta: {getPlayerNameById(event.card_player_id)}
+                  </div>
                 )}
               </div>
             ))}
@@ -709,3 +921,4 @@ export default function MatchLiveScreen({
     </div>
   );
 }
+
