@@ -1,4 +1,6 @@
 import { supabase } from "./supabaseClient";
+import { getActivePeriod } from "./periods";
+import { getFineTemplatesByClubId } from "./fineTemplates";
 import type { FinishedMatch, FinishedMatchEvent, PlannedMatch } from "@/app/page";
 
 export type MatchRatingColor =
@@ -186,6 +188,8 @@ export async function getFinishedMatchesByClubId(clubId: string): Promise<Finish
             playerNumber: row.player_number as number,
             goals: row.goals as number,
             assists: row.assists as number,
+            yellowCards: (row.yellow_cards as number | null) ?? 0,
+            redCards: (row.red_cards as number | null) ?? 0,
           })) ?? [];
 
       const events: FinishedMatchEvent[] =
@@ -280,6 +284,8 @@ export async function saveFinishedMatch(input: {
             player_number: stat.playerNumber,
             goals: stat.goals,
             assists: stat.assists,
+            yellow_cards: stat.yellowCards ?? 0,
+            red_cards: stat.redCards ?? 0,
           }))
         );
 
@@ -314,6 +320,98 @@ export async function saveFinishedMatch(input: {
           finishedMatch: null,
           errorMessage: `Nepodařilo se uložit události zápasu: ${eventsError.message}`,
         };
+      }
+    }
+
+    const cardEvents = finishedMatch.events.filter(
+      (event) => event.type === "yellow_card" || event.type === "red_card"
+    );
+
+    if (cardEvents.length > 0) {
+      const activePeriod = await getActivePeriod(input.clubId);
+
+      if (activePeriod) {
+        const [templates, playersResponse] = await Promise.all([
+          getFineTemplatesByClubId(input.clubId),
+          supabase
+            .from("players")
+            .select("id, number")
+            .eq("club_id", input.clubId),
+        ]);
+
+        const playersRows = playersResponse.data ?? [];
+
+        const yellowTemplate = templates.find(
+          (item) => item.name.trim().toLowerCase() === "žlutá karta"
+        );
+
+        const redTemplate = templates.find(
+          (item) => item.name.trim().toLowerCase() === "červená karta"
+        );
+
+        const fineRows: {
+          club_id: string;
+          period_id: string;
+          player_id: string;
+          amount: number;
+          reason: string;
+          note: string | null;
+          fine_date: string;
+          is_paid: boolean;
+          created_by: string;
+        }[] = [];
+
+        for (const event of cardEvents) {
+          const playerRow = playersRows.find((player) => {
+            return Number(player.number) === Number(event.playerNumber);
+          });
+
+          if (!playerRow) {
+            console.warn(
+              "Nepodařilo se dohledat hráče pro pokutu za kartu:",
+              event.playerNumber
+            );
+            continue;
+          }
+
+          if (event.type === "yellow_card" && yellowTemplate?.is_active) {
+            fineRows.push({
+              club_id: input.clubId,
+              period_id: activePeriod.id,
+              player_id: String(playerRow.id),
+              amount: Number(yellowTemplate.default_amount),
+              reason: "Žlutá karta",
+              note: `match:${finishedMatch.id}:yellow_card:${event.playerNumber}`,
+              fine_date: finishedMatch.date,
+              is_paid: false,
+              created_by: input.createdBy,
+            });
+          }
+
+          if (event.type === "red_card" && redTemplate?.is_active) {
+            fineRows.push({
+              club_id: input.clubId,
+              period_id: activePeriod.id,
+              player_id: String(playerRow.id),
+              amount: Number(redTemplate.default_amount),
+              reason: "Červená karta",
+              note: `match:${finishedMatch.id}:red_card:${event.playerNumber}`,
+              fine_date: finishedMatch.date,
+              is_paid: false,
+              created_by: input.createdBy,
+            });
+          }
+        }
+
+        if (fineRows.length > 0) {
+          const { error: finesError } = await supabase
+            .from("fines")
+            .insert(fineRows);
+
+          if (finesError) {
+            console.error("Nepodařilo se vytvořit pokuty za karty:", finesError);
+          }
+        }
       }
     }
 
@@ -380,6 +478,19 @@ export async function deleteFinishedMatch(matchId: string): Promise<{
       };
     }
 
+    const { error: finesError } = await supabase
+      .from("fines")
+      .delete()
+      .like("note", `match:${matchId}:%`);
+
+    if (finesError) {
+      console.error("Nepodařilo se smazat pokuty za karty:", finesError);
+      return {
+        success: false,
+        errorMessage: `Nepodařilo se smazat pokuty za karty: ${finesError.message}`,
+      };
+    }
+
     const { error: matchError } = await supabase
       .from("finished_matches")
       .delete()
@@ -410,4 +521,3 @@ export function getRatingColor(value: number, isBest: boolean): MatchRatingColor
   if (value <= 7.9) return "light_green";
   return "dark_green";
 }
-
