@@ -1252,7 +1252,7 @@ export default function Home() {
                       };
                     }
 
-                    setPlannedMatches((prev) => [...prev, result.match as PlannedMatch]);
+                    await loadClubMatchData(currentClub.id);
                     setAppError("");
 
                     return {
