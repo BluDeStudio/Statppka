@@ -179,6 +179,15 @@ export default function Home() {
 
   const finishedMatchIds = finishedMatches.map((match) => match.id);
 
+  const plannedMatchesRenderKey = useMemo(() => {
+    return plannedMatches
+      .map(
+        (match) =>
+          `${match.id}-${match.status ?? "planned"}-${match.current_period ?? 0}-${match.first_half_elapsed_seconds ?? 0}-${match.second_half_elapsed_seconds ?? 0}`
+      )
+      .join("|");
+  }, [plannedMatches]);
+
   const loadClubMatchData = useCallback(async (clubId: string) => {
     const [planned, finished] = await Promise.all([
       getPlannedMatchesByClubId(clubId),
@@ -1222,6 +1231,7 @@ export default function Home() {
 
               {matchesTab === "planned" && (
                 <MatchesScreen
+                  key={`planned-${currentClub.id}-${plannedMatchesRenderKey}`}
                   clubId={currentClub.id}
                   clubName={currentClub.name}
                   hasBTeam={currentClub.has_b_team}
@@ -1270,7 +1280,7 @@ export default function Home() {
                       };
                     }
 
-                    setPlannedMatches((prev) => prev.filter((match) => match.id !== matchId));
+                    await loadClubMatchData(currentClub.id);
                     setAppError("");
 
                     return {
@@ -1308,13 +1318,7 @@ export default function Home() {
                       };
                     }
 
-                    setFinishedMatches((prev) => [
-                      result.finishedMatch as FinishedMatch,
-                      ...prev,
-                    ]);
-                    setPlannedMatches((prev) =>
-                      prev.filter((match) => match.id !== finishedMatch.id)
-                    );
+                    await loadClubMatchData(currentClub.id);
                     setScreen("matches");
                     setMatchesTab("played");
                     setIsLiveMatch(false);
@@ -1343,9 +1347,7 @@ export default function Home() {
                       };
                     }
 
-                    setFinishedMatches((prev) =>
-                      prev.filter((match) => match.id !== matchId)
-                    );
+                    await loadClubMatchData(currentClub.id);
 
                     if (selectedPlayedMatchId === matchId) {
                       setSelectedPlayedMatchId(null);
