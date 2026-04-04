@@ -8,6 +8,7 @@ import {
   addGoalForEvent,
   addRedCardEvent,
   addYellowCardEvent,
+  deleteLiveMatchEvent,
   endFirstHalf,
   getLiveMatchEvents,
   getPlannedMatchById,
@@ -60,6 +61,7 @@ export default function MatchLiveScreen({
   const [savingEvent, setSavingEvent] = useState(false);
   const [finishingMatch, setFinishingMatch] = useState(false);
   const [changingHalf, setChangingHalf] = useState(false);
+  const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
 
   const [tick, setTick] = useState(0);
   const [scorerId, setScorerId] = useState("");
@@ -250,7 +252,8 @@ export default function MatchLiveScreen({
       return;
     }
 
-    setEvents((prev) => [...prev, result.event!]);
+    const createdEvent = result.event;
+    setEvents((prev) => [...prev, createdEvent]);
     setScorerId("");
     setAssistId("none");
     setMessage("Gól byl uložen.");
@@ -279,7 +282,8 @@ export default function MatchLiveScreen({
       return;
     }
 
-    setEvents((prev) => [...prev, result.event!]);
+    const createdEvent = result.event;
+    setEvents((prev) => [...prev, createdEvent]);
     setMessage("Inkasovaný gól byl uložen.");
     setSavingEvent(false);
   };
@@ -312,7 +316,8 @@ export default function MatchLiveScreen({
       return;
     }
 
-    setEvents((prev) => [...prev, result.event!]);
+    const createdEvent = result.event;
+    setEvents((prev) => [...prev, createdEvent]);
     setYellowCardPlayerId("");
     setMessage("Žlutá karta byla uložena.");
     setSavingEvent(false);
@@ -346,10 +351,31 @@ export default function MatchLiveScreen({
       return;
     }
 
-    setEvents((prev) => [...prev, result.event!]);
+    const createdEvent = result.event;
+    setEvents((prev) => [...prev, createdEvent]);
     setRedCardPlayerId("");
     setMessage("Červená karta byla uložena.");
     setSavingEvent(false);
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    const confirmed = window.confirm("Opravdu chceš smazat tuto událost?");
+    if (!confirmed) return;
+
+    setDeletingEventId(eventId);
+    setMessage("");
+
+    const result = await deleteLiveMatchEvent(eventId);
+
+    if (!result.success) {
+      setMessage(result.errorMessage ?? "Nepodařilo se smazat událost.");
+      setDeletingEventId(null);
+      return;
+    }
+
+    setEvents((prev) => prev.filter((event) => event.id !== eventId));
+    setMessage("Událost byla smazána.");
+    setDeletingEventId(null);
   };
 
   const handleFinishMatch = async () => {
@@ -647,7 +673,7 @@ export default function MatchLiveScreen({
                   ...styles.input,
                   appearance: "none",
                 }}
-                disabled={matchState?.status !== "live" || savingEvent}
+                disabled={matchState?.status !== "live" || savingEvent || deletingEventId !== null}
               >
                 <option value="" style={{ color: "black" }}>
                   Vyber střelce
@@ -672,7 +698,7 @@ export default function MatchLiveScreen({
                   ...styles.input,
                   appearance: "none",
                 }}
-                disabled={matchState?.status !== "live" || savingEvent}
+                disabled={matchState?.status !== "live" || savingEvent || deletingEventId !== null}
               >
                 <option value="none" style={{ color: "black" }}>
                   Bez asistence
@@ -692,10 +718,13 @@ export default function MatchLiveScreen({
                 style={{
                   ...styles.primaryButton,
                   background: primaryColor,
-                  opacity: savingEvent || matchState?.status !== "live" ? 0.7 : 1,
+                  opacity:
+                    savingEvent || matchState?.status !== "live" || deletingEventId !== null
+                      ? 0.7
+                      : 1,
                 }}
                 onClick={() => void handleAddGoalFor()}
-                disabled={savingEvent || matchState?.status !== "live"}
+                disabled={savingEvent || matchState?.status !== "live" || deletingEventId !== null}
               >
                 Uložit gól + asistenci
               </button>
@@ -708,10 +737,13 @@ export default function MatchLiveScreen({
             style={{
               ...styles.primaryButton,
               background: "#c62828",
-              opacity: savingEvent || matchState?.status !== "live" ? 0.7 : 1,
+              opacity:
+                savingEvent || matchState?.status !== "live" || deletingEventId !== null
+                  ? 0.7
+                  : 1,
             }}
             onClick={() => void handleAddGoalAgainst()}
-            disabled={savingEvent || matchState?.status !== "live"}
+            disabled={savingEvent || matchState?.status !== "live" || deletingEventId !== null}
           >
             Inkasovaný gól
           </button>
@@ -730,7 +762,7 @@ export default function MatchLiveScreen({
                 ...styles.input,
                 appearance: "none",
               }}
-              disabled={matchState?.status !== "live" || savingEvent}
+              disabled={matchState?.status !== "live" || savingEvent || deletingEventId !== null}
             >
               <option value="" style={{ color: "black" }}>
                 Vyber hráče
@@ -750,10 +782,13 @@ export default function MatchLiveScreen({
               style={{
                 ...styles.primaryButton,
                 background: "#f59e0b",
-                opacity: savingEvent || matchState?.status !== "live" ? 0.7 : 1,
+                opacity:
+                  savingEvent || matchState?.status !== "live" || deletingEventId !== null
+                    ? 0.7
+                    : 1,
               }}
               onClick={() => void handleAddYellowCard()}
-              disabled={savingEvent || matchState?.status !== "live"}
+              disabled={savingEvent || matchState?.status !== "live" || deletingEventId !== null}
             >
               Uložit žlutou kartu
             </button>
@@ -773,7 +808,7 @@ export default function MatchLiveScreen({
                 ...styles.input,
                 appearance: "none",
               }}
-              disabled={matchState?.status !== "live" || savingEvent}
+              disabled={matchState?.status !== "live" || savingEvent || deletingEventId !== null}
             >
               <option value="" style={{ color: "black" }}>
                 Vyber hráče
@@ -793,10 +828,13 @@ export default function MatchLiveScreen({
               style={{
                 ...styles.primaryButton,
                 background: "#b91c1c",
-                opacity: savingEvent || matchState?.status !== "live" ? 0.7 : 1,
+                opacity:
+                  savingEvent || matchState?.status !== "live" || deletingEventId !== null
+                    ? 0.7
+                    : 1,
               }}
               onClick={() => void handleAddRedCard()}
-              disabled={savingEvent || matchState?.status !== "live"}
+              disabled={savingEvent || matchState?.status !== "live" || deletingEventId !== null}
             >
               Uložit červenou kartu
             </button>
@@ -812,7 +850,7 @@ export default function MatchLiveScreen({
             style={{
               display: "grid",
               gap: "8px",
-              maxHeight: "220px",
+              maxHeight: "260px",
               overflowY: "auto",
               paddingRight: "4px",
             }}
@@ -854,38 +892,74 @@ export default function MatchLiveScreen({
                           : "1px solid rgba(185, 28, 28, 0.35)",
                 }}
               >
-                <div style={{ fontSize: "12px", color: "#b8b8b8", marginBottom: "4px" }}>
-                  {event.match_minute}'. minuta
-                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "10px",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: "12px", color: "#b8b8b8", marginBottom: "4px" }}>
+                      {event.match_minute}'. minuta
+                    </div>
 
-                {event.type === "goal_for" ? (
-                  <div>
-                    <div style={{ fontWeight: "bold" }}>
-                      Gól: {getPlayerNameById(event.scorer_player_id)}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "13px",
-                        color: "#d4d4d4",
-                        marginTop: "4px",
-                      }}
-                    >
-                      {event.assist_player_id
-                        ? `Asistence: ${getPlayerNameById(event.assist_player_id)}`
-                        : "Bez asistence"}
-                    </div>
+                    {event.type === "goal_for" ? (
+                      <div>
+                        <div style={{ fontWeight: "bold" }}>
+                          Gól: {getPlayerNameById(event.scorer_player_id)}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "13px",
+                            color: "#d4d4d4",
+                            marginTop: "4px",
+                          }}
+                        >
+                          {event.assist_player_id
+                            ? `Asistence: ${getPlayerNameById(event.assist_player_id)}`
+                            : "Bez asistence"}
+                        </div>
+                      </div>
+                    ) : event.type === "goal_against" ? (
+                      <div style={{ fontWeight: "bold" }}>Inkasovaný gól</div>
+                    ) : event.type === "yellow_card" ? (
+                      <div style={{ fontWeight: "bold" }}>
+                        Žlutá karta: {getPlayerNameById(event.card_player_id)}
+                      </div>
+                    ) : (
+                      <div style={{ fontWeight: "bold" }}>
+                        Červená karta: {getPlayerNameById(event.card_player_id)}
+                      </div>
+                    )}
                   </div>
-                ) : event.type === "goal_against" ? (
-                  <div style={{ fontWeight: "bold" }}>Inkasovaný gól</div>
-                ) : event.type === "yellow_card" ? (
-                  <div style={{ fontWeight: "bold" }}>
-                    Žlutá karta: {getPlayerNameById(event.card_player_id)}
-                  </div>
-                ) : (
-                  <div style={{ fontWeight: "bold" }}>
-                    Červená karta: {getPlayerNameById(event.card_player_id)}
-                  </div>
-                )}
+
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteEvent(event.id)}
+                    disabled={deletingEventId === event.id || savingEvent || finishingMatch}
+                    style={{
+                      minWidth: "74px",
+                      height: "34px",
+                      borderRadius: "8px",
+                      border: "none",
+                      background: "rgba(255,255,255,0.12)",
+                      color: "white",
+                      cursor:
+                        deletingEventId === event.id || savingEvent || finishingMatch
+                          ? "default"
+                          : "pointer",
+                      fontWeight: "bold",
+                      padding: "0 10px",
+                      opacity:
+                        deletingEventId === event.id || savingEvent || finishingMatch ? 0.7 : 1,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {deletingEventId === event.id ? "..." : "Smazat"}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -895,10 +969,10 @@ export default function MatchLiveScreen({
           style={{
             ...styles.primaryButton,
             background: primaryColor,
-            opacity: finishingMatch ? 0.7 : 1,
+            opacity: finishingMatch || deletingEventId !== null ? 0.7 : 1,
           }}
           onClick={() => void handleFinishMatch()}
-          disabled={finishingMatch}
+          disabled={finishingMatch || deletingEventId !== null}
         >
           {finishingMatch ? "Ukončuji zápas..." : "KONEC ZÁPASU"}
         </button>
@@ -910,6 +984,7 @@ export default function MatchLiveScreen({
             marginTop: "10px",
           }}
           onClick={onBack}
+          disabled={deletingEventId !== null}
         >
           Zpět na zápasy
         </button>
@@ -921,4 +996,3 @@ export default function MatchLiveScreen({
     </div>
   );
 }
-

@@ -431,3 +431,32 @@ export async function addRedCardEvent(input: {
   }
 }
 
+export async function deleteLiveMatchEvent(eventId: string): Promise<{
+  success: boolean;
+  errorMessage?: string;
+}> {
+  try {
+    const { error } = await supabase
+      .from("live_match_events")
+      .delete()
+      .eq("id", eventId);
+
+    if (error) {
+      console.error("Nepodařilo se smazat live událost:", error);
+      return {
+        success: false,
+        errorMessage: "Nepodařilo se smazat událost.",
+      };
+    }
+
+    return {
+      success: true,
+    };
+  } catch (error) {
+    console.error("Chyba v deleteLiveMatchEvent:", error);
+    return {
+      success: false,
+      errorMessage: "Při mazání události nastala chyba.",
+    };
+  }
+}
