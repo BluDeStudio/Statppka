@@ -434,6 +434,100 @@ export async function saveFinishedMatch(input: {
   }
 }
 
+export async function removePlayerFromFinishedMatch(input: {
+  finishedMatchId: string;
+  playerNumber: number;
+  goalkeeperNumber: number | null;
+  events: FinishedMatchEvent[];
+  playerStats: FinishedMatch["playerStats"];
+}): Promise<{
+  success: boolean;
+  errorMessage?: string;
+}> {
+  try {
+    if (input.goalkeeperNumber === input.playerNumber) {
+      return {
+        success: false,
+        errorMessage: "Brankáře zápasu nelze odebrat.",
+      };
+    }
+
+    const stat = input.playerStats.find(
+      (item) => item.playerNumber === input.playerNumber
+    );
+
+    if (!stat) {
+      return {
+        success: false,
+        errorMessage: "Hráč v tomto zápase není zapsaný.",
+      };
+    }
+
+    const hasStats =
+      stat.goals > 0 ||
+      stat.assists > 0 ||
+      (stat.yellowCards ?? 0) > 0 ||
+      (stat.redCards ?? 0) > 0;
+
+    const hasEvent = input.events.some((event) => {
+      if (event.type === "goal_for") {
+        return (
+          event.scorer === input.playerNumber || event.assist === input.playerNumber
+        );
+      }
+
+      if (event.type === "yellow_card" || event.type === "red_card") {
+        return event.playerNumber === input.playerNumber;
+      }
+
+      return false;
+    });
+
+    if (hasStats || hasEvent) {
+      return {
+        success: false,
+        errorMessage: "Hráče se statistikou nebo událostí nelze odebrat.",
+      };
+    }
+
+    const { error: ratingsError } = await supabase
+      .from("match_player_ratings")
+      .delete()
+      .eq("finished_match_id", input.finishedMatchId)
+      .eq("player_number", input.playerNumber);
+
+    if (ratingsError) {
+      console.error("Nepodařilo se smazat hodnocení hráče:", ratingsError);
+      return {
+        success: false,
+        errorMessage: `Nepodařilo se smazat hodnocení hráče: ${ratingsError.message}`,
+      };
+    }
+
+    const { error: statsError } = await supabase
+      .from("finished_match_player_stats")
+      .delete()
+      .eq("finished_match_id", input.finishedMatchId)
+      .eq("player_number", input.playerNumber);
+
+    if (statsError) {
+      console.error("Nepodařilo se odebrat hráče ze zápasu:", statsError);
+      return {
+        success: false,
+        errorMessage: `Nepodařilo se odebrat hráče ze zápasu: ${statsError.message}`,
+      };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Chyba v removePlayerFromFinishedMatch:", error);
+    return {
+      success: false,
+      errorMessage: "Při odebírání hráče ze zápasu nastala chyba.",
+    };
+  }
+}
+
 export async function deleteFinishedMatch(matchId: string): Promise<{
   success: boolean;
   errorMessage?: string;
