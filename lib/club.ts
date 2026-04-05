@@ -180,6 +180,64 @@ export async function createClub(input: {
   }
 }
 
+export async function updateClub(input: {
+  clubId: string;
+  name?: string;
+  hasBTeam?: boolean;
+  logoUrl?: string | null;
+  primaryColor?: string;
+  secondaryColor?: string;
+}): Promise<{ club: Club | null; errorMessage?: string }> {
+  try {
+    const payload: Record<string, unknown> = {};
+
+    if (typeof input.name === "string") {
+      payload.name = input.name.trim();
+    }
+
+    if (typeof input.hasBTeam === "boolean") {
+      payload.has_b_team = input.hasBTeam;
+    }
+
+    if (typeof input.logoUrl !== "undefined") {
+      payload.logo_url = input.logoUrl;
+    }
+
+    if (typeof input.primaryColor === "string") {
+      payload.primary_color = input.primaryColor;
+    }
+
+    if (typeof input.secondaryColor === "string") {
+      payload.secondary_color = input.secondaryColor;
+    }
+
+    const { data, error } = await supabase
+      .from("clubs")
+      .update(payload)
+      .eq("id", input.clubId)
+      .select()
+      .single();
+
+    if (error || !data) {
+      console.error("Nepodařilo se upravit klub:", error?.message);
+      return {
+        club: null,
+        errorMessage: "Nepodařilo se upravit tým.",
+      };
+    }
+
+    return {
+      club: data as Club,
+    };
+  } catch (error) {
+    console.error("Chyba v updateClub:", error);
+    return {
+      club: null,
+      errorMessage: "Při úpravě týmu nastala chyba.",
+    };
+  }
+}
+
 export async function createInviteLink(
   clubId: string,
   createdBy: string
