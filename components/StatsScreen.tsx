@@ -9,6 +9,8 @@ import {
   getRatingsForMatches,
   type PlayerRatingRow,
 } from "@/lib/ratings";
+import type { Period } from "@/lib/periods";
+import { supabase } from "@/lib/supabaseClient";
 import { styles } from "@/styles/appStyles";
 import type { FinishedMatch } from "@/app/page";
 
@@ -54,6 +56,11 @@ function ValueBadge({
   );
 }
 
+function isMatchInsidePeriod(matchDate: string, period: Period | null) {
+  if (!period) return true;
+  return matchDate >= period.start_date && matchDate <= period.end_date;
+}
+
 export default function StatsScreen({
   clubId,
   finishedMatches,
@@ -61,6 +68,9 @@ export default function StatsScreen({
 }: StatsScreenProps) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [ratings, setRatings] = useState<PlayerRatingRow[]>([]);
+  const [periods, setPeriods] = useState<Period[]>([]);
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string>("ALL");
+
   const [statsMode, setStatsMode] = useState<StatsMode>("players");
   const [playerSort, setPlayerSort] = useState<PlayerSort>("points");
   const [goalkeeperSort, setGoalkeeperSort] =
@@ -71,15 +81,37 @@ export default function StatsScreen({
     let active = true;
 
     const loadData = async () => {
-      const loadedPlayers = await getPlayersByClubId(clubId);
-      const loadedRatings = await getRatingsForMatches(
-        finishedMatches.map((match) => match.id)
-      );
+      const [
+        loadedPlayers,
+        loadedRatings,
+        periodsResponse,
+      ] = await Promise.all([
+        getPlayersByClubId(clubId),
+        getRatingsForMatches(finishedMatches.map((match) => match.id)),
+        supabase
+          .from("periods")
+          .select("*")
+          .eq("club_id", clubId)
+          .order("start_date", { ascending: false }),
+      ]);
 
       if (!active) return;
 
       setPlayers(loadedPlayers);
       setRatings(loadedRatings);
+
+      const loadedPeriods = ((periodsResponse.data as Period[]) ?? []).sort((a, b) =>
+        b.start_date.localeCompare(a.start_date)
+      );
+
+      setPeriods(loadedPeriods);
+
+      const activePeriod = loadedPeriods.find((period) => period.is_active);
+      if (activePeriod) {
+        setSelectedPeriodId(activePeriod.id);
+      } else {
+        setSelectedPeriodId("ALL");
+      }
     };
 
     void loadData();
@@ -93,10 +125,24 @@ export default function StatsScreen({
     return players.find((player) => player.number === number)?.name ?? `#${number}`;
   };
 
+  const selectedPeriod = useMemo(() => {
+    if (selectedPeriodId === "ALL") return null;
+    return periods.find((period) => period.id === selectedPeriodId) ?? null;
+  }, [periods, selectedPeriodId]);
+
   const filteredStatsMatches = useMemo(() => {
-    if (statsTeamFilter === "ALL") return finishedMatches;
-    return finishedMatches.filter((match) => match.team === statsTeamFilter);
-  }, [finishedMatches, statsTeamFilter]);
+    let matches = finishedMatches;
+
+    if (selectedPeriod) {
+      matches = matches.filter((match) => isMatchInsidePeriod(match.date, selectedPeriod));
+    }
+
+    if (statsTeamFilter !== "ALL") {
+      matches = matches.filter((match) => match.team === statsTeamFilter);
+    }
+
+    return matches;
+  }, [finishedMatches, selectedPeriod, statsTeamFilter]);
 
   const fieldPlayerStats = useMemo(() => {
     const playerMap = new Map<
@@ -219,7 +265,7 @@ export default function StatsScreen({
       if (b.assists !== a.assists) return b.assists - a.assists;
       return a.name.localeCompare(b.name, "cs");
     });
-  }, [filteredStatsMatches, getPlayerName, playerSort, ratings]);
+  }, [filteredStatsMatches, playerSort, ratings, players]);
 
   const goalkeeperStats = useMemo(() => {
     const gkMap = new Map<number, { matches: number; goalsAgainst: number }>();
@@ -264,7 +310,7 @@ export default function StatsScreen({
       if (a.goalsAgainst !== b.goalsAgainst) return a.goalsAgainst - b.goalsAgainst;
       return a.name.localeCompare(b.name, "cs");
     });
-  }, [filteredStatsMatches, getPlayerName, goalkeeperSort]);
+  }, [filteredStatsMatches, goalkeeperSort, players]);
 
   const baseToggleStyle: React.CSSProperties = {
     flex: 1,
@@ -333,6 +379,44 @@ export default function StatsScreen({
   return (
     <div style={styles.card}>
       <h2 style={styles.screenTitle}>Statistiky</h2>
+
+      <div style={{ marginBottom: "12px" }}>
+        <div
+          style={{
+            fontSize: "13px",
+            color: "#b8b8b8",
+            marginBottom: "6px",
+          }}
+        >
+          Období
+        </div>
+
+        <select
+          value={selectedPeriodId}
+          onChange={(e) => setSelectedPeriodId(e.target.value)}
+          style={{
+            ...styles.input,
+            appearance: "none",
+            cursor: "pointer",
+            marginBottom: "0",
+          }}
+        >
+          <option value="ALL" style={{ background: "#111111", color: "white" }}>
+            Vše
+          </option>
+
+          {periods.map((period) => (
+            <option
+              key={period.id}
+              value={period.id}
+              style={{ background: "#111111", color: "white" }}
+            >
+              {period.name}
+              {period.is_active ? " (aktivní)" : ""}
+            </option>
+          ))}
+        </select>
+      </div>
 
       <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
         <button
