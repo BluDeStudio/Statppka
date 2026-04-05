@@ -11,7 +11,8 @@ import DisciplineScreen from "@/components/DisciplineScreen";
 import LoginScreen from "@/components/LoginScreen";
 import TeamSetupScreen from "@/components/TeamSetupScreen";
 import TrainingsScreen from "@/components/TrainingsScreen";
-import PollsScreen from "../components/PollsScreen";
+import PollsScreen from "@/components/PollsScreen";
+import EditTeamScreen from "../components/EditTeamScreen";
 import { styles } from "@/styles/appStyles";
 import { teamTheme } from "@/data/teamTheme";
 import { supabase } from "@/lib/supabaseClient";
@@ -42,7 +43,7 @@ type Screen =
   | "stats"
   | "discipline";
 
-type TeamTab = "overview" | "players";
+type TeamTab = "overview" | "players" | "edit";
 type MatchesTab = "planned" | "played";
 
 export type FinishedMatchEvent =
@@ -908,7 +909,8 @@ export default function Home() {
                       border: "1px solid rgba(255,255,255,0.05)",
                       color: "white",
                       cursor: playerLinkSavingId ? "default" : "pointer",
-                      opacity: playerLinkSavingId && playerLinkSavingId !== player.id ? 0.65 : 1,
+                      opacity:
+                        playerLinkSavingId && playerLinkSavingId !== player.id ? 0.65 : 1,
                     }}
                   >
                     <div
@@ -986,7 +988,7 @@ export default function Home() {
             }}
           >
             <img
-              src="/icon.png"
+              src={currentClub.logo_url || "/icon.png"}
               alt="MyTeamHub icon"
               style={iconLogoStyle}
             />
@@ -1155,6 +1157,13 @@ export default function Home() {
                 >
                   HRÁČI
                 </button>
+
+                <button
+                  style={getSubTabStyle(teamTab === "edit")}
+                  onClick={() => setTeamTab("edit")}
+                >
+                  EDIT TÝMU
+                </button>
               </div>
 
               {teamTab === "overview" && (
@@ -1215,6 +1224,18 @@ export default function Home() {
                 <PlayersScreen
                   clubId={currentClub.id}
                   primaryColor={currentClub.primary_color}
+                />
+              )}
+
+              {teamTab === "edit" && (
+                <EditTeamScreen
+                  club={currentClub}
+                  userId={session.user.id}
+                  primaryColor={currentClub.primary_color}
+                  onUpdated={(updatedClub) => {
+                    setCurrentClub(updatedClub);
+                    setAppError("");
+                  }}
                 />
               )}
             </div>
