@@ -114,13 +114,19 @@ export default function PlayersScreen({
   };
 
   const handleOpenAddForm = () => {
-    setEditingPlayer(null);
+    if (editingPlayer) {
+      return;
+    }
+
     setMessage("");
+
     setShowForm((prev) => {
       const next = !prev;
+
       if (!next) {
         resetForm();
       }
+
       return next;
     });
   };
@@ -272,18 +278,20 @@ export default function PlayersScreen({
           </div>
         </div>
 
-        {!showForm && !editingPlayer && (
+        {!editingPlayer && (
           <button
             type="button"
             style={{
               ...styles.primaryButton,
               marginTop: 0,
-              marginBottom: "16px",
+              marginBottom: showForm ? "12px" : "16px",
               background: primaryColor,
+              opacity: saving ? 0.7 : 1,
             }}
             onClick={handleOpenAddForm}
+            disabled={saving}
           >
-            Přidat hráče
+            {showForm ? "Zavřít formulář" : "Přidat hráče"}
           </button>
         )}
 
@@ -368,34 +376,19 @@ export default function PlayersScreen({
                 </button>
               </>
             ) : (
-              <>
-                <button
-                  type="button"
-                  style={{
-                    ...styles.primaryButton,
-                    marginTop: 0,
-                    background: primaryColor,
-                    opacity: saving ? 0.7 : 1,
-                  }}
-                  onClick={handleAddPlayer}
-                  disabled={saving}
-                >
-                  {saving ? "Ukládám..." : "Přidat hráče"}
-                </button>
-
-                <button
-                  type="button"
-                  style={{
-                    ...styles.primaryButton,
-                    marginTop: 0,
-                    background: "rgba(255,255,255,0.12)",
-                  }}
-                  onClick={handleCancelForm}
-                  disabled={saving}
-                >
-                  Zavřít formulář
-                </button>
-              </>
+              <button
+                type="button"
+                style={{
+                  ...styles.primaryButton,
+                  marginTop: 0,
+                  background: primaryColor,
+                  opacity: saving ? 0.7 : 1,
+                }}
+                onClick={handleAddPlayer}
+                disabled={saving}
+              >
+                {saving ? "Ukládám..." : "Přidat hráče"}
+              </button>
             )}
           </div>
         )}
