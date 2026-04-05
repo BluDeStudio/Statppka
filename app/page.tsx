@@ -11,6 +11,7 @@ import DisciplineScreen from "@/components/DisciplineScreen";
 import LoginScreen from "@/components/LoginScreen";
 import TeamSetupScreen from "@/components/TeamSetupScreen";
 import TrainingsScreen from "@/components/TrainingsScreen";
+import PollsScreen from "@/components/PollsScreen";
 import { styles } from "@/styles/appStyles";
 import { teamTheme } from "@/data/teamTheme";
 import { supabase } from "@/lib/supabaseClient";
@@ -37,6 +38,7 @@ type Screen =
   | "team"
   | "matches"
   | "trainings"
+  | "polls"
   | "stats"
   | "discipline";
 
@@ -123,6 +125,8 @@ function getScreenTitle(screen: Screen) {
       return "ZÁPASY";
     case "trainings":
       return "TRÉNINKY";
+    case "polls":
+      return "ANKETY";
     case "stats":
       return "STATISTIKY";
     case "discipline":
@@ -1095,6 +1099,13 @@ export default function Home() {
 
             <button
               style={menuButtonStyle}
+              onClick={() => setScreen("polls")}
+            >
+              ANKETY
+            </button>
+
+            <button
+              style={menuButtonStyle}
               onClick={() => setScreen("stats")}
             >
               STATISTIKY
@@ -1231,7 +1242,7 @@ export default function Home() {
 
               {matchesTab === "planned" && (
                 <MatchesScreen
-                  key={`planned-${currentClub.id}-${plannedMatchesRenderKey}`}
+                  key={plannedMatchesRenderKey}
                   clubId={currentClub.id}
                   clubName={currentClub.name}
                   hasBTeam={currentClub.has_b_team}
@@ -1280,7 +1291,7 @@ export default function Home() {
                       };
                     }
 
-                    await loadClubMatchData(currentClub.id);
+                    setPlannedMatches((prev) => prev.filter((match) => match.id !== matchId));
                     setAppError("");
 
                     return {
@@ -1318,7 +1329,13 @@ export default function Home() {
                       };
                     }
 
-                    await loadClubMatchData(currentClub.id);
+                    setFinishedMatches((prev) => [
+                      result.finishedMatch as FinishedMatch,
+                      ...prev,
+                    ]);
+                    setPlannedMatches((prev) =>
+                      prev.filter((match) => match.id !== finishedMatch.id)
+                    );
                     setScreen("matches");
                     setMatchesTab("played");
                     setIsLiveMatch(false);
@@ -1347,7 +1364,9 @@ export default function Home() {
                       };
                     }
 
-                    await loadClubMatchData(currentClub.id);
+                    setFinishedMatches((prev) =>
+                      prev.filter((match) => match.id !== matchId)
+                    );
 
                     if (selectedPlayedMatchId === matchId) {
                       setSelectedPlayedMatchId(null);
@@ -1368,6 +1387,14 @@ export default function Home() {
           {screen === "trainings" && selectedPlayedMatchId === null && !isLiveMatch && (
             <TrainingsScreen
               clubId={currentClub.id}
+              primaryColor={currentClub.primary_color}
+            />
+          )}
+
+          {screen === "polls" && selectedPlayedMatchId === null && !isLiveMatch && (
+            <PollsScreen
+              clubId={currentClub.id}
+              userId={session.user.id}
               primaryColor={currentClub.primary_color}
             />
           )}
