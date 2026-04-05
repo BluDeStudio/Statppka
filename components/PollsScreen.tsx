@@ -43,28 +43,17 @@ export default function PollsScreen({
   const [votes, setVotes] = useState<PollVote[]>([]);
 
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
   const [showForm, setShowForm] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [editingPollId, setEditingPollId] = useState<string | null>(null);
 
   const [question, setQuestion] = useState("");
   const [description, setDescription] = useState("");
-  const [pollDate, setPollDate] = useState("");
   const [allowMultiple, setAllowMultiple] = useState(false);
+  const [pollDate, setPollDate] = useState("");
   const [newOptions, setNewOptions] = useState<string[]>(["", ""]);
-
-  const [editingPollId, setEditingPollId] = useState<string | null>(null);
-  const [deletingPollId, setDeletingPollId] = useState<string | null>(null);
-
-  const resetForm = () => {
-    setQuestion("");
-    setDescription("");
-    setPollDate("");
-    setAllowMultiple(false);
-    setNewOptions(["", ""]);
-    setEditingPollId(null);
-  };
 
   const loadData = async () => {
     setLoading(true);
@@ -92,9 +81,9 @@ export default function PollsScreen({
       console.error("Nepodařilo se načíst hlasy anket:", votesError);
     }
 
-    setPolls((pollsData as Poll[]) || []);
-    setOptions((optionsData as PollOption[]) || []);
-    setVotes((votesData as PollVote[]) || []);
+    setPolls((pollsData as Poll[]) ?? []);
+    setOptions((optionsData as PollOption[]) ?? []);
+    setVotes((votesData as PollVote[]) ?? []);
     setLoading(false);
   };
 
@@ -102,49 +91,40 @@ export default function PollsScreen({
     void loadData();
   }, [clubId]);
 
-  const pollOptionsMap = useMemo(() => {
-    const map = new Map<string, PollOption[]>();
-
-    options.forEach((option) => {
-      if (!map.has(option.poll_id)) {
-        map.set(option.poll_id, []);
-      }
-      map.get(option.poll_id)!.push(option);
-    });
-
-    return map;
-  }, [options]);
-
-  const getOptions = (pollId: string) => pollOptionsMap.get(pollId) ?? [];
-
-  const getVotesCount = (optionId: string) =>
-    votes.filter((vote) => vote.option_id === optionId).length;
-
-  const hasVoted = (pollId: string, optionId: string) =>
-    votes.some(
-      (vote) =>
-        vote.poll_id === pollId &&
-        vote.option_id === optionId &&
-        vote.user_id === userId
-    );
-
-  const handleAddOptionInput = () => {
-    setNewOptions((prev) => [...prev, ""]);
+  const resetForm = () => {
+    setEditingPollId(null);
+    setQuestion("");
+    setDescription("");
+    setAllowMultiple(false);
+    setPollDate("");
+    setNewOptions(["", ""]);
+    setMessage("");
   };
 
-  const handleChangeOptionInput = (index: number, value: string) => {
-    setNewOptions((prev) => {
-      const copy = [...prev];
-      copy[index] = value;
-      return copy;
-    });
+  const handleOpenCreate = () => {
+    if (showForm && !editingPollId) {
+      setShowForm(false);
+      resetForm();
+      return;
+    }
+
+    resetForm();
+    setShowForm(true);
   };
 
-  const handleRemoveOptionInput = (index: number) => {
-    setNewOptions((prev) => {
-      if (prev.length <= 2) return prev;
-      return prev.filter((_, i) => i !== index);
-    });
+  const handleEditPoll = (poll: Poll) => {
+    const pollOptions = options
+      .filter((option) => option.poll_id === poll.id)
+      .map((option) => option.text);
+
+    setEditingPollId(poll.id);
+    setQuestion(poll.question);
+    setDescription(poll.description ?? "");
+    setAllowMultiple(poll.allow_multiple);
+    setPollDate(poll.poll_date ?? "");
+    setNewOptions(pollOptions.length > 0 ? pollOptions : ["", ""]);
+    setShowForm(true);
+    setMessage("");
   };
 
   const handleCreateOrUpdatePoll = async () => {
@@ -161,6 +141,8 @@ export default function PollsScreen({
       setMessage("Anketa musí mít alespoň 2 možnosti.");
       return;
     }
+
+    if (saving) return;
 
     setSaving(true);
     setMessage("");
@@ -183,34 +165,28 @@ export default function PollsScreen({
         return;
       }
 
-      const currentOptions = getOptions(editingPollId);
+      const { error: deleteVotesError } = await supabase
+        .from("poll_votes")
+        .delete()
+        .eq("poll_id", editingPollId);
 
-      if (currentOptions.length > 0) {
-        const currentOptionIds = currentOptions.map((option) => option.id);
+      if (deleteVotesError) {
+        console.error("Nepodařilo se smazat staré hlasy ankety:", deleteVotesError);
+        setMessage("Nepodařilo se upravit anketu.");
+        setSaving(false);
+        return;
+      }
 
-        const { error: deleteVotesError } = await supabase
-          .from("poll_votes")
-          .delete()
-          .in("option_id", currentOptionIds);
+      const { error: deleteOptionsError } = await supabase
+        .from("poll_options")
+        .delete()
+        .eq("poll_id", editingPollId);
 
-        if (deleteVotesError) {
-          console.error("Nepodařilo se smazat hlasy ankety:", deleteVotesError);
-          setMessage("Nepodařilo se upravit anketu.");
-          setSaving(false);
-          return;
-        }
-
-        const { error: deleteOptionsError } = await supabase
-          .from("poll_options")
-          .delete()
-          .eq("poll_id", editingPollId);
-
-        if (deleteOptionsError) {
-          console.error("Nepodařilo se smazat původní možnosti ankety:", deleteOptionsError);
-          setMessage("Nepodařilo se upravit anketu.");
-          setSaving(false);
-          return;
-        }
+      if (deleteOptionsError) {
+        console.error("Nepodařilo se smazat staré možnosti ankety:", deleteOptionsError);
+        setMessage("Nepodařilo se upravit anketu.");
+        setSaving(false);
+        return;
       }
 
       const { error: insertOptionsError } = await supabase
@@ -279,45 +255,21 @@ export default function PollsScreen({
     setSaving(false);
   };
 
-  const handleEditPoll = (poll: Poll) => {
-    const currentOptions = getOptions(poll.id);
-
-    setEditingPollId(poll.id);
-    setQuestion(poll.question);
-    setDescription(poll.description ?? "");
-    setPollDate(poll.poll_date ?? "");
-    setAllowMultiple(poll.allow_multiple);
-    setNewOptions(
-      currentOptions.length > 0
-        ? currentOptions.map((option) => option.text)
-        : ["", ""]
-    );
-    setShowForm(true);
-    setMessage("");
-  };
-
   const handleDeletePoll = async (pollId: string) => {
     const confirmed = window.confirm("Opravdu chceš smazat tuto anketu?");
     if (!confirmed) return;
 
-    setDeletingPollId(pollId);
     setMessage("");
 
-    const currentOptions = getOptions(pollId);
-    const optionIds = currentOptions.map((option) => option.id);
+    const { error: deleteVotesError } = await supabase
+      .from("poll_votes")
+      .delete()
+      .eq("poll_id", pollId);
 
-    if (optionIds.length > 0) {
-      const { error: deleteVotesError } = await supabase
-        .from("poll_votes")
-        .delete()
-        .in("option_id", optionIds);
-
-      if (deleteVotesError) {
-        console.error("Nepodařilo se smazat hlasy ankety:", deleteVotesError);
-        setMessage("Nepodařilo se smazat anketu.");
-        setDeletingPollId(null);
-        return;
-      }
+    if (deleteVotesError) {
+      console.error("Nepodařilo se smazat hlasy ankety:", deleteVotesError);
+      setMessage("Nepodařilo se smazat anketu.");
+      return;
     }
 
     const { error: deleteOptionsError } = await supabase
@@ -328,7 +280,6 @@ export default function PollsScreen({
     if (deleteOptionsError) {
       console.error("Nepodařilo se smazat možnosti ankety:", deleteOptionsError);
       setMessage("Nepodařilo se smazat anketu.");
-      setDeletingPollId(null);
       return;
     }
 
@@ -340,7 +291,6 @@ export default function PollsScreen({
     if (deletePollError) {
       console.error("Nepodařilo se smazat anketu:", deletePollError);
       setMessage("Nepodařilo se smazat anketu.");
-      setDeletingPollId(null);
       return;
     }
 
@@ -351,7 +301,6 @@ export default function PollsScreen({
 
     await loadData();
     setMessage("Anketa byla smazána.");
-    setDeletingPollId(null);
   };
 
   const handleVote = async (
@@ -361,24 +310,16 @@ export default function PollsScreen({
   ) => {
     setMessage("");
 
-    if (multiple) {
-      const alreadySelected = hasVoted(pollId, optionId);
+    if (!multiple) {
+      const { error: deleteError } = await supabase
+        .from("poll_votes")
+        .delete()
+        .eq("poll_id", pollId)
+        .eq("user_id", userId);
 
-      if (alreadySelected) {
-        const { error: deleteError } = await supabase
-          .from("poll_votes")
-          .delete()
-          .eq("poll_id", pollId)
-          .eq("option_id", optionId)
-          .eq("user_id", userId);
-
-        if (deleteError) {
-          console.error("Nepodařilo se odebrat hlas:", deleteError);
-          setMessage("Nepodařilo se odebrat hlas.");
-          return;
-        }
-
-        await loadData();
+      if (deleteError) {
+        console.error("Nepodařilo se upravit hlas:", deleteError);
+        setMessage("Nepodařilo se uložit hlas.");
         return;
       }
 
@@ -398,54 +339,82 @@ export default function PollsScreen({
       return;
     }
 
-    const { error: deletePreviousError } = await supabase
-      .from("poll_votes")
-      .delete()
-      .eq("poll_id", pollId)
-      .eq("user_id", userId);
+    const alreadyVoted = votes.some(
+      (vote) =>
+        vote.poll_id === pollId &&
+        vote.option_id === optionId &&
+        vote.user_id === userId
+    );
 
-    if (deletePreviousError) {
-      console.error("Nepodařilo se přepsat předchozí hlas:", deletePreviousError);
-      setMessage("Nepodařilo se uložit hlas.");
-      return;
-    }
+    if (alreadyVoted) {
+      const { error: deleteError } = await supabase
+        .from("poll_votes")
+        .delete()
+        .eq("poll_id", pollId)
+        .eq("option_id", optionId)
+        .eq("user_id", userId);
 
-    const { error: insertError } = await supabase.from("poll_votes").insert({
-      poll_id: pollId,
-      option_id: optionId,
-      user_id: userId,
-    });
+      if (deleteError) {
+        console.error("Nepodařilo se odebrat hlas:", deleteError);
+        setMessage("Nepodařilo se odebrat hlas.");
+        return;
+      }
+    } else {
+      const { error: insertError } = await supabase.from("poll_votes").insert({
+        poll_id: pollId,
+        option_id: optionId,
+        user_id: userId,
+      });
 
-    if (insertError) {
-      console.error("Nepodařilo se uložit hlas:", insertError);
-      setMessage("Nepodařilo se uložit hlas.");
-      return;
+      if (insertError) {
+        console.error("Nepodařilo se uložit hlas:", insertError);
+        setMessage("Nepodařilo se uložit hlas.");
+        return;
+      }
     }
 
     await loadData();
   };
 
+  const getOptionsByPollId = (pollId: string) =>
+    options.filter((option) => option.poll_id === pollId);
+
+  const getVotesCount = (optionId: string) =>
+    votes.filter((vote) => vote.option_id === optionId).length;
+
+  const hasVoted = (pollId: string, optionId: string) =>
+    votes.some(
+      (vote) =>
+        vote.poll_id === pollId &&
+        vote.option_id === optionId &&
+        vote.user_id === userId
+    );
+
+  const totalVotesByPollId = useMemo(() => {
+    const map = new Map<string, number>();
+
+    votes.forEach((vote) => {
+      map.set(vote.poll_id, (map.get(vote.poll_id) ?? 0) + 1);
+    });
+
+    return map;
+  }, [votes]);
+
   return (
     <div style={{ display: "grid", gap: "12px" }}>
       <button
-        type="button"
-        onClick={() => {
-          if (showForm && editingPollId) {
-            resetForm();
-          }
-          setShowForm((prev) => !prev);
-          setMessage("");
-        }}
+        onClick={handleOpenCreate}
         style={{
           ...styles.primaryButton,
+          marginTop: 0,
           background: primaryColor,
           border: "none",
         }}
       >
         {showForm
           ? editingPollId
-            ? "Zavřít úpravu ankety"
-            : "Zavřít formulář"
+            ? "Zavřít úpravu"
+            : "Zavřít"
           : "Vytvořit anketu"}
       </button>
 
@@ -499,11 +468,20 @@ export default function PollsScreen({
               Povolit více odpovědí
             </label>
 
-            <div style={{ fontWeight: "bold", marginTop: "4px" }}>Možnosti</div>
+            <div
+              style={{
+                color: "#cfcfcf",
+                fontSize: "13px",
+                fontWeight: "bold",
+                marginTop: "4px",
+              }}
+            >
+              Možnosti ankety
+            </div>
 
-            {newOptions.map((opt, i) => (
+            {newOptions.map((option, index) => (
               <div
-                key={i}
+                key={index}
                 style={{
                   display: "flex",
                   gap: "8px",
@@ -511,28 +489,39 @@ export default function PollsScreen({
                 }}
               >
                 <input
-                  value={opt}
-                  placeholder={`Možnost ${i + 1}`}
-                  onChange={(e) => handleChangeOptionInput(i, e.target.value)}
-                  style={{ ...styles.input, marginTop: 0 }}
+                  value={option}
+                  placeholder={`Možnost ${index + 1}`}
+                  onChange={(e) => {
+                    const copy = [...newOptions];
+                    copy[index] = e.target.value;
+                    setNewOptions(copy);
+                  }}
+                  style={{
+                    ...styles.input,
+                    marginTop: 0,
+                    flex: 1,
+                  }}
                 />
 
                 {newOptions.length > 2 && (
                   <button
                     type="button"
-                    onClick={() => handleRemoveOptionInput(i)}
+                    onClick={() => {
+                      setNewOptions((prev) =>
+                        prev.filter((_, optionIndex) => optionIndex !== index)
+                      );
+                    }}
                     style={{
                       border: "none",
                       borderRadius: "10px",
                       padding: "10px 12px",
                       background: "rgba(198,40,40,0.95)",
                       color: "white",
-                      cursor: "pointer",
                       fontWeight: "bold",
-                      whiteSpace: "nowrap",
+                      cursor: "pointer",
                     }}
                   >
-                    Smazat
+                    X
                   </button>
                 )}
               </div>
@@ -540,7 +529,7 @@ export default function PollsScreen({
 
             <button
               type="button"
-              onClick={handleAddOptionInput}
+              onClick={() => setNewOptions((prev) => [...prev, ""])}
               style={{
                 ...styles.primaryButton,
                 marginTop: 0,
@@ -564,32 +553,11 @@ export default function PollsScreen({
               }}
             >
               {saving
-                ? editingPollId
-                  ? "Ukládám změny..."
-                  : "Vytvářím..."
+                ? "Ukládám..."
                 : editingPollId
                 ? "Uložit změny"
                 : "Uložit anketu"}
             </button>
-
-            {editingPollId && (
-              <button
-                type="button"
-                onClick={() => {
-                  resetForm();
-                  setShowForm(false);
-                  setMessage("");
-                }}
-                style={{
-                  ...styles.primaryButton,
-                  marginTop: 0,
-                  background: "rgba(255,255,255,0.12)",
-                  border: "none",
-                }}
-              >
-                Zrušit úpravu
-              </button>
-            )}
           </div>
         </div>
       )}
@@ -613,127 +581,127 @@ export default function PollsScreen({
         </div>
       ) : polls.length === 0 ? (
         <div style={styles.card}>
-          <div style={{ color: "#b8b8b8" }}>Zatím tu nejsou žádné ankety.</div>
+          <div style={{ color: "#b8b8b8" }}>Zatím tu není žádná anketa.</div>
         </div>
       ) : (
-        polls.map((poll) => (
-          <div key={poll.id} style={styles.card}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: "12px",
-                alignItems: "flex-start",
-                marginBottom: "10px",
-              }}
-            >
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: "bold", fontSize: "16px" }}>
-                  {poll.question}
-                </div>
+        polls.map((poll) => {
+          const pollOptions = getOptionsByPollId(poll.id);
 
-                {poll.description && (
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      color: "#b8b8b8",
-                      marginTop: "6px",
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    {poll.description}
-                  </div>
-                )}
+          return (
+            <div key={poll.id} style={styles.card}>
+              <div style={{ fontWeight: "bold", fontSize: "16px" }}>
+                {poll.question}
+              </div>
 
+              {poll.description && (
                 <div
                   style={{
+                    fontSize: "13px",
+                    color: "#b8b8b8",
                     marginTop: "8px",
-                    fontSize: "12px",
-                    color: "#a8a8a8",
+                    lineHeight: 1.5,
                   }}
                 >
-                  {poll.allow_multiple ? "Více odpovědí" : "Jedna odpověď"}
-                  {poll.poll_date ? ` • Datum: ${poll.poll_date}` : ""}
+                  {poll.description}
                 </div>
-              </div>
-            </div>
+              )}
 
-            <div style={{ display: "grid", gap: "8px", marginTop: "10px" }}>
-              {getOptions(poll.id).map((opt) => (
+              <div
+                style={{
+                  marginTop: "10px",
+                  color: "#a8a8a8",
+                  fontSize: "12px",
+                }}
+              >
+                {poll.allow_multiple ? "Více odpovědí" : "Jedna odpověď"}
+                {poll.poll_date ? ` • Datum: ${poll.poll_date}` : ""}
+              </div>
+
+              <div style={{ marginTop: "14px", display: "grid", gap: "8px" }}>
+                {pollOptions.map((option) => {
+                  const selected = hasVoted(poll.id, option.id);
+                  const votesCount = getVotesCount(option.id);
+
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() =>
+                        void handleVote(poll.id, option.id, poll.allow_multiple)
+                      }
+                      style={{
+                        padding: "14px 16px",
+                        borderRadius: "12px",
+                        border: selected
+                          ? `1px solid ${primaryColor}`
+                          : "1px solid rgba(255,255,255,0.08)",
+                        background: selected
+                          ? primaryColor
+                          : "rgba(255,255,255,0.04)",
+                        color: "white",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        fontSize: "15px",
+                        fontWeight: selected ? "bold" : "normal",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span>{option.text}</span>
+                      <span>{votesCount}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div
+                style={{
+                  marginTop: "10px",
+                  fontSize: "12px",
+                  color: "#9f9f9f",
+                }}
+              >
+                Celkem hlasů: {totalVotesByPollId.get(poll.id) ?? 0}
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", marginTop: "16px" }}>
                 <button
-                  key={opt.id}
                   type="button"
-                  onClick={() =>
-                    void handleVote(poll.id, opt.id, poll.allow_multiple)
-                  }
+                  onClick={() => handleEditPoll(poll)}
                   style={{
-                    padding: "14px 16px",
+                    flex: 1,
+                    border: "none",
                     borderRadius: "12px",
-                    border: hasVoted(poll.id, opt.id)
-                      ? `1px solid ${primaryColor}`
-                      : "1px solid rgba(255,255,255,0.08)",
-                    background: hasVoted(poll.id, opt.id)
-                      ? primaryColor
-                      : "rgba(255,255,255,0.06)",
+                    padding: "12px 14px",
+                    background: primaryColor,
                     color: "white",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    fontWeight: hasVoted(poll.id, opt.id) ? "bold" : "normal",
+                    fontWeight: "bold",
                     cursor: "pointer",
                   }}
                 >
-                  <span>{opt.text}</span>
-                  <span>{getVotesCount(opt.id)}</span>
+                  Upravit
                 </button>
-              ))}
-            </div>
 
-            <div
-              style={{
-                display: "flex",
-                gap: "8px",
-                marginTop: "14px",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => handleEditPoll(poll)}
-                style={{
-                  flex: 1,
-                  border: "none",
-                  borderRadius: "10px",
-                  padding: "10px 12px",
-                  background: primaryColor,
-                  color: "white",
-                  fontWeight: "bold",
-                  cursor: "pointer",
-                }}
-              >
-                Upravit
-              </button>
-
-              <button
-                type="button"
-                onClick={() => void handleDeletePoll(poll.id)}
-                disabled={deletingPollId === poll.id}
-                style={{
-                  flex: 1,
-                  border: "none",
-                  borderRadius: "10px",
-                  padding: "10px 12px",
-                  background: "rgba(198,40,40,0.95)",
-                  color: "white",
-                  fontWeight: "bold",
-                  cursor: deletingPollId === poll.id ? "default" : "pointer",
-                  opacity: deletingPollId === poll.id ? 0.7 : 1,
-                }}
-              >
-                {deletingPollId === poll.id ? "Mažu..." : "Smazat"}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDeletePoll(poll.id)}
+                  style={{
+                    flex: 1,
+                    border: "none",
+                    borderRadius: "12px",
+                    padding: "12px 14px",
+                    background: "rgba(198,40,40,0.95)",
+                    color: "white",
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                  }}
+                >
+                  Smazat
+                </button>
+              </div>
             </div>
-          </div>
-        ))
+          );
+        })
       )}
     </div>
   );
