@@ -61,6 +61,7 @@ export default function PlayersScreen({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+  const [showForm, setShowForm] = useState(false);
 
   const [name, setName] = useState("");
   const [number, setNumber] = useState("");
@@ -110,7 +111,18 @@ export default function PlayersScreen({
     setNumber("");
     setPosition(defaultPositions[2]);
     setBirthDate("");
+  };
+
+  const handleOpenAddForm = () => {
+    setEditingPlayer(null);
     setMessage("");
+    setShowForm((prev) => {
+      const next = !prev;
+      if (!next) {
+        resetForm();
+      }
+      return next;
+    });
   };
 
   const handleAddPlayer = async () => {
@@ -152,6 +164,7 @@ export default function PlayersScreen({
         [...prev, result.player as Player].sort((a, b) => a.number - b.number)
       );
       resetForm();
+      setShowForm(false);
       setMessage("Hráč byl přidán.");
     } else {
       setMessage(result.errorMessage ?? "Nepodařilo se přidat hráče.");
@@ -166,6 +179,7 @@ export default function PlayersScreen({
     setNumber(String(player.number));
     setPosition(player.position);
     setBirthDate(player.birth_date ?? "");
+    setShowForm(true);
     setMessage("");
   };
 
@@ -219,12 +233,19 @@ export default function PlayersScreen({
           .sort((a, b) => a.number - b.number)
       );
       resetForm();
+      setShowForm(false);
       setMessage("Hráč byl upraven.");
     } else {
       setMessage(result.errorMessage ?? "Nepodařilo se upravit hráče.");
     }
 
     setSaving(false);
+  };
+
+  const handleCancelForm = () => {
+    resetForm();
+    setShowForm(false);
+    setMessage("");
   };
 
   return (
@@ -251,107 +272,145 @@ export default function PlayersScreen({
           </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gap: "10px",
-            marginBottom: "16px",
-          }}
-        >
-          <input
-            type="text"
-            placeholder="Jméno hráče"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            style={styles.input}
-          />
-
-          <input
-            type="number"
-            placeholder="Číslo"
-            value={number}
-            onChange={(e) => setNumber(e.target.value)}
-            style={styles.input}
-          />
-
-          <select
-            value={position}
-            onChange={(e) => setPosition(e.target.value)}
+        {!showForm && !editingPlayer && (
+          <button
+            type="button"
             style={{
-              ...styles.input,
-              appearance: "none",
-              cursor: "pointer",
+              ...styles.primaryButton,
+              marginTop: 0,
+              marginBottom: "16px",
+              background: primaryColor,
+            }}
+            onClick={handleOpenAddForm}
+          >
+            Přidat hráče
+          </button>
+        )}
+
+        {showForm && (
+          <div
+            style={{
+              display: "grid",
+              gap: "10px",
+              marginBottom: "16px",
             }}
           >
-            {defaultPositions.map((item) => (
-              <option
-                key={item}
-                value={item}
-                style={{ background: "#111111", color: "white" }}
-              >
-                {item}
-              </option>
-            ))}
-          </select>
+            <input
+              type="text"
+              placeholder="Jméno hráče"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              style={styles.input}
+            />
 
-          <input
-            type="date"
-            value={birthDate}
-            onChange={(e) => setBirthDate(e.target.value)}
-            style={styles.input}
-          />
+            <input
+              type="number"
+              placeholder="Číslo"
+              value={number}
+              onChange={(e) => setNumber(e.target.value)}
+              style={styles.input}
+            />
 
-          {editingPlayer ? (
-            <>
-              <button
-                type="button"
-                style={{
-                  ...styles.primaryButton,
-                  marginTop: 0,
-                  background: primaryColor,
-                  opacity: saving ? 0.7 : 1,
-                }}
-                onClick={handleUpdatePlayer}
-                disabled={saving}
-              >
-                {saving ? "Ukládám..." : "Uložit změny"}
-              </button>
-
-              <button
-                type="button"
-                style={{
-                  ...styles.primaryButton,
-                  marginTop: 0,
-                  background: "rgba(255,255,255,0.12)",
-                }}
-                onClick={resetForm}
-                disabled={saving}
-              >
-                Zrušit úpravu
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
+            <select
+              value={position}
+              onChange={(e) => setPosition(e.target.value)}
               style={{
-                ...styles.primaryButton,
-                marginTop: 0,
-                background: primaryColor,
-                opacity: saving ? 0.7 : 1,
+                ...styles.input,
+                appearance: "none",
+                cursor: "pointer",
               }}
-              onClick={handleAddPlayer}
-              disabled={saving}
             >
-              {saving ? "Ukládám..." : "Přidat hráče"}
-            </button>
-          )}
+              {defaultPositions.map((item) => (
+                <option
+                  key={item}
+                  value={item}
+                  style={{ background: "#111111", color: "white" }}
+                >
+                  {item}
+                </option>
+              ))}
+            </select>
 
-          {message && (
-            <p style={{ margin: 0, color: "#cfcfcf", fontSize: "14px" }}>
-              {message}
-            </p>
-          )}
-        </div>
+            <input
+              type="date"
+              value={birthDate}
+              onChange={(e) => setBirthDate(e.target.value)}
+              style={styles.input}
+            />
+
+            {editingPlayer ? (
+              <>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.primaryButton,
+                    marginTop: 0,
+                    background: primaryColor,
+                    opacity: saving ? 0.7 : 1,
+                  }}
+                  onClick={handleUpdatePlayer}
+                  disabled={saving}
+                >
+                  {saving ? "Ukládám..." : "Uložit změny"}
+                </button>
+
+                <button
+                  type="button"
+                  style={{
+                    ...styles.primaryButton,
+                    marginTop: 0,
+                    background: "rgba(255,255,255,0.12)",
+                  }}
+                  onClick={handleCancelForm}
+                  disabled={saving}
+                >
+                  Zrušit úpravu
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.primaryButton,
+                    marginTop: 0,
+                    background: primaryColor,
+                    opacity: saving ? 0.7 : 1,
+                  }}
+                  onClick={handleAddPlayer}
+                  disabled={saving}
+                >
+                  {saving ? "Ukládám..." : "Přidat hráče"}
+                </button>
+
+                <button
+                  type="button"
+                  style={{
+                    ...styles.primaryButton,
+                    marginTop: 0,
+                    background: "rgba(255,255,255,0.12)",
+                  }}
+                  onClick={handleCancelForm}
+                  disabled={saving}
+                >
+                  Zavřít formulář
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {message && (
+          <p
+            style={{
+              margin: "0 0 16px 0",
+              color: "#cfcfcf",
+              fontSize: "14px",
+            }}
+          >
+            {message}
+          </p>
+        )}
 
         {loading ? (
           <div
