@@ -11,7 +11,7 @@ import DisciplineScreen from "@/components/DisciplineScreen";
 import LoginScreen from "@/components/LoginScreen";
 import TeamSetupScreen from "@/components/TeamSetupScreen";
 import TrainingsScreen from "@/components/TrainingsScreen";
-import PollsScreen from "@/components/PollsScreen";
+import PollsScreen from "../components/PollsScreen";
 import { styles } from "@/styles/appStyles";
 import { teamTheme } from "@/data/teamTheme";
 import { supabase } from "@/lib/supabaseClient";
