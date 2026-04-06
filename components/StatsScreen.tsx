@@ -18,7 +18,7 @@ type StatsMode = "players" | "goalkeepers";
 type PlayerSort = "goals" | "assists" | "points" | "rating" | "motm";
 type GoalkeeperSort = "matches" | "goalsAgainst" | "average";
 type TeamFilter = "ALL" | "A" | "B";
-type PeriodFilterMode = "ACTIVE" | "ALL" | "CUSTOM";
+type PeriodFilterMode = "active" | "all" | "custom";
 
 type StatsScreenProps = {
   clubId: string;
@@ -57,9 +57,45 @@ function ValueBadge({
   );
 }
 
+function normalizeDateToIso(value: string) {
+  if (!value) return "";
+
+  const trimmed = value.trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(trimmed)) {
+    const [day, month, year] = trimmed.split(".");
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 function isMatchInsidePeriod(matchDate: string, period: Period | null) {
   if (!period) return true;
-  return matchDate >= period.start_date && matchDate <= period.end_date;
+
+  const normalizedMatchDate = normalizeDateToIso(matchDate);
+  const normalizedStartDate = normalizeDateToIso(period.start_date);
+  const normalizedEndDate = normalizeDateToIso(period.end_date);
+
+  if (!normalizedMatchDate || !normalizedStartDate || !normalizedEndDate) {
+    return false;
+  }
+
+  return (
+    normalizedMatchDate >= normalizedStartDate &&
+    normalizedMatchDate <= normalizedEndDate
+  );
 }
 
 export default function StatsScreen({
@@ -70,9 +106,10 @@ export default function StatsScreen({
   const [players, setPlayers] = useState<Player[]>([]);
   const [ratings, setRatings] = useState<PlayerRatingRow[]>([]);
   const [periods, setPeriods] = useState<Period[]>([]);
-  const [activePeriodId, setActivePeriodId] = useState<string | null>(null);
+  const [activePeriod, setActivePeriod] = useState<Period | null>(null);
+
   const [periodFilterMode, setPeriodFilterMode] =
-    useState<PeriodFilterMode>("ACTIVE");
+    useState<PeriodFilterMode>("active");
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>("");
 
   const [statsMode, setStatsMode] = useState<StatsMode>("players");
@@ -100,23 +137,22 @@ export default function StatsScreen({
       setPlayers(loadedPlayers);
       setRatings(loadedRatings);
 
-      const loadedPeriods = ((periodsResponse.data as Period[]) ?? []).sort((a, b) =>
-        b.start_date.localeCompare(a.start_date)
-      );
+      const loadedPeriods = (((periodsResponse.data as Period[]) ?? []) as Period[])
+        .slice()
+        .sort((a, b) => b.start_date.localeCompare(a.start_date));
 
       setPeriods(loadedPeriods);
 
-      const foundActivePeriod = loadedPeriods.find((period) => period.is_active) ?? null;
-      setActivePeriodId(foundActivePeriod?.id ?? null);
+      const foundActivePeriod =
+        loadedPeriods.find((period) => period.is_active) ?? null;
+
+      setActivePeriod(foundActivePeriod);
 
       if (foundActivePeriod) {
-        setPeriodFilterMode("ACTIVE");
+        setPeriodFilterMode("active");
         setSelectedPeriodId(foundActivePeriod.id);
-      } else if (loadedPeriods.length > 0) {
-        setPeriodFilterMode("CUSTOM");
-        setSelectedPeriodId(loadedPeriods[0].id);
       } else {
-        setPeriodFilterMode("ALL");
+        setPeriodFilterMode("all");
         setSelectedPeriodId("");
       }
     };
@@ -129,26 +165,29 @@ export default function StatsScreen({
   }, [clubId, finishedMatches]);
 
   const getPlayerName = (number: number) => {
-    return players.find((player) => player.number === number)?.name ?? `#${number}`;
+    return (
+      players.find((player) => player.number === number)?.name ?? `#${number}`
+    );
   };
 
-  const selectedPeriod = useMemo(() => {
-    if (periodFilterMode === "ALL") return null;
-
-    if (periodFilterMode === "ACTIVE") {
-      if (!activePeriodId) return null;
-      return periods.find((period) => period.id === activePeriodId) ?? null;
-    }
-
+  const customSelectedPeriod = useMemo(() => {
     if (!selectedPeriodId) return null;
     return periods.find((period) => period.id === selectedPeriodId) ?? null;
-  }, [activePeriodId, periodFilterMode, periods, selectedPeriodId]);
+  }, [periods, selectedPeriodId]);
+
+  const effectivePeriod = useMemo(() => {
+    if (periodFilterMode === "all") return null;
+    if (periodFilterMode === "active") return activePeriod;
+    return customSelectedPeriod;
+  }, [periodFilterMode, activePeriod, customSelectedPeriod]);
 
   const filteredStatsMatches = useMemo(() => {
     let matches = finishedMatches;
 
-    if (selectedPeriod) {
-      matches = matches.filter((match) => isMatchInsidePeriod(match.date, selectedPeriod));
+    if (effectivePeriod) {
+      matches = matches.filter((match) =>
+        isMatchInsidePeriod(match.date, effectivePeriod)
+      );
     }
 
     if (statsTeamFilter !== "ALL") {
@@ -156,7 +195,7 @@ export default function StatsScreen({
     }
 
     return matches;
-  }, [finishedMatches, selectedPeriod, statsTeamFilter]);
+  }, [finishedMatches, effectivePeriod, statsTeamFilter]);
 
   const fieldPlayerStats = useMemo(() => {
     const playerMap = new Map<
@@ -316,13 +355,17 @@ export default function StatsScreen({
       }
 
       if (goalkeeperSort === "goalsAgainst") {
-        if (a.goalsAgainst !== b.goalsAgainst) return a.goalsAgainst - b.goalsAgainst;
+        if (a.goalsAgainst !== b.goalsAgainst) {
+          return a.goalsAgainst - b.goalsAgainst;
+        }
         if (a.average !== b.average) return a.average - b.average;
         return a.name.localeCompare(b.name, "cs");
       }
 
       if (a.average !== b.average) return a.average - b.average;
-      if (a.goalsAgainst !== b.goalsAgainst) return a.goalsAgainst - b.goalsAgainst;
+      if (a.goalsAgainst !== b.goalsAgainst) {
+        return a.goalsAgainst - b.goalsAgainst;
+      }
       return a.name.localeCompare(b.name, "cs");
     });
   }, [filteredStatsMatches, goalkeeperSort, players]);
@@ -351,7 +394,9 @@ export default function StatsScreen({
     if (playerSort === "goals") return player.goals;
     if (playerSort === "assists") return player.assists;
     if (playerSort === "rating") {
-      return player.averageRating !== null ? player.averageRating.toFixed(1) : "--";
+      return player.averageRating !== null
+        ? player.averageRating.toFixed(1)
+        : "--";
     }
     if (playerSort === "motm") return player.motmCount;
     return player.points;
@@ -391,9 +436,6 @@ export default function StatsScreen({
     };
   };
 
-  const activePeriodLabel =
-    periods.find((period) => period.id === activePeriodId)?.name ?? "Bez aktivního období";
-
   return (
     <div style={styles.card}>
       <h2 style={styles.screenTitle}>Statistiky</h2>
@@ -409,38 +451,37 @@ export default function StatsScreen({
           Období
         </div>
 
-        <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
-          <button
-            onClick={() => setPeriodFilterMode("ACTIVE")}
-            style={getToggleStyle(periodFilterMode === "ACTIVE")}
-          >
-            Aktivní období
-          </button>
+        <div style={{ display: "grid", gap: "8px", marginBottom: "8px" }}>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              onClick={() => setPeriodFilterMode("active")}
+              style={getToggleStyle(periodFilterMode === "active")}
+            >
+              Aktivní období
+            </button>
+
+            <button
+              onClick={() => setPeriodFilterMode("all")}
+              style={getToggleStyle(periodFilterMode === "all")}
+            >
+              Vše
+            </button>
+          </div>
 
           <button
-            onClick={() => setPeriodFilterMode("ALL")}
-            style={getToggleStyle(periodFilterMode === "ALL")}
+            onClick={() => {
+              setPeriodFilterMode("custom");
+              if (!selectedPeriodId && periods.length > 0) {
+                setSelectedPeriodId(periods[0].id);
+              }
+            }}
+            style={getToggleStyle(periodFilterMode === "custom")}
           >
-            Vše
+            Vybrat konkrétní období
           </button>
         </div>
 
-        {periodFilterMode === "ACTIVE" && (
-          <div
-            style={{
-              padding: "10px 12px",
-              borderRadius: "10px",
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.06)",
-              fontSize: "13px",
-              color: "#d7d7d7",
-            }}
-          >
-            {activePeriodLabel}
-          </div>
-        )}
-
-        {periodFilterMode === "CUSTOM" && (
+        {periodFilterMode === "custom" && (
           <select
             value={selectedPeriodId}
             onChange={(e) => setSelectedPeriodId(e.target.value)}
@@ -451,6 +492,10 @@ export default function StatsScreen({
               marginBottom: "0",
             }}
           >
+            <option value="" style={{ background: "#111111", color: "white" }}>
+              Vyber období
+            </option>
+
             {periods.map((period) => (
               <option
                 key={period.id}
@@ -462,51 +507,6 @@ export default function StatsScreen({
               </option>
             ))}
           </select>
-        )}
-
-        {periodFilterMode !== "CUSTOM" && periods.length > 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              const fallbackPeriodId =
-                selectedPeriodId || periods[0]?.id || "";
-              setSelectedPeriodId(fallbackPeriodId);
-              setPeriodFilterMode("CUSTOM");
-            }}
-            style={{
-              marginTop: "8px",
-              width: "100%",
-              border: "none",
-              borderRadius: "10px",
-              padding: "10px 12px",
-              background: "rgba(255,255,255,0.08)",
-              color: "white",
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
-          >
-            Vybrat konkrétní období
-          </button>
-        )}
-
-        {periodFilterMode === "CUSTOM" && (
-          <button
-            type="button"
-            onClick={() => setPeriodFilterMode("ACTIVE")}
-            style={{
-              marginTop: "8px",
-              width: "100%",
-              border: "none",
-              borderRadius: "10px",
-              padding: "10px 12px",
-              background: "rgba(255,255,255,0.08)",
-              color: "white",
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
-          >
-            Zpět na aktivní období
-          </button>
         )}
       </div>
 
@@ -610,7 +610,13 @@ export default function StatsScreen({
                     border: "1px solid rgba(255,255,255,0.05)",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                    }}
+                  >
                     <div
                       style={{
                         minWidth: "42px",
@@ -704,7 +710,13 @@ export default function StatsScreen({
                     border: "1px solid rgba(255,255,255,0.05)",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                    }}
+                  >
                     <div
                       style={{
                         minWidth: "42px",
