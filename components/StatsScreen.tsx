@@ -57,7 +57,7 @@ function ValueBadge({
   );
 }
 
-function normalizeDateToIso(value: string) {
+function normalizeDateToIso(value?: string | null) {
   if (!value) return "";
 
   const trimmed = value.trim();
@@ -66,8 +66,22 @@ function normalizeDateToIso(value: string) {
     return trimmed;
   }
 
+  if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}$/.test(trimmed)) {
+    return trimmed.slice(0, 10);
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(trimmed)) {
+    return trimmed.slice(0, 10);
+  }
+
   if (/^\d{2}\.\d{2}\.\d{4}$/.test(trimmed)) {
     const [day, month, year] = trimmed.split(".");
+    return `${year}-${month}-${day}`;
+  }
+
+  if (/^\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}$/.test(trimmed)) {
+    const [datePart] = trimmed.split(" ");
+    const [day, month, year] = datePart.split(".");
     return `${year}-${month}-${day}`;
   }
 
