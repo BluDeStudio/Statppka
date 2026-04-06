@@ -18,6 +18,7 @@ type StatsMode = "players" | "goalkeepers";
 type PlayerSort = "goals" | "assists" | "points" | "rating" | "motm";
 type GoalkeeperSort = "matches" | "goalsAgainst" | "average";
 type TeamFilter = "ALL" | "A" | "B";
+type PeriodFilterMode = "ACTIVE" | "ALL" | "CUSTOM";
 
 type StatsScreenProps = {
   clubId: string;
@@ -69,7 +70,10 @@ export default function StatsScreen({
   const [players, setPlayers] = useState<Player[]>([]);
   const [ratings, setRatings] = useState<PlayerRatingRow[]>([]);
   const [periods, setPeriods] = useState<Period[]>([]);
-  const [selectedPeriodId, setSelectedPeriodId] = useState<string>("ALL");
+  const [activePeriodId, setActivePeriodId] = useState<string | null>(null);
+  const [periodFilterMode, setPeriodFilterMode] =
+    useState<PeriodFilterMode>("ACTIVE");
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string>("");
 
   const [statsMode, setStatsMode] = useState<StatsMode>("players");
   const [playerSort, setPlayerSort] = useState<PlayerSort>("points");
@@ -81,11 +85,7 @@ export default function StatsScreen({
     let active = true;
 
     const loadData = async () => {
-      const [
-        loadedPlayers,
-        loadedRatings,
-        periodsResponse,
-      ] = await Promise.all([
+      const [loadedPlayers, loadedRatings, periodsResponse] = await Promise.all([
         getPlayersByClubId(clubId),
         getRatingsForMatches(finishedMatches.map((match) => match.id)),
         supabase
@@ -106,11 +106,18 @@ export default function StatsScreen({
 
       setPeriods(loadedPeriods);
 
-      const activePeriod = loadedPeriods.find((period) => period.is_active);
-      if (activePeriod) {
-        setSelectedPeriodId(activePeriod.id);
+      const foundActivePeriod = loadedPeriods.find((period) => period.is_active) ?? null;
+      setActivePeriodId(foundActivePeriod?.id ?? null);
+
+      if (foundActivePeriod) {
+        setPeriodFilterMode("ACTIVE");
+        setSelectedPeriodId(foundActivePeriod.id);
+      } else if (loadedPeriods.length > 0) {
+        setPeriodFilterMode("CUSTOM");
+        setSelectedPeriodId(loadedPeriods[0].id);
       } else {
-        setSelectedPeriodId("ALL");
+        setPeriodFilterMode("ALL");
+        setSelectedPeriodId("");
       }
     };
 
@@ -126,9 +133,16 @@ export default function StatsScreen({
   };
 
   const selectedPeriod = useMemo(() => {
-    if (selectedPeriodId === "ALL") return null;
+    if (periodFilterMode === "ALL") return null;
+
+    if (periodFilterMode === "ACTIVE") {
+      if (!activePeriodId) return null;
+      return periods.find((period) => period.id === activePeriodId) ?? null;
+    }
+
+    if (!selectedPeriodId) return null;
     return periods.find((period) => period.id === selectedPeriodId) ?? null;
-  }, [periods, selectedPeriodId]);
+  }, [activePeriodId, periodFilterMode, periods, selectedPeriodId]);
 
   const filteredStatsMatches = useMemo(() => {
     let matches = finishedMatches;
@@ -161,6 +175,7 @@ export default function StatsScreen({
       const matchRatings = ratings.filter(
         (rating) => rating.finished_match_id === match.id
       );
+
       const matchSummary = buildMatchRatingSummary(
         match.playerStats.map((player) => player.playerNumber),
         matchRatings
@@ -376,6 +391,9 @@ export default function StatsScreen({
     };
   };
 
+  const activePeriodLabel =
+    periods.find((period) => period.id === activePeriodId)?.name ?? "Bez aktivního období";
+
   return (
     <div style={styles.card}>
       <h2 style={styles.screenTitle}>Statistiky</h2>
@@ -391,31 +409,105 @@ export default function StatsScreen({
           Období
         </div>
 
-        <select
-          value={selectedPeriodId}
-          onChange={(e) => setSelectedPeriodId(e.target.value)}
-          style={{
-            ...styles.input,
-            appearance: "none",
-            cursor: "pointer",
-            marginBottom: "0",
-          }}
-        >
-          <option value="ALL" style={{ background: "#111111", color: "white" }}>
-            Vše
-          </option>
+        <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+          <button
+            onClick={() => setPeriodFilterMode("ACTIVE")}
+            style={getToggleStyle(periodFilterMode === "ACTIVE")}
+          >
+            Aktivní období
+          </button>
 
-          {periods.map((period) => (
-            <option
-              key={period.id}
-              value={period.id}
-              style={{ background: "#111111", color: "white" }}
-            >
-              {period.name}
-              {period.is_active ? " (aktivní)" : ""}
-            </option>
-          ))}
-        </select>
+          <button
+            onClick={() => setPeriodFilterMode("ALL")}
+            style={getToggleStyle(periodFilterMode === "ALL")}
+          >
+            Vše
+          </button>
+        </div>
+
+        {periodFilterMode === "ACTIVE" && (
+          <div
+            style={{
+              padding: "10px 12px",
+              borderRadius: "10px",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.06)",
+              fontSize: "13px",
+              color: "#d7d7d7",
+            }}
+          >
+            {activePeriodLabel}
+          </div>
+        )}
+
+        {periodFilterMode === "CUSTOM" && (
+          <select
+            value={selectedPeriodId}
+            onChange={(e) => setSelectedPeriodId(e.target.value)}
+            style={{
+              ...styles.input,
+              appearance: "none",
+              cursor: "pointer",
+              marginBottom: "0",
+            }}
+          >
+            {periods.map((period) => (
+              <option
+                key={period.id}
+                value={period.id}
+                style={{ background: "#111111", color: "white" }}
+              >
+                {period.name}
+                {period.is_active ? " (aktivní)" : ""}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {periodFilterMode !== "CUSTOM" && periods.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              const fallbackPeriodId =
+                selectedPeriodId || periods[0]?.id || "";
+              setSelectedPeriodId(fallbackPeriodId);
+              setPeriodFilterMode("CUSTOM");
+            }}
+            style={{
+              marginTop: "8px",
+              width: "100%",
+              border: "none",
+              borderRadius: "10px",
+              padding: "10px 12px",
+              background: "rgba(255,255,255,0.08)",
+              color: "white",
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            Vybrat konkrétní období
+          </button>
+        )}
+
+        {periodFilterMode === "CUSTOM" && (
+          <button
+            type="button"
+            onClick={() => setPeriodFilterMode("ACTIVE")}
+            style={{
+              marginTop: "8px",
+              width: "100%",
+              border: "none",
+              borderRadius: "10px",
+              padding: "10px 12px",
+              background: "rgba(255,255,255,0.08)",
+              color: "white",
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            Zpět na aktivní období
+          </button>
+        )}
       </div>
 
       <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>

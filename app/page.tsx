@@ -12,7 +12,8 @@ import LoginScreen from "@/components/LoginScreen";
 import TeamSetupScreen from "@/components/TeamSetupScreen";
 import TrainingsScreen from "@/components/TrainingsScreen";
 import PollsScreen from "@/components/PollsScreen";
-import EditTeamScreen from "../components/EditTeamScreen";
+import EditTeamScreen from "@/components/EditTeamScreen";
+import PeriodsScreen from "@/components/PeriodsScreen";
 import { styles } from "@/styles/appStyles";
 import { teamTheme } from "@/data/teamTheme";
 import { supabase } from "@/lib/supabaseClient";
@@ -43,7 +44,7 @@ type Screen =
   | "stats"
   | "discipline";
 
-type TeamTab = "overview" | "players" | "edit";
+type TeamTab = "overview" | "players" | "periods" | "edit";
 type MatchesTab = "planned" | "played";
 
 export type FinishedMatchEvent =
@@ -1159,6 +1160,13 @@ export default function Home() {
                 </button>
 
                 <button
+                  style={getSubTabStyle(teamTab === "periods")}
+                  onClick={() => setTeamTab("periods")}
+                >
+                  OBDOBÍ
+                </button>
+
+                <button
                   style={getSubTabStyle(teamTab === "edit")}
                   onClick={() => setTeamTab("edit")}
                 >
@@ -1222,6 +1230,13 @@ export default function Home() {
 
               {teamTab === "players" && (
                 <PlayersScreen
+                  clubId={currentClub.id}
+                  primaryColor={currentClub.primary_color}
+                />
+              )}
+
+              {teamTab === "periods" && (
+                <PeriodsScreen
                   clubId={currentClub.id}
                   primaryColor={currentClub.primary_color}
                 />

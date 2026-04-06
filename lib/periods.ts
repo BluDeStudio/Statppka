@@ -1,4 +1,3 @@
-
 import { supabase } from "@/lib/supabaseClient";
 
 export type Period = {
@@ -27,6 +26,21 @@ export async function getActivePeriod(clubId: string): Promise<Period | null> {
   }
 
   return (data as Period) ?? null;
+}
+
+export async function getPeriodsByClubId(clubId: string): Promise<Period[]> {
+  const { data, error } = await supabase
+    .from("periods")
+    .select("*")
+    .eq("club_id", clubId)
+    .order("start_date", { ascending: false });
+
+  if (error) {
+    console.error("Nepodařilo se načíst období:", error);
+    return [];
+  }
+
+  return (data as Period[]) ?? [];
 }
 
 export async function createPeriod({
@@ -73,6 +87,35 @@ export async function createPeriod({
   }
 
   return (data as Period) ?? null;
+}
+
+export async function setActivePeriod(periodId: string, clubId: string): Promise<boolean> {
+  const { error: deactivateError } = await supabase
+    .from("periods")
+    .update({ is_active: false })
+    .eq("club_id", clubId)
+    .eq("is_active", true);
+
+  if (deactivateError) {
+    console.error("Nepodařilo se deaktivovat původní aktivní období:", deactivateError);
+    return false;
+  }
+
+  const { error: activateError } = await supabase
+    .from("periods")
+    .update({
+      is_active: true,
+      is_closed: false,
+    })
+    .eq("id", periodId)
+    .eq("club_id", clubId);
+
+  if (activateError) {
+    console.error("Nepodařilo se nastavit aktivní období:", activateError);
+    return false;
+  }
+
+  return true;
 }
 
 export async function closePeriod(periodId: string): Promise<boolean> {
