@@ -15,6 +15,7 @@ import {
   closePeriod,
   createPeriod,
   getActivePeriod,
+  getPeriodsByClubId,
   type Period,
 } from "@/lib/periods";
 import {
@@ -42,6 +43,7 @@ type MainTab = "attendance" | "fines";
 type FineTab = "awarded" | "templates";
 type AttendanceSort = "highest" | "lowest";
 type PeriodType = "year" | "season";
+type PeriodFilterMode = "active" | "all" | "custom";
 
 type Props = {
   clubId: string;
@@ -58,6 +60,44 @@ function isOlderTraining(training: TrainingRow) {
 
   const trainingDate = new Date(`${training.date}T${endTime}:00`);
   return trainingDate.getTime() < now.getTime();
+}
+
+function normalizeDateToIso(value: string) {
+  if (!value) return "";
+
+  const trimmed = value.trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(trimmed)) {
+    const [day, month, year] = trimmed.split(".");
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function isDateInsidePeriod(dateValue: string, period: Period | null) {
+  if (!period) return true;
+
+  const normalizedDate = normalizeDateToIso(dateValue);
+  const normalizedStart = normalizeDateToIso(period.start_date);
+  const normalizedEnd = normalizeDateToIso(period.end_date);
+
+  if (!normalizedDate || !normalizedStart || !normalizedEnd) {
+    return false;
+  }
+
+  return normalizedDate >= normalizedStart && normalizedDate <= normalizedEnd;
 }
 
 function formatPeriodType(type: PeriodType) {
@@ -95,7 +135,13 @@ export default function DisciplineScreen({
   const [attendanceMap, setAttendanceMap] = useState<
     Record<string, TrainingAttendanceRow[]>
   >({});
+
+  const [periods, setPeriods] = useState<Period[]>([]);
   const [activePeriod, setActivePeriod] = useState<Period | null>(null);
+  const [selectedPeriodId, setSelectedPeriodId] = useState("");
+  const [periodFilterMode, setPeriodFilterMode] =
+    useState<PeriodFilterMode>("active");
+
   const [fines, setFines] = useState<FineRow[]>([]);
   const [fineTemplates, setFineTemplates] = useState<FineTemplateRow[]>([]);
 
@@ -129,6 +175,35 @@ export default function DisciplineScreen({
   const [editingTemplateAmount, setEditingTemplateAmount] = useState("");
   const [editingTemplateIsActive, setEditingTemplateIsActive] = useState(true);
 
+  const loadPeriodsState = async () => {
+    const [loadedPeriods, loadedActivePeriod] = await Promise.all([
+      getPeriodsByClubId(clubId),
+      getActivePeriod(clubId),
+    ]);
+
+    const sortedPeriods = [...loadedPeriods].sort((a, b) =>
+      b.start_date.localeCompare(a.start_date)
+    );
+
+    setPeriods(sortedPeriods);
+    setActivePeriod(loadedActivePeriod);
+
+    setSelectedPeriodId((prev) => {
+      if (prev) return prev;
+      return loadedActivePeriod?.id ?? "";
+    });
+
+    setPeriodFilterMode((prev) => {
+      if (prev === "custom" || prev === "all") return prev;
+      return loadedActivePeriod ? "active" : "all";
+    });
+
+    return {
+      loadedPeriods: sortedPeriods,
+      loadedActivePeriod,
+    };
+  };
+
   useEffect(() => {
     let active = true;
 
@@ -139,14 +214,14 @@ export default function DisciplineScreen({
       const [
         playersData,
         trainingsData,
-        periodData,
+        templatesData,
         {
           data: { user },
         },
       ] = await Promise.all([
         getPlayersByClubId(clubId),
         getTrainingsByClubId(clubId),
-        getActivePeriod(clubId),
+        ensureDefaultFineTemplates(clubId),
         supabase.auth.getUser(),
       ]);
 
@@ -154,12 +229,8 @@ export default function DisciplineScreen({
 
       setPlayers(playersData);
       setTrainings(trainingsData);
-      setActivePeriod(periodData);
-      setCurrentUserId(user?.id ?? null);
-
-      const templatesData = await ensureDefaultFineTemplates(clubId);
-      if (!active) return;
       setFineTemplates(templatesData);
+      setCurrentUserId(user?.id ?? null);
 
       const nextPresenceMap: Record<string, TrainingPresenceRow[]> = {};
       const nextAttendanceMap: Record<string, TrainingAttendanceRow[]> = {};
@@ -179,14 +250,9 @@ export default function DisciplineScreen({
       setPresenceMap(nextPresenceMap);
       setAttendanceMap(nextAttendanceMap);
 
-      if (periodData) {
-        const loadedFines = await getFinesByPeriodId(periodData.id);
-        if (!active) return;
-        setFines(loadedFines);
-      } else {
-        setFines([]);
-      }
+      await loadPeriodsState();
 
+      if (!active) return;
       setLoading(false);
     };
 
@@ -211,7 +277,10 @@ export default function DisciplineScreen({
       if (!anketyTemplate) return;
 
       const olderPollTrainings = trainings.filter(
-        (training) => isOlderTraining(training) && training.poll_enabled === true
+        (training) =>
+          isOlderTraining(training) &&
+          training.poll_enabled === true &&
+          isDateInsidePeriod(training.date, activePeriod)
       );
 
       if (olderPollTrainings.length === 0) return;
@@ -224,9 +293,7 @@ export default function DisciplineScreen({
         for (const player of players) {
           const voted = attendanceRows.some((row) => row.player_id === player.id);
 
-          if (voted) {
-            continue;
-          }
+          if (voted) continue;
 
           const existing = await findExistingPollFine({
             periodId: activePeriod.id,
@@ -234,9 +301,7 @@ export default function DisciplineScreen({
             trainingId: training.id,
           });
 
-          if (existing) {
-            continue;
-          }
+          if (existing) continue;
 
           const created = await createFine({
             clubId,
@@ -272,16 +337,60 @@ export default function DisciplineScreen({
     trainings,
   ]);
 
-  const olderTrainings = useMemo(() => {
-    return trainings.filter((training) => isOlderTraining(training));
-  }, [trainings]);
+  const effectivePeriod = useMemo(() => {
+    if (periodFilterMode === "all") return null;
+    if (periodFilterMode === "active") return activePeriod ?? null;
+    return periods.find((period) => period.id === selectedPeriodId) ?? null;
+  }, [periodFilterMode, activePeriod, periods, selectedPeriodId]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadVisibleFines = async () => {
+      if (periodFilterMode === "all") {
+        const finesByPeriods = await Promise.all(
+          periods.map((period) => getFinesByPeriodId(period.id))
+        );
+
+        if (!active) return;
+
+        const merged = finesByPeriods.flat();
+        setFines(merged);
+        return;
+      }
+
+      if (!effectivePeriod) {
+        if (!active) return;
+        setFines([]);
+        return;
+      }
+
+      const loadedFines = await getFinesByPeriodId(effectivePeriod.id);
+
+      if (!active) return;
+      setFines(loadedFines);
+    };
+
+    void loadVisibleFines();
+
+    return () => {
+      active = false;
+    };
+  }, [effectivePeriod, periodFilterMode, periods]);
+
+  const filteredOlderTrainings = useMemo(() => {
+    return trainings.filter(
+      (training) =>
+        isOlderTraining(training) && isDateInsidePeriod(training.date, effectivePeriod)
+    );
+  }, [trainings, effectivePeriod]);
 
   const attendanceStats = useMemo(() => {
     return players.map((player) => {
       let attended = 0;
-      const total = olderTrainings.length;
+      const total = filteredOlderTrainings.length;
 
-      olderTrainings.forEach((training) => {
+      filteredOlderTrainings.forEach((training) => {
         const rows = presenceMap[training.id] || [];
         const isPresent = rows.some(
           (row) => row.player_id === player.id && row.present
@@ -290,8 +399,7 @@ export default function DisciplineScreen({
         if (isPresent) attended += 1;
       });
 
-      const percentage =
-        total === 0 ? 0 : Math.round((attended / total) * 100);
+      const percentage = total === 0 ? 0 : Math.round((attended / total) * 100);
 
       return {
         player,
@@ -300,7 +408,7 @@ export default function DisciplineScreen({
         percentage,
       };
     });
-  }, [players, olderTrainings, presenceMap]);
+  }, [players, filteredOlderTrainings, presenceMap]);
 
   const sortedAttendanceStats = useMemo(() => {
     const sorted = [...attendanceStats].sort((a, b) => {
@@ -384,8 +492,21 @@ export default function DisciplineScreen({
     setFineTemplates(data);
   };
 
-  const reloadFines = async (periodId: string) => {
-    const data = await getFinesByPeriodId(periodId);
+  const reloadVisibleFines = async () => {
+    if (periodFilterMode === "all") {
+      const finesByPeriods = await Promise.all(
+        periods.map((period) => getFinesByPeriodId(period.id))
+      );
+      setFines(finesByPeriods.flat());
+      return;
+    }
+
+    if (!effectivePeriod) {
+      setFines([]);
+      return;
+    }
+
+    const data = await getFinesByPeriodId(effectivePeriod.id);
     setFines(data);
   };
 
@@ -427,8 +548,7 @@ export default function DisciplineScreen({
       return;
     }
 
-    setActivePeriod(created);
-    setFines([]);
+    await loadPeriodsState();
     resetPeriodForm();
     setMessage("Období bylo vytvořeno.");
     setPeriodSaving(false);
@@ -454,8 +574,7 @@ export default function DisciplineScreen({
       return;
     }
 
-    setActivePeriod(null);
-    setFines([]);
+    await loadPeriodsState();
     setExpandedPlayerId(null);
     setMessage("Období bylo uzavřeno. Teď můžeš založit nové.");
     setPeriodSaving(false);
@@ -504,6 +623,11 @@ export default function DisciplineScreen({
       return;
     }
 
+    if (!isDateInsidePeriod(fineDate, activePeriod)) {
+      setMessage("Datum pokuty nespadá do aktivního období.");
+      return;
+    }
+
     setFineSaving(true);
     setMessage("");
 
@@ -524,7 +648,7 @@ export default function DisciplineScreen({
       return;
     }
 
-    await reloadFines(activePeriod.id);
+    await reloadVisibleFines();
     resetFineForm();
     setShowFineForm(false);
     setMessage("Pokuta byla přidána.");
@@ -532,8 +656,6 @@ export default function DisciplineScreen({
   };
 
   const handleToggleFinePaid = async (fine: FineRow) => {
-    if (!activePeriod) return;
-
     const success = await setFinePaidStatus({
       fineId: fine.id,
       isPaid: !fine.is_paid,
@@ -544,7 +666,7 @@ export default function DisciplineScreen({
       return;
     }
 
-    await reloadFines(activePeriod.id);
+    await reloadVisibleFines();
     setMessage(
       !fine.is_paid
         ? "Pokuta byla označena jako zaplacená."
@@ -825,6 +947,71 @@ export default function DisciplineScreen({
         </div>
       )}
 
+      <div style={styles.card}>
+        <h2 style={styles.screenTitle}>Filtr období</h2>
+
+        <div style={{ display: "grid", gap: "8px", marginTop: "12px" }}>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              type="button"
+              onClick={() => setPeriodFilterMode("active")}
+              style={tabButton(periodFilterMode === "active")}
+            >
+              Aktivní období
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPeriodFilterMode("all")}
+              style={tabButton(periodFilterMode === "all")}
+            >
+              Vše
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setPeriodFilterMode("custom");
+              if (!selectedPeriodId && periods.length > 0) {
+                setSelectedPeriodId(periods[0].id);
+              }
+            }}
+            style={tabButton(periodFilterMode === "custom")}
+          >
+            Vybrat konkrétní období
+          </button>
+
+          {periodFilterMode === "custom" && (
+            <select
+              value={selectedPeriodId}
+              onChange={(e) => setSelectedPeriodId(e.target.value)}
+              style={{
+                ...styles.input,
+                appearance: "none",
+                cursor: "pointer",
+                marginBottom: 0,
+              }}
+            >
+              <option value="" style={{ background: "#111111", color: "white" }}>
+                Vyber období
+              </option>
+
+              {periods.map((period) => (
+                <option
+                  key={period.id}
+                  value={period.id}
+                  style={{ background: "#111111", color: "white" }}
+                >
+                  {period.name}
+                  {period.is_active ? " (aktivní)" : ""}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      </div>
+
       {message && (
         <div
           style={{
@@ -888,15 +1075,15 @@ export default function DisciplineScreen({
               lineHeight: 1.5,
             }}
           >
-            Do docházky se počítají všechny starší tréninky. Jakmile u staršího
-            tréninku potvrdíš účast, zapíše se hráčům do docházky.
+            Do docházky se počítají všechny starší tréninky v právě zvoleném období.
+            Jakmile u staršího tréninku potvrdíš účast, zapíše se hráčům do docházky.
           </div>
 
           {loading ? (
             <div style={{ color: "#b8b8b8" }}>Načítám docházku...</div>
-          ) : olderTrainings.length === 0 ? (
+          ) : filteredOlderTrainings.length === 0 ? (
             <div style={{ color: "#b8b8b8" }}>
-              Zatím nejsou žádné starší tréninky.
+              Zatím nejsou žádné starší tréninky v tomto filtru období.
             </div>
           ) : (
             <div style={{ display: "grid", gap: "10px" }}>
@@ -1128,7 +1315,7 @@ export default function DisciplineScreen({
               <div style={styles.card}>
                 <h2 style={styles.screenTitle}>Přehled hráčů a pokut</h2>
 
-                {!activePeriod ? (
+                {!activePeriod && periodFilterMode !== "all" ? (
                   <div style={{ color: "#b8b8b8" }}>
                     Nejprve vytvoř aktivní období.
                   </div>
@@ -1160,7 +1347,7 @@ export default function DisciplineScreen({
 
                     {fineSummary.length === 0 ? (
                       <div style={{ color: "#b8b8b8" }}>
-                        Zatím žádné pokuty v tomto období.
+                        Zatím žádné pokuty v tomto filtru období.
                       </div>
                     ) : (
                       <div style={{ display: "grid", gap: "10px" }}>
