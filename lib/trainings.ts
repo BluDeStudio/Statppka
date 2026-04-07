@@ -32,6 +32,50 @@ export type TrainingPresenceRow = {
   created_at?: string | null;
 };
 
+function normalizeDateToIso(value?: string | null) {
+  if (!value) return "";
+
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const isoDateTimeMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+  if (isoDateTimeMatch) {
+    return isoDateTimeMatch[1];
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  const dotMatch = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+.*)?$/);
+  if (dotMatch) {
+    const [, day, month, year] = dotMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  const slashMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+.*)?$/);
+  if (slashMatch) {
+    const [, day, month, year] = slashMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeTrainingRow(row: TrainingRow): TrainingRow {
+  return {
+    ...row,
+    date: normalizeDateToIso(row.date) || row.date,
+  };
+}
+
 export async function getTrainingsByClubId(clubId: string): Promise<TrainingRow[]> {
   const { data, error } = await supabase
     .from("trainings")
@@ -44,7 +88,9 @@ export async function getTrainingsByClubId(clubId: string): Promise<TrainingRow[
     return [];
   }
 
-  return (data as TrainingRow[]) ?? [];
+  return ((data as TrainingRow[]) ?? [])
+    .map(normalizeTrainingRow)
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export async function createTraining({
@@ -64,10 +110,17 @@ export async function createTraining({
     poll_enabled?: boolean;
   };
 }): Promise<TrainingRow | null> {
+  const normalizedDate = normalizeDateToIso(training.date);
+
+  if (!normalizedDate) {
+    console.error("Nepodařilo se vytvořit trénink: neplatné datum", training.date);
+    return null;
+  }
+
   const payload = {
     club_id: clubId,
     created_by: userId,
-    date: training.date,
+    date: normalizedDate,
     time: training.time ?? null,
     start_time: training.start_time ?? null,
     end_time: training.end_time ?? null,
@@ -87,7 +140,7 @@ export async function createTraining({
     return null;
   }
 
-  return (data as TrainingRow) ?? null;
+  return data ? normalizeTrainingRow(data as TrainingRow) : null;
 }
 
 export async function updateTraining({
@@ -105,8 +158,15 @@ export async function updateTraining({
     poll_enabled?: boolean;
   };
 }): Promise<TrainingRow | null> {
+  const normalizedDate = normalizeDateToIso(training.date);
+
+  if (!normalizedDate) {
+    console.error("Nepodařilo se upravit trénink: neplatné datum", training.date);
+    return null;
+  }
+
   const payload = {
-    date: training.date,
+    date: normalizedDate,
     time: training.time ?? null,
     start_time: training.start_time ?? null,
     end_time: training.end_time ?? null,
@@ -129,7 +189,7 @@ export async function updateTraining({
     return null;
   }
 
-  return (data as TrainingRow) ?? null;
+  return data ? normalizeTrainingRow(data as TrainingRow) : null;
 }
 
 export async function deleteTraining(trainingId: string): Promise<boolean> {
@@ -246,4 +306,3 @@ export async function saveTrainingPresence({
 
   return true;
 }
-

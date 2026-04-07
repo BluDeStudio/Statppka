@@ -22,6 +22,51 @@ export type FineSummaryRow = {
   unpaid_amount: number;
 };
 
+function normalizeDateToIso(value?: string | null) {
+  if (!value) return "";
+
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const isoDateTimeMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+  if (isoDateTimeMatch) {
+    return isoDateTimeMatch[1];
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  const dotMatch = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+.*)?$/);
+  if (dotMatch) {
+    const [, day, month, year] = dotMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  const slashMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+.*)?$/);
+  if (slashMatch) {
+    const [, day, month, year] = slashMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeFineRow(row: FineRow): FineRow {
+  return {
+    ...row,
+    amount: Number(row.amount),
+    fine_date: normalizeDateToIso(row.fine_date) || row.fine_date,
+  };
+}
+
 export async function getFinesByPeriodId(periodId: string): Promise<FineRow[]> {
   const { data, error } = await supabase
     .from("fines")
@@ -35,10 +80,7 @@ export async function getFinesByPeriodId(periodId: string): Promise<FineRow[]> {
     return [];
   }
 
-  return ((data as FineRow[]) ?? []).map((row) => ({
-    ...row,
-    amount: Number(row.amount),
-  }));
+  return ((data as FineRow[]) ?? []).map(normalizeFineRow);
 }
 
 export async function createFine({
@@ -60,16 +102,23 @@ export async function createFine({
   fineDate: string;
   createdBy?: string | null;
 }): Promise<FineRow | null> {
+  const normalizedFineDate = normalizeDateToIso(fineDate);
+
+  if (!normalizedFineDate) {
+    console.error("Nepodařilo se vytvořit pokutu: neplatné datum", fineDate);
+    return null;
+  }
+
   const { data, error } = await supabase
     .from("fines")
     .insert({
       club_id: clubId,
       period_id: periodId,
       player_id: playerId,
-      amount,
+      amount: Number(amount),
       reason,
       note: note ?? null,
-      fine_date: fineDate,
+      fine_date: normalizedFineDate,
       is_paid: false,
       created_by: createdBy ?? null,
     })
@@ -81,12 +130,7 @@ export async function createFine({
     return null;
   }
 
-  return data
-    ? {
-        ...(data as FineRow),
-        amount: Number((data as FineRow).amount),
-      }
-    : null;
+  return data ? normalizeFineRow(data as FineRow) : null;
 }
 
 export async function findExistingPollFine({
@@ -103,7 +147,6 @@ export async function findExistingPollFine({
     .select("*")
     .eq("period_id", periodId)
     .eq("player_id", playerId)
-    .eq("reason", "Ankety")
     .eq("note", `training:${trainingId}`)
     .maybeSingle();
 
@@ -114,10 +157,7 @@ export async function findExistingPollFine({
 
   if (!data) return null;
 
-  return {
-    ...(data as FineRow),
-    amount: Number((data as FineRow).amount),
-  };
+  return normalizeFineRow(data as FineRow);
 }
 
 export async function updateFine({
@@ -133,13 +173,20 @@ export async function updateFine({
   note?: string | null;
   fineDate: string;
 }): Promise<FineRow | null> {
+  const normalizedFineDate = normalizeDateToIso(fineDate);
+
+  if (!normalizedFineDate) {
+    console.error("Nepodařilo se upravit pokutu: neplatné datum", fineDate);
+    return null;
+  }
+
   const { data, error } = await supabase
     .from("fines")
     .update({
-      amount,
+      amount: Number(amount),
       reason,
       note: note ?? null,
-      fine_date: fineDate,
+      fine_date: normalizedFineDate,
     })
     .eq("id", fineId)
     .select("*")
@@ -150,12 +197,7 @@ export async function updateFine({
     return null;
   }
 
-  return data
-    ? {
-        ...(data as FineRow),
-        amount: Number((data as FineRow).amount),
-      }
-    : null;
+  return data ? normalizeFineRow(data as FineRow) : null;
 }
 
 export async function setFinePaidStatus({
@@ -252,4 +294,3 @@ export function getUnpaidFineAmount(fines: FineRow[]): number {
       .toFixed(2)
   );
 }
-
