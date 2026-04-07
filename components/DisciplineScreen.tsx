@@ -50,29 +50,30 @@ type Props = {
   primaryColor?: string;
 };
 
-function isOlderTraining(training: TrainingRow) {
-  const now = new Date();
-
-  const endTime =
-    training.end_time?.slice(0, 5) ||
-    training.start_time?.slice(0, 5) ||
-    "23:59";
-
-  const trainingDate = new Date(`${training.date}T${endTime}:00`);
-  return trainingDate.getTime() < now.getTime();
-}
-
-function normalizeDateToIso(value: string) {
+function normalizeDateToIso(value?: string | null) {
   if (!value) return "";
 
   const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const dateOnlyFromIsoDateTime = trimmed.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+  if (dateOnlyFromIsoDateTime) {
+    return dateOnlyFromIsoDateTime[1];
+  }
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     return trimmed;
   }
 
-  if (/^\d{2}\.\d{2}\.\d{4}$/.test(trimmed)) {
-    const [day, month, year] = trimmed.split(".");
+  const dotMatch = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+.*)?$/);
+  if (dotMatch) {
+    const [, day, month, year] = dotMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  const slashMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+.*)?$/);
+  if (slashMatch) {
+    const [, day, month, year] = slashMatch;
     return `${year}-${month}-${day}`;
   }
 
@@ -84,6 +85,30 @@ function normalizeDateToIso(value: string) {
   const day = String(parsed.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function toDateTimeMs(dateValue?: string | null, timeValue?: string | null) {
+  const isoDate = normalizeDateToIso(dateValue);
+  if (!isoDate) return Number.NaN;
+
+  const normalizedTime =
+    timeValue && /^\d{2}:\d{2}/.test(timeValue) ? timeValue.slice(0, 5) : "00:00";
+
+  const parsed = new Date(`${isoDate}T${normalizedTime}:00`);
+  return parsed.getTime();
+}
+
+function isOlderTraining(training: TrainingRow) {
+  const now = Date.now();
+  const endTime =
+    training.end_time?.slice(0, 5) ||
+    training.start_time?.slice(0, 5) ||
+    "23:59";
+
+  const trainingTime = toDateTimeMs(training.date, endTime);
+  if (Number.isNaN(trainingTime)) return false;
+
+  return trainingTime < now;
 }
 
 function isDateInsidePeriod(dateValue: string, period: Period | null) {
@@ -182,7 +207,9 @@ export default function DisciplineScreen({
     ]);
 
     const sortedPeriods = [...loadedPeriods].sort((a, b) =>
-      b.start_date.localeCompare(a.start_date)
+      normalizeDateToIso(b.start_date).localeCompare(
+        normalizeDateToIso(a.start_date)
+      )
     );
 
     setPeriods(sortedPeriods);
@@ -289,33 +316,61 @@ export default function DisciplineScreen({
 
       for (const training of olderPollTrainings) {
         const attendanceRows = attendanceMap[training.id] ?? [];
+        const normalizedTrainingDate = normalizeDateToIso(training.date);
+
+        if (!normalizedTrainingDate) {
+          console.error(
+            "Automatic poll fine skipped: invalid training date",
+            training
+          );
+          continue;
+        }
 
         for (const player of players) {
           const voted = attendanceRows.some((row) => row.player_id === player.id);
 
           if (voted) continue;
 
-          const existing = await findExistingPollFine({
-            periodId: activePeriod.id,
-            playerId: player.id,
-            trainingId: training.id,
-          });
+          try {
+            const existing = await findExistingPollFine({
+              periodId: activePeriod.id,
+              playerId: player.id,
+              trainingId: training.id,
+            });
 
-          if (existing) continue;
+            if (existing) continue;
 
-          const created = await createFine({
-            clubId,
-            periodId: activePeriod.id,
-            playerId: player.id,
-            amount: Number(anketyTemplate.default_amount),
-            reason: "Ankety",
-            note: `training:${training.id}`,
-            fineDate: training.date,
-            createdBy: currentUserId,
-          });
+            const created = await createFine({
+              clubId,
+              periodId: activePeriod.id,
+              playerId: player.id,
+              amount: Number(anketyTemplate.default_amount),
+              reason: anketyTemplate.name,
+              note: `training:${training.id}`,
+              fineDate: normalizedTrainingDate,
+              createdBy: currentUserId,
+            });
 
-          if (created) {
-            createdAny = true;
+            if (created) {
+              createdAny = true;
+            } else {
+              console.error("Automatic poll fine creation failed", {
+                clubId,
+                periodId: activePeriod.id,
+                playerId: player.id,
+                trainingId: training.id,
+                templateId: anketyTemplate.id,
+              });
+            }
+          } catch (error) {
+            console.error("Automatic poll fine creation error", {
+              error,
+              clubId,
+              periodId: activePeriod.id,
+              playerId: player.id,
+              trainingId: training.id,
+              templateId: anketyTemplate.id,
+            });
           }
         }
       }
@@ -526,7 +581,15 @@ export default function DisciplineScreen({
       return;
     }
 
-    if (periodEndDate < periodStartDate) {
+    const normalizedStart = normalizeDateToIso(periodStartDate);
+    const normalizedEnd = normalizeDateToIso(periodEndDate);
+
+    if (!normalizedStart || !normalizedEnd) {
+      setMessage("Datum období není ve správném formátu.");
+      return;
+    }
+
+    if (normalizedEnd < normalizedStart) {
       setMessage("Datum konce musí být později než datum začátku.");
       return;
     }
@@ -538,8 +601,8 @@ export default function DisciplineScreen({
       clubId,
       name: periodName.trim(),
       type: periodType,
-      startDate: periodStartDate,
-      endDate: periodEndDate,
+      startDate: normalizedStart,
+      endDate: normalizedEnd,
     });
 
     if (!created) {
@@ -623,7 +686,14 @@ export default function DisciplineScreen({
       return;
     }
 
-    if (!isDateInsidePeriod(fineDate, activePeriod)) {
+    const normalizedFineDate = normalizeDateToIso(fineDate);
+
+    if (!normalizedFineDate) {
+      setMessage("Datum pokuty není ve správném formátu.");
+      return;
+    }
+
+    if (!isDateInsidePeriod(normalizedFineDate, activePeriod)) {
       setMessage("Datum pokuty nespadá do aktivního období.");
       return;
     }
@@ -638,7 +708,7 @@ export default function DisciplineScreen({
       amount: parsedAmount,
       reason: fineReason.trim(),
       note: fineNote.trim() || null,
-      fineDate,
+      fineDate: normalizedFineDate,
       createdBy: currentUserId,
     });
 
@@ -1354,7 +1424,9 @@ export default function DisciplineScreen({
                         {fineSummary.map((item, index) => {
                           const playerFines =
                             (finesByPlayer.get(item.player_id) ?? []).slice().sort((a, b) => {
-                              const dateCompare = b.fine_date.localeCompare(a.fine_date);
+                              const dateCompare = normalizeDateToIso(
+                                b.fine_date
+                              ).localeCompare(normalizeDateToIso(a.fine_date));
                               if (dateCompare !== 0) return dateCompare;
                               return (b.created_at ?? "").localeCompare(a.created_at ?? "");
                             });
