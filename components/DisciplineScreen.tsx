@@ -56,9 +56,9 @@ function normalizeDateToIso(value?: string | null) {
   const trimmed = value.trim();
   if (!trimmed) return "";
 
-  const dateOnlyFromIsoDateTime = trimmed.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
-  if (dateOnlyFromIsoDateTime) {
-    return dateOnlyFromIsoDateTime[1];
+  const isoDateTimeMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+  if (isoDateTimeMatch) {
+    return isoDateTimeMatch[1];
   }
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
@@ -103,6 +103,7 @@ function isOlderTraining(training: TrainingRow) {
   const endTime =
     training.end_time?.slice(0, 5) ||
     training.start_time?.slice(0, 5) ||
+    training.time?.slice(0, 5) ||
     "23:59";
 
   const trainingTime = toDateTimeMs(training.date, endTime);
@@ -327,7 +328,11 @@ export default function DisciplineScreen({
         }
 
         for (const player of players) {
-          const voted = attendanceRows.some((row) => row.player_id === player.id);
+          const voted = attendanceRows.some(
+            (row) =>
+              row.player_id === player.id &&
+              (row.status === "yes" || row.status === "no")
+          );
 
           if (voted) continue;
 

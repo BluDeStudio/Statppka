@@ -126,6 +126,14 @@ export async function createFine({
     .single();
 
   if (error) {
+    if (error.code === "23505") {
+      console.error(
+        "Pokuta už existuje, duplicita byla zablokována databází:",
+        error
+      );
+      return null;
+    }
+
     console.error("Nepodařilo se vytvořit pokutu:", error);
     return null;
   }
