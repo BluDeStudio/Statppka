@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { getPlayersByClubId, type Player } from "@/lib/players";
+import {
+  getPlayersByClubId,
+  getClubMemberPlayersByClubId,
+  type Player,
+  type ClubMemberPlayer,
+} from "@/lib/players";
 import {
   getTrainingsByClubId,
   getTrainingAttendance,
@@ -87,29 +92,16 @@ function normalizeDateToIso(value?: string | null) {
   return `${year}-${month}-${day}`;
 }
 
-function toDateTimeMs(dateValue?: string | null, timeValue?: string | null) {
-  const isoDate = normalizeDateToIso(dateValue);
-  if (!isoDate) return Number.NaN;
-
-  const normalizedTime =
-    timeValue && /^\d{2}:\d{2}/.test(timeValue) ? timeValue.slice(0, 5) : "00:00";
-
-  const parsed = new Date(`${isoDate}T${normalizedTime}:00`);
-  return parsed.getTime();
-}
-
 function isOlderTraining(training: TrainingRow) {
   const now = Date.now();
-  const endTime =
-    training.end_time?.slice(0, 5) ||
-    training.start_time?.slice(0, 5) ||
-    training.time?.slice(0, 5) ||
-    "23:59";
+  const isoDate = normalizeDateToIso(training.date);
 
-  const trainingTime = toDateTimeMs(training.date, endTime);
-  if (Number.isNaN(trainingTime)) return false;
+  if (!isoDate) return false;
 
-  return trainingTime < now;
+  const parsed = new Date(isoDate);
+  if (Number.isNaN(parsed.getTime())) return false;
+
+  return parsed.getTime() < now;
 }
 
 function isDateInsidePeriod(dateValue: string, period: Period | null) {
@@ -154,6 +146,9 @@ export default function DisciplineScreen({
     useState<AttendanceSort>("highest");
 
   const [players, setPlayers] = useState<Player[]>([]);
+  const [clubMemberPlayers, setClubMemberPlayers] = useState<ClubMemberPlayer[]>(
+    []
+  );
   const [trainings, setTrainings] = useState<TrainingRow[]>([]);
   const [presenceMap, setPresenceMap] = useState<
     Record<string, TrainingPresenceRow[]>
@@ -196,10 +191,20 @@ export default function DisciplineScreen({
   const [newTemplateName, setNewTemplateName] = useState("");
   const [newTemplateAmount, setNewTemplateAmount] = useState("");
 
-  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(
+    null
+  );
   const [editingTemplateName, setEditingTemplateName] = useState("");
   const [editingTemplateAmount, setEditingTemplateAmount] = useState("");
   const [editingTemplateIsActive, setEditingTemplateIsActive] = useState(true);
+
+  const disciplinePlayers = useMemo(() => {
+    if (players.length > 0) {
+      return players;
+    }
+
+    return clubMemberPlayers as Player[];
+  }, [players, clubMemberPlayers]);
 
   const loadPeriodsState = useCallback(async () => {
     const [loadedPeriods, loadedActivePeriod] = await Promise.all([
@@ -263,7 +268,7 @@ export default function DisciplineScreen({
 
   const syncAutomaticPollFines = useCallback(async () => {
     if (!activePeriod) return;
-    if (players.length === 0) return;
+    if (disciplinePlayers.length === 0) return;
     if (trainings.length === 0) return;
     if (fineTemplates.length === 0) return;
     if (Object.keys(attendanceMap).length === 0) return;
@@ -290,11 +295,14 @@ export default function DisciplineScreen({
       const normalizedTrainingDate = normalizeDateToIso(training.date);
 
       if (!normalizedTrainingDate) {
-        console.error("Automatic poll fine skipped: invalid training date", training);
+        console.error(
+          "Automatic poll fine skipped: invalid training date",
+          training
+        );
         continue;
       }
 
-      for (const player of players) {
+      for (const player of disciplinePlayers) {
         const voted = attendanceRows.some(
           (row) =>
             row.player_id === player.id &&
@@ -355,8 +363,8 @@ export default function DisciplineScreen({
     attendanceMap,
     clubId,
     currentUserId,
+    disciplinePlayers,
     fineTemplates,
-    players,
     reloadVisibleFines,
     trainings,
   ]);
@@ -370,6 +378,7 @@ export default function DisciplineScreen({
 
       const [
         playersData,
+        clubMemberPlayersData,
         trainingsData,
         templatesData,
         {
@@ -377,6 +386,7 @@ export default function DisciplineScreen({
         },
       ] = await Promise.all([
         getPlayersByClubId(clubId),
+        getClubMemberPlayersByClubId(clubId),
         getTrainingsByClubId(clubId),
         ensureDefaultFineTemplates(clubId),
         supabase.auth.getUser(),
@@ -385,6 +395,7 @@ export default function DisciplineScreen({
       if (!active) return;
 
       setPlayers(playersData);
+      setClubMemberPlayers(clubMemberPlayersData);
       setTrainings(trainingsData);
       setFineTemplates(templatesData);
       setCurrentUserId(user?.id ?? null);
@@ -456,7 +467,7 @@ export default function DisciplineScreen({
   useEffect(() => {
     if (
       !activePeriod ||
-      players.length === 0 ||
+      disciplinePlayers.length === 0 ||
       trainings.length === 0 ||
       Object.keys(attendanceMap).length === 0
     ) {
@@ -464,7 +475,13 @@ export default function DisciplineScreen({
     }
 
     void syncAutomaticPollFines();
-  }, [activePeriod, players, trainings, attendanceMap, syncAutomaticPollFines]);
+  }, [
+    activePeriod,
+    disciplinePlayers,
+    trainings,
+    attendanceMap,
+    syncAutomaticPollFines,
+  ]);
 
   useEffect(() => {
     if (mainTab === "fines") {
@@ -475,12 +492,13 @@ export default function DisciplineScreen({
   const filteredOlderTrainings = useMemo(() => {
     return trainings.filter(
       (training) =>
-        isOlderTraining(training) && isDateInsidePeriod(training.date, effectivePeriod)
+        isOlderTraining(training) &&
+        isDateInsidePeriod(training.date, effectivePeriod)
     );
   }, [trainings, effectivePeriod]);
 
   const attendanceStats = useMemo(() => {
-    return players.map((player) => {
+    return disciplinePlayers.map((player) => {
       let attended = 0;
       const total = filteredOlderTrainings.length;
 
@@ -502,7 +520,7 @@ export default function DisciplineScreen({
         percentage,
       };
     });
-  }, [players, filteredOlderTrainings, presenceMap]);
+  }, [disciplinePlayers, filteredOlderTrainings, presenceMap]);
 
   const sortedAttendanceStats = useMemo(() => {
     const sorted = [...attendanceStats].sort((a, b) => {
@@ -527,8 +545,8 @@ export default function DisciplineScreen({
       .map((item) => ({
         ...item,
         playerName:
-          players.find((player) => player.id === item.player_id)?.name ??
-          "Neznámý hráč",
+          disciplinePlayers.find((player) => player.id === item.player_id)
+            ?.name ?? "Neznámý hráč",
       }))
       .sort((a, b) => {
         if (b.unpaid_amount !== a.unpaid_amount) {
@@ -539,7 +557,7 @@ export default function DisciplineScreen({
         }
         return a.playerName.localeCompare(b.playerName, "cs");
       });
-  }, [fines, players]);
+  }, [disciplinePlayers, fines]);
 
   const finesByPlayer = useMemo(() => {
     const map = new Map<string, FineRow[]>();
@@ -1307,7 +1325,7 @@ export default function DisciplineScreen({
                           <option value="" style={{ background: "#111111", color: "white" }}>
                             Vyber hráče
                           </option>
-                          {players
+                          {disciplinePlayers
                             .slice()
                             .sort((a, b) => a.name.localeCompare(b.name, "cs"))
                             .map((player) => (
@@ -1441,13 +1459,18 @@ export default function DisciplineScreen({
                     ) : (
                       <div style={{ display: "grid", gap: "10px" }}>
                         {fineSummary.map((item, index) => {
-                          const playerFines =
-                            (finesByPlayer.get(item.player_id) ?? []).slice().sort((a, b) => {
+                          const playerFines = (
+                            finesByPlayer.get(item.player_id) ?? []
+                          )
+                            .slice()
+                            .sort((a, b) => {
                               const dateCompare = normalizeDateToIso(
                                 b.fine_date
                               ).localeCompare(normalizeDateToIso(a.fine_date));
                               if (dateCompare !== 0) return dateCompare;
-                              return (b.created_at ?? "").localeCompare(a.created_at ?? "");
+                              return (b.created_at ?? "").localeCompare(
+                                a.created_at ?? ""
+                              );
                             });
 
                           const isExpanded = expandedPlayerId === item.player_id;
@@ -1466,7 +1489,9 @@ export default function DisciplineScreen({
                                 type="button"
                                 onClick={() =>
                                   setExpandedPlayerId((prev) =>
-                                    prev === item.player_id ? null : item.player_id
+                                    prev === item.player_id
+                                      ? null
+                                      : item.player_id
                                   )
                                 }
                                 style={{
@@ -1487,7 +1512,13 @@ export default function DisciplineScreen({
                                     gap: "12px",
                                   }}
                                 >
-                                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: "12px",
+                                    }}
+                                  >
                                     <div
                                       style={{
                                         minWidth: "40px",
@@ -1505,7 +1536,9 @@ export default function DisciplineScreen({
                                     </div>
 
                                     <div>
-                                      <div style={{ fontWeight: "bold" }}>{item.playerName}</div>
+                                      <div style={{ fontWeight: "bold" }}>
+                                        {item.playerName}
+                                      </div>
                                       <div
                                         style={{
                                           fontSize: "13px",
@@ -1562,9 +1595,20 @@ export default function DisciplineScreen({
                               </button>
 
                               {isExpanded && (
-                                <div style={{ display: "grid", gap: "8px", marginTop: "12px" }}>
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gap: "8px",
+                                    marginTop: "12px",
+                                  }}
+                                >
                                   {playerFines.length === 0 ? (
-                                    <div style={{ color: "#b8b8b8", fontSize: "13px" }}>
+                                    <div
+                                      style={{
+                                        color: "#b8b8b8",
+                                        fontSize: "13px",
+                                      }}
+                                    >
                                       Žádné pokuty.
                                     </div>
                                   ) : (
@@ -1575,7 +1619,8 @@ export default function DisciplineScreen({
                                           padding: "10px 12px",
                                           borderRadius: "10px",
                                           background: "rgba(255,255,255,0.03)",
-                                          border: "1px solid rgba(255,255,255,0.04)",
+                                          border:
+                                            "1px solid rgba(255,255,255,0.04)",
                                         }}
                                       >
                                         <div
@@ -1587,7 +1632,12 @@ export default function DisciplineScreen({
                                           }}
                                         >
                                           <div style={{ flex: 1 }}>
-                                            <div style={{ fontWeight: "bold", fontSize: "14px" }}>
+                                            <div
+                                              style={{
+                                                fontWeight: "bold",
+                                                fontSize: "14px",
+                                              }}
+                                            >
                                               {fine.reason}
                                             </div>
                                             <div
@@ -1618,7 +1668,9 @@ export default function DisciplineScreen({
                                               style={{
                                                 fontWeight: "bold",
                                                 fontSize: "15px",
-                                                color: fine.is_paid ? "#9af0b6" : "#ffb0a8",
+                                                color: fine.is_paid
+                                                  ? "#9af0b6"
+                                                  : "#ffb0a8",
                                               }}
                                             >
                                               {formatMoney(fine.amount)}
@@ -1627,11 +1679,15 @@ export default function DisciplineScreen({
                                               style={{
                                                 fontSize: "11px",
                                                 marginTop: "4px",
-                                                color: fine.is_paid ? "#9af0b6" : "#ffb0a8",
+                                                color: fine.is_paid
+                                                  ? "#9af0b6"
+                                                  : "#ffb0a8",
                                                 fontWeight: "bold",
                                               }}
                                             >
-                                              {fine.is_paid ? "ZAPLACENO" : "NEZAPLACENO"}
+                                              {fine.is_paid
+                                                ? "ZAPLACENO"
+                                                : "NEZAPLACENO"}
                                             </div>
                                           </div>
                                         </div>
@@ -1639,7 +1695,9 @@ export default function DisciplineScreen({
                                         {!fine.is_paid && (
                                           <button
                                             type="button"
-                                            onClick={() => void handleToggleFinePaid(fine)}
+                                            onClick={() =>
+                                              void handleToggleFinePaid(fine)
+                                            }
                                             style={{
                                               marginTop: "10px",
                                               width: "100%",
@@ -1741,7 +1799,9 @@ export default function DisciplineScreen({
                             }}
                           >
                             <div>
-                              <div style={{ fontWeight: "bold" }}>{template.name}</div>
+                              <div style={{ fontWeight: "bold" }}>
+                                {template.name}
+                              </div>
                               <div
                                 style={{
                                   marginTop: "6px",
@@ -1760,7 +1820,9 @@ export default function DisciplineScreen({
                                 background: template.is_active
                                   ? "rgba(46, 204, 113, 0.16)"
                                   : "rgba(255,255,255,0.10)",
-                                color: template.is_active ? "#9af0b6" : "#b8b8b8",
+                                color: template.is_active
+                                  ? "#9af0b6"
+                                  : "#b8b8b8",
                                 fontWeight: "bold",
                                 fontSize: "12px",
                                 whiteSpace: "nowrap",
@@ -1770,7 +1832,9 @@ export default function DisciplineScreen({
                             </div>
                           </div>
 
-                          <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+                          <div
+                            style={{ display: "flex", gap: "8px", marginTop: "12px" }}
+                          >
                             <button
                               type="button"
                               onClick={() => handleStartEditTemplate(template)}
@@ -1820,7 +1884,9 @@ export default function DisciplineScreen({
                                 type="text"
                                 placeholder="Název pokuty"
                                 value={editingTemplateName}
-                                onChange={(e) => setEditingTemplateName(e.target.value)}
+                                onChange={(e) =>
+                                  setEditingTemplateName(e.target.value)
+                                }
                                 style={styles.input}
                               />
 
@@ -1828,7 +1894,9 @@ export default function DisciplineScreen({
                                 type="number"
                                 placeholder="Výchozí částka"
                                 value={editingTemplateAmount}
-                                onChange={(e) => setEditingTemplateAmount(e.target.value)}
+                                onChange={(e) =>
+                                  setEditingTemplateAmount(e.target.value)
+                                }
                                 style={styles.input}
                               />
 
