@@ -55,6 +55,8 @@ type Props = {
   primaryColor?: string;
 };
 
+type DisciplinePlayer = Player | ClubMemberPlayer;
+
 function normalizeDateToIso(value?: string | null) {
   if (!value) return "";
 
@@ -136,6 +138,18 @@ function formatFineNote(note?: string | null) {
   return note;
 }
 
+function getAttendanceIdentity(player: DisciplinePlayer) {
+  if ("profile_id" in player && player.profile_id) {
+    return player.profile_id;
+  }
+
+  return player.id;
+}
+
+function getFineIdentity(player: DisciplinePlayer) {
+  return player.id;
+}
+
 export default function DisciplineScreen({
   clubId,
   primaryColor = "#888",
@@ -198,12 +212,12 @@ export default function DisciplineScreen({
   const [editingTemplateAmount, setEditingTemplateAmount] = useState("");
   const [editingTemplateIsActive, setEditingTemplateIsActive] = useState(true);
 
-  const disciplinePlayers = useMemo(() => {
+  const disciplinePlayers = useMemo<DisciplinePlayer[]>(() => {
     if (players.length > 0) {
       return players;
     }
 
-    return clubMemberPlayers as Player[];
+    return clubMemberPlayers;
   }, [players, clubMemberPlayers]);
 
   const loadPeriodsState = useCallback(async () => {
@@ -303,9 +317,12 @@ export default function DisciplineScreen({
       }
 
       for (const player of disciplinePlayers) {
+        const attendanceIdentity = getAttendanceIdentity(player);
+        const fineIdentity = getFineIdentity(player);
+
         const voted = attendanceRows.some(
           (row) =>
-            row.player_id === player.id &&
+            row.player_id === attendanceIdentity &&
             (row.status === "yes" || row.status === "no")
         );
 
@@ -314,7 +331,7 @@ export default function DisciplineScreen({
         try {
           const existing = await findExistingPollFine({
             periodId: activePeriod.id,
-            playerId: player.id,
+            playerId: fineIdentity,
             trainingId: training.id,
           });
 
@@ -323,7 +340,7 @@ export default function DisciplineScreen({
           const created = await createFine({
             clubId,
             periodId: activePeriod.id,
-            playerId: player.id,
+            playerId: fineIdentity,
             amount: Number(anketyTemplate.default_amount),
             reason: anketyTemplate.name,
             note: `training:${training.id}`,
@@ -337,9 +354,10 @@ export default function DisciplineScreen({
             console.error("Automatic poll fine creation failed", {
               clubId,
               periodId: activePeriod.id,
-              playerId: player.id,
+              playerId: fineIdentity,
               trainingId: training.id,
               templateId: anketyTemplate.id,
+              attendanceIdentity,
             });
           }
         } catch (error) {
@@ -347,9 +365,10 @@ export default function DisciplineScreen({
             error,
             clubId,
             periodId: activePeriod.id,
-            playerId: player.id,
+            playerId: fineIdentity,
             trainingId: training.id,
             templateId: anketyTemplate.id,
+            attendanceIdentity,
           });
         }
       }
@@ -504,8 +523,9 @@ export default function DisciplineScreen({
 
       filteredOlderTrainings.forEach((training) => {
         const rows = presenceMap[training.id] || [];
+        const attendanceIdentity = getAttendanceIdentity(player);
         const isPresent = rows.some(
-          (row) => row.player_id === player.id && row.present
+          (row) => row.player_id === attendanceIdentity && row.present
         );
 
         if (isPresent) attended += 1;
