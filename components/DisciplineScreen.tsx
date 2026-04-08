@@ -138,18 +138,6 @@ function formatFineNote(note?: string | null) {
   return note;
 }
 
-function getAttendanceIdentity(player: DisciplinePlayer) {
-  if ("profile_id" in player && player.profile_id) {
-    return player.profile_id;
-  }
-
-  return player.id;
-}
-
-function getFineIdentity(player: DisciplinePlayer) {
-  return player.id;
-}
-
 export default function DisciplineScreen({
   clubId,
   primaryColor = "#888",
@@ -216,7 +204,6 @@ export default function DisciplineScreen({
     if (players.length > 0) {
       return players;
     }
-
     return clubMemberPlayers;
   }, [players, clubMemberPlayers]);
 
@@ -317,8 +304,8 @@ export default function DisciplineScreen({
       }
 
       for (const player of disciplinePlayers) {
-        const attendanceIdentity = getAttendanceIdentity(player);
-        const fineIdentity = getFineIdentity(player);
+        const attendanceIdentity = player.id;
+        const fineIdentity = player.id;
 
         const voted = attendanceRows.some(
           (row) =>
@@ -357,7 +344,6 @@ export default function DisciplineScreen({
               playerId: fineIdentity,
               trainingId: training.id,
               templateId: anketyTemplate.id,
-              attendanceIdentity,
             });
           }
         } catch (error) {
@@ -368,7 +354,6 @@ export default function DisciplineScreen({
             playerId: fineIdentity,
             trainingId: training.id,
             templateId: anketyTemplate.id,
-            attendanceIdentity,
           });
         }
       }
@@ -523,9 +508,8 @@ export default function DisciplineScreen({
 
       filteredOlderTrainings.forEach((training) => {
         const rows = presenceMap[training.id] || [];
-        const attendanceIdentity = getAttendanceIdentity(player);
         const isPresent = rows.some(
-          (row) => row.player_id === attendanceIdentity && row.present
+          (row) => row.player_id === player.id && row.present
         );
 
         if (isPresent) attended += 1;
