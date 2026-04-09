@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import {
+  getClubMemberPlayersByClubId,
+  type ClubMemberPlayer,
+} from "@/lib/players";
 import { styles } from "@/styles/appStyles";
 
 type Poll = {
@@ -33,6 +37,47 @@ type Props = {
   primaryColor?: string;
 };
 
+function normalizeDateToIso(value?: string | null) {
+  if (!value) return "";
+
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const isoDateTimeMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+  if (isoDateTimeMatch) {
+    return isoDateTimeMatch[1];
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  const dotMatch = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+.*)?$/);
+  if (dotMatch) {
+    const [, day, month, year] = dotMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatDisplayDate(value?: string | null) {
+  const iso = normalizeDateToIso(value);
+  if (!iso) return "";
+
+  const [year, month, day] = iso.split("-");
+  if (!year || !month || !day) return iso;
+
+  return `${day}.${month}.${year}`;
+}
+
 export default function PollsScreen({
   clubId,
   userId,
@@ -41,6 +86,7 @@ export default function PollsScreen({
   const [polls, setPolls] = useState<Poll[]>([]);
   const [options, setOptions] = useState<PollOption[]>([]);
   const [votes, setVotes] = useState<PollVote[]>([]);
+  const [clubMembers, setClubMembers] = useState<ClubMemberPlayer[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -48,6 +94,7 @@ export default function PollsScreen({
 
   const [showForm, setShowForm] = useState(false);
   const [editingPollId, setEditingPollId] = useState<string | null>(null);
+  const [expandedPollId, setExpandedPollId] = useState<string | null>(null);
 
   const [question, setQuestion] = useState("");
   const [description, setDescription] = useState("");
@@ -58,16 +105,21 @@ export default function PollsScreen({
   const loadData = async () => {
     setLoading(true);
 
-    const [{ data: pollsData, error: pollsError }, { data: optionsData, error: optionsError }, { data: votesData, error: votesError }] =
-      await Promise.all([
-        supabase
-          .from("polls")
-          .select("*")
-          .eq("club_id", clubId)
-          .order("created_at", { ascending: false }),
-        supabase.from("poll_options").select("*"),
-        supabase.from("poll_votes").select("*"),
-      ]);
+    const [
+      { data: pollsData, error: pollsError },
+      { data: optionsData, error: optionsError },
+      { data: votesData, error: votesError },
+      clubMembersData,
+    ] = await Promise.all([
+      supabase
+        .from("polls")
+        .select("*")
+        .eq("club_id", clubId)
+        .order("created_at", { ascending: false }),
+      supabase.from("poll_options").select("*"),
+      supabase.from("poll_votes").select("*"),
+      getClubMemberPlayersByClubId(clubId),
+    ]);
 
     if (pollsError) {
       console.error("Nepodařilo se načíst ankety:", pollsError);
@@ -84,6 +136,7 @@ export default function PollsScreen({
     setPolls((pollsData as Poll[]) ?? []);
     setOptions((optionsData as PollOption[]) ?? []);
     setVotes((votesData as PollVote[]) ?? []);
+    setClubMembers(clubMembersData ?? []);
     setLoading(false);
   };
 
@@ -171,7 +224,10 @@ export default function PollsScreen({
         .eq("poll_id", editingPollId);
 
       if (deleteVotesError) {
-        console.error("Nepodařilo se smazat staré hlasy ankety:", deleteVotesError);
+        console.error(
+          "Nepodařilo se smazat staré hlasy ankety:",
+          deleteVotesError
+        );
         setMessage("Nepodařilo se upravit anketu.");
         setSaving(false);
         return;
@@ -183,7 +239,10 @@ export default function PollsScreen({
         .eq("poll_id", editingPollId);
 
       if (deleteOptionsError) {
-        console.error("Nepodařilo se smazat staré možnosti ankety:", deleteOptionsError);
+        console.error(
+          "Nepodařilo se smazat staré možnosti ankety:",
+          deleteOptionsError
+        );
         setMessage("Nepodařilo se upravit anketu.");
         setSaving(false);
         return;
@@ -199,7 +258,10 @@ export default function PollsScreen({
         );
 
       if (insertOptionsError) {
-        console.error("Nepodařilo se uložit nové možnosti ankety:", insertOptionsError);
+        console.error(
+          "Nepodařilo se uložit nové možnosti ankety:",
+          insertOptionsError
+        );
         setMessage("Nepodařilo se upravit anketu.");
         setSaving(false);
         return;
@@ -278,7 +340,10 @@ export default function PollsScreen({
       .eq("poll_id", pollId);
 
     if (deleteOptionsError) {
-      console.error("Nepodařilo se smazat možnosti ankety:", deleteOptionsError);
+      console.error(
+        "Nepodařilo se smazat možnosti ankety:",
+        deleteOptionsError
+      );
       setMessage("Nepodařilo se smazat anketu.");
       return;
     }
@@ -297,6 +362,10 @@ export default function PollsScreen({
     if (editingPollId === pollId) {
       resetForm();
       setShowForm(false);
+    }
+
+    if (expandedPollId === pollId) {
+      setExpandedPollId(null);
     }
 
     await loadData();
@@ -389,6 +458,33 @@ export default function PollsScreen({
         vote.option_id === optionId &&
         vote.user_id === userId
     );
+
+  const getMemberName = (memberUserId: string) => {
+    return (
+      clubMembers.find((member) => member.id === memberUserId)?.name ??
+      "Neznámý člen"
+    );
+  };
+
+  const getVotesByOptionId = (optionId: string) => {
+    return votes
+      .filter((vote) => vote.option_id === optionId)
+      .slice()
+      .sort((a, b) =>
+        getMemberName(a.user_id).localeCompare(getMemberName(b.user_id), "cs")
+      );
+  };
+
+  const getNonVotedMembersByPollId = (pollId: string) => {
+    const votedUserIds = new Set(
+      votes.filter((vote) => vote.poll_id === pollId).map((vote) => vote.user_id)
+    );
+
+    return clubMembers
+      .filter((member) => !votedUserIds.has(member.id))
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name, "cs"));
+  };
 
   const totalVotesByPollId = useMemo(() => {
     const map = new Map<string, number>();
@@ -586,39 +682,119 @@ export default function PollsScreen({
       ) : (
         polls.map((poll) => {
           const pollOptions = getOptionsByPollId(poll.id);
+          const isExpanded = expandedPollId === poll.id;
+          const nonVotedMembers = getNonVotedMembersByPollId(poll.id);
 
           return (
             <div key={poll.id} style={styles.card}>
-              <div style={{ fontWeight: "bold", fontSize: "16px" }}>
-                {poll.question}
-              </div>
-
-              {poll.description && (
-                <div
-                  style={{
-                    fontSize: "13px",
-                    color: "#b8b8b8",
-                    marginTop: "8px",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {poll.description}
-                </div>
-              )}
-
-              <div
+              <button
+                type="button"
+                onClick={() =>
+                  setExpandedPollId((prev) => (prev === poll.id ? null : poll.id))
+                }
                 style={{
-                  marginTop: "10px",
-                  color: "#a8a8a8",
-                  fontSize: "12px",
+                  width: "100%",
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  color: "white",
+                  cursor: "pointer",
+                  textAlign: "left",
                 }}
               >
-                {poll.allow_multiple ? "Více odpovědí" : "Jedna odpověď"}
-                {poll.poll_date ? ` • Datum: ${poll.poll_date}` : ""}
-              </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: "12px",
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: "bold", fontSize: "16px" }}>
+                      {poll.question}
+                    </div>
+
+                    {poll.description && (
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          color: "#b8b8b8",
+                          marginTop: "8px",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {poll.description}
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        marginTop: "10px",
+                        color: "#a8a8a8",
+                        fontSize: "12px",
+                      }}
+                    >
+                      {poll.allow_multiple ? "Více odpovědí" : "Jedna odpověď"}
+                      {poll.poll_date
+                        ? ` • Datum: ${formatDisplayDate(poll.poll_date)}`
+                        : ""}
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "8px",
+                        marginTop: "10px",
+                      }}
+                    >
+                      {pollOptions.map((option, index) => (
+                        <div
+                          key={option.id}
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: "999px",
+                            background: "rgba(255,255,255,0.08)",
+                            fontSize: "12px",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          MOŽNOST {index + 1}: {getVotesCount(option.id)}
+                        </div>
+                      ))}
+
+                      <div
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: "999px",
+                          background: "rgba(255, 193, 7, 0.16)",
+                          border: "1px solid rgba(255, 193, 7, 0.24)",
+                          color: "#ffd97a",
+                          fontSize: "12px",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        NEHLASOVALO: {nonVotedMembers.length}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "#b8b8b8",
+                      fontWeight: "bold",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {isExpanded ? "Skrýt" : "Detail"}
+                  </div>
+                </div>
+              </button>
 
               <div style={{ marginTop: "14px", display: "grid", gap: "8px" }}>
-                {pollOptions.map((option) => {
+                {pollOptions.map((option, index) => {
                   const selected = hasVoted(poll.id, option.id);
                   const votesCount = getVotesCount(option.id);
 
@@ -647,7 +823,12 @@ export default function PollsScreen({
                         cursor: "pointer",
                       }}
                     >
-                      <span>{option.text}</span>
+                      <span>
+                        {option.text}
+                        <span style={{ marginLeft: "8px", opacity: 0.8 }}>
+                          (MOŽNOST {index + 1})
+                        </span>
+                      </span>
                       <span>{votesCount}</span>
                     </button>
                   );
@@ -699,6 +880,99 @@ export default function PollsScreen({
                   Smazat
                 </button>
               </div>
+
+              {isExpanded && (
+                <div style={{ marginTop: "14px", display: "grid", gap: "10px" }}>
+                  {pollOptions.map((option, index) => {
+                    const optionVotes = getVotesByOptionId(option.id);
+
+                    return (
+                      <div
+                        key={`${poll.id}-detail-${option.id}`}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: "12px",
+                          background: "rgba(255,255,255,0.04)",
+                          border: "1px solid rgba(255,255,255,0.06)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontWeight: "bold",
+                            color: "#d9d9d9",
+                            marginBottom: "8px",
+                          }}
+                        >
+                          MOŽNOST {index + 1} ({optionVotes.length})
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: "13px",
+                            color: "#b8b8b8",
+                            marginBottom: "8px",
+                          }}
+                        >
+                          {option.text}
+                        </div>
+
+                        {optionVotes.length === 0 ? (
+                          <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
+                            Zatím nikdo.
+                          </div>
+                        ) : (
+                          <div style={{ display: "grid", gap: "6px" }}>
+                            {optionVotes.map((vote) => (
+                              <div
+                                key={vote.id}
+                                style={{ fontSize: "13px", color: "white" }}
+                              >
+                                {getMemberName(vote.user_id)}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  <div
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: "12px",
+                      background: "rgba(255, 193, 7, 0.10)",
+                      border: "1px solid rgba(255, 193, 7, 0.20)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontWeight: "bold",
+                        color: "#ffd97a",
+                        marginBottom: "8px",
+                      }}
+                    >
+                      NEHLASOVALO ({nonVotedMembers.length})
+                    </div>
+
+                    {nonVotedMembers.length === 0 ? (
+                      <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
+                        Všichni hlasovali.
+                      </div>
+                    ) : (
+                      <div style={{ display: "grid", gap: "6px" }}>
+                        {nonVotedMembers.map((member) => (
+                          <div
+                            key={`${poll.id}-non-voted-${member.id}`}
+                            style={{ fontSize: "13px", color: "white" }}
+                          >
+                            {member.name}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })
