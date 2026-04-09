@@ -15,11 +15,8 @@ import {
   type TrainingAttendanceRow,
   type TrainingPresenceRow,
 } from "@/lib/trainings";
-import { getActivePeriod, type Period } from "@/lib/periods";
-import {
-  createFine,
-  findExistingPollFine,
-} from "@/lib/fines";
+import { getPeriodsByClubId, type Period } from "@/lib/periods";
+import { createFine, findExistingPollFine } from "@/lib/fines";
 import {
   ensureDefaultFineTemplates,
   type FineTemplateRow,
@@ -72,6 +69,12 @@ function normalizeDateToIso(value?: string | null) {
   const dotMatch = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+.*)?$/);
   if (dotMatch) {
     const [, day, month, year] = dotMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  const slashMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+.*)?$/);
+  if (slashMatch) {
+    const [, day, month, year] = slashMatch;
     return `${year}-${month}-${day}`;
   }
 
@@ -135,22 +138,34 @@ export default function TrainingsScreen({
 }: TrainingsScreenProps) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [trainings, setTrainings] = useState<Training[]>([]);
-  const [attendanceMap, setAttendanceMap] = useState<Record<string, TrainingAttendanceRow[]>>({});
-  const [presenceMap, setPresenceMap] = useState<Record<string, TrainingPresenceRow[]>>({});
+  const [attendanceMap, setAttendanceMap] = useState<
+    Record<string, TrainingAttendanceRow[]>
+  >({});
+  const [presenceMap, setPresenceMap] = useState<
+    Record<string, TrainingPresenceRow[]>
+  >({});
+  const [periods, setPeriods] = useState<Period[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [tab, setTab] = useState<TrainingTab>("planned");
-  const [expandedTrainingId, setExpandedTrainingId] = useState<string | null>(null);
-  const [editingTrainingId, setEditingTrainingId] = useState<string | null>(null);
-  const [editingPresenceTrainingId, setEditingPresenceTrainingId] = useState<string | null>(null);
+  const [expandedTrainingId, setExpandedTrainingId] = useState<string | null>(
+    null
+  );
+  const [editingTrainingId, setEditingTrainingId] = useState<string | null>(
+    null
+  );
+  const [editingPresenceTrainingId, setEditingPresenceTrainingId] = useState<
+    string | null
+  >(null);
   const [presenceDraft, setPresenceDraft] = useState<string[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [linkedPlayer, setLinkedPlayer] = useState<Player | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [activePeriod, setActivePeriod] = useState<Period | null>(null);
   const [fineTemplates, setFineTemplates] = useState<FineTemplateRow[]>([]);
-  const [awardingPollFineTrainingId, setAwardingPollFineTrainingId] = useState<string | null>(null);
+  const [awardingPollFineTrainingId, setAwardingPollFineTrainingId] = useState<
+    string | null
+  >(null);
 
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -168,7 +183,7 @@ export default function TrainingsScreen({
       const [
         loadedTrainings,
         loadedPlayers,
-        loadedActivePeriod,
+        loadedPeriods,
         loadedTemplates,
         {
           data: { user },
@@ -176,7 +191,7 @@ export default function TrainingsScreen({
       ] = await Promise.all([
         getTrainingsByClubId(clubId),
         getPlayersByClubId(clubId),
-        getActivePeriod(clubId),
+        getPeriodsByClubId(clubId),
         ensureDefaultFineTemplates(clubId),
         supabase.auth.getUser(),
       ]);
@@ -197,15 +212,17 @@ export default function TrainingsScreen({
       }
 
       const currentLinkedPlayer =
-        loadedPlayers.find((player) => player.profile_id === (user?.id ?? null)) ?? null;
+        loadedPlayers.find(
+          (player) => player.profile_id === (user?.id ?? null)
+        ) ?? null;
 
       setTrainings((loadedTrainings as Training[]) ?? []);
       setPlayers(loadedPlayers);
       setAttendanceMap(nextAttendanceMap);
       setPresenceMap(nextPresenceMap);
+      setPeriods(loadedPeriods);
       setCurrentUserId(user?.id ?? null);
       setLinkedPlayer(currentLinkedPlayer);
-      setActivePeriod(loadedActivePeriod);
       setFineTemplates(loadedTemplates);
       setLoading(false);
     };
@@ -239,8 +256,12 @@ export default function TrainingsScreen({
     return trainings
       .filter((training) => isTrainingPlanned(training))
       .sort((a, b) => {
-        const aKey = `${normalizeDateToIso(a.date)} ${normalizeTimeValue(a.start_time) || "00:00"}`;
-        const bKey = `${normalizeDateToIso(b.date)} ${normalizeTimeValue(b.start_time) || "00:00"}`;
+        const aKey = `${normalizeDateToIso(a.date)} ${
+          normalizeTimeValue(a.start_time) || "00:00"
+        }`;
+        const bKey = `${normalizeDateToIso(b.date)} ${
+          normalizeTimeValue(b.start_time) || "00:00"
+        }`;
         return aKey.localeCompare(bKey);
       });
   }, [trainings]);
@@ -249,8 +270,12 @@ export default function TrainingsScreen({
     return trainings
       .filter((training) => !isTrainingPlanned(training))
       .sort((a, b) => {
-        const aKey = `${normalizeDateToIso(a.date)} ${normalizeTimeValue(a.start_time) || "00:00"}`;
-        const bKey = `${normalizeDateToIso(b.date)} ${normalizeTimeValue(b.start_time) || "00:00"}`;
+        const aKey = `${normalizeDateToIso(a.date)} ${
+          normalizeTimeValue(a.start_time) || "00:00"
+        }`;
+        const bKey = `${normalizeDateToIso(b.date)} ${
+          normalizeTimeValue(b.start_time) || "00:00"
+        }`;
         return bKey.localeCompare(aKey);
       });
   }, [trainings]);
@@ -258,7 +283,9 @@ export default function TrainingsScreen({
   const visibleTrainings = tab === "planned" ? plannedTrainings : olderTrainings;
 
   const getPlayerName = (playerId: string) => {
-    return players.find((player) => player.id === playerId)?.name ?? "Neznámý hráč";
+    return (
+      players.find((player) => player.id === playerId)?.name ?? "Neznámý hráč"
+    );
   };
 
   const getTrainingAttendanceRows = (trainingId: string) => {
@@ -273,8 +300,14 @@ export default function TrainingsScreen({
     const rows = getTrainingAttendanceRows(trainingId);
     const yesCount = rows.filter((row) => row.status === "yes").length;
     const noCount = rows.filter((row) => row.status === "no").length;
-    const votedPlayerIds = new Set(rows.map((row) => row.player_id));
-    const notVotedCount = players.filter((player) => !votedPlayerIds.has(player.id)).length;
+    const votedPlayerIds = new Set(
+      rows
+        .filter((row) => row.status === "yes" || row.status === "no")
+        .map((row) => row.player_id)
+    );
+    const notVotedCount = players.filter(
+      (player) => !votedPlayerIds.has(player.id)
+    ).length;
 
     return {
       total: rows.length,
@@ -302,7 +335,9 @@ export default function TrainingsScreen({
     return rows.filter((row) => row.present).length;
   };
 
-  const getMyAttendanceStatus = (trainingId: string): AttendanceStatus | null => {
+  const getMyAttendanceStatus = (
+    trainingId: string
+  ): AttendanceStatus | null => {
     if (!linkedPlayer) return null;
 
     const row = getTrainingAttendanceRows(trainingId).find(
@@ -310,6 +345,22 @@ export default function TrainingsScreen({
     );
 
     return row?.status ?? null;
+  };
+
+  const findPeriodForTraining = (trainingDate: string) => {
+    const matchingPeriods = periods.filter((period) =>
+      isDateInsidePeriod(trainingDate, period)
+    );
+
+    if (matchingPeriods.length === 0) {
+      return null;
+    }
+
+    return matchingPeriods.sort((a, b) =>
+      normalizeDateToIso(b.start_date).localeCompare(
+        normalizeDateToIso(a.start_date)
+      )
+    )[0];
   };
 
   const handleCreateTraining = async () => {
@@ -431,7 +482,9 @@ export default function TrainingsScreen({
     }
 
     setTrainings((prev) =>
-      prev.map((item) => (item.id === editingTrainingId ? (updated as Training) : item))
+      prev.map((item) =>
+        item.id === editingTrainingId ? (updated as Training) : item
+      )
     );
     resetForm();
     setShowForm(false);
@@ -584,13 +637,10 @@ export default function TrainingsScreen({
       return;
     }
 
-    if (!activePeriod) {
-      setMessage("Nejdřív je potřeba mít aktivní období.");
-      return;
-    }
+    const trainingPeriod = findPeriodForTraining(training.date);
 
-    if (!isDateInsidePeriod(training.date, activePeriod)) {
-      setMessage("Trénink nespadá do aktivního období.");
+    if (!trainingPeriod) {
+      setMessage("K tomuto tréninku se nepodařilo najít odpovídající období.");
       return;
     }
 
@@ -609,7 +659,7 @@ export default function TrainingsScreen({
     for (const player of nonVotedPlayers) {
       try {
         const existing = await findExistingPollFine({
-          periodId: activePeriod.id,
+          periodId: trainingPeriod.id,
           playerId: player.id,
           trainingId: training.id,
         });
@@ -618,7 +668,7 @@ export default function TrainingsScreen({
 
         const created = await createFine({
           clubId,
-          periodId: activePeriod.id,
+          periodId: trainingPeriod.id,
           playerId: player.id,
           amount: Number(anketyTemplate.default_amount),
           reason: anketyTemplate.name,
@@ -633,6 +683,7 @@ export default function TrainingsScreen({
           console.error("Nepodařilo se vytvořit pokutu za nehlasování.", {
             trainingId: training.id,
             playerId: player.id,
+            periodId: trainingPeriod.id,
           });
         }
       } catch (error) {
@@ -640,6 +691,7 @@ export default function TrainingsScreen({
           error,
           trainingId: training.id,
           playerId: player.id,
+          periodId: trainingPeriod.id,
         });
       }
     }
@@ -833,29 +885,38 @@ export default function TrainingsScreen({
               const yesRows = attendanceRows
                 .filter((row) => row.status === "yes")
                 .sort((a, b) =>
-                  getPlayerName(a.player_id).localeCompare(getPlayerName(b.player_id), "cs")
+                  getPlayerName(a.player_id).localeCompare(
+                    getPlayerName(b.player_id),
+                    "cs"
+                  )
                 );
 
               const noRows = attendanceRows
                 .filter((row) => row.status === "no")
                 .sort((a, b) =>
-                  getPlayerName(a.player_id).localeCompare(getPlayerName(b.player_id), "cs")
+                  getPlayerName(a.player_id).localeCompare(
+                    getPlayerName(b.player_id),
+                    "cs"
+                  )
                 );
 
               const presentRows = presenceRows
                 .filter((row) => row.present)
                 .sort((a, b) =>
-                  getPlayerName(a.player_id).localeCompare(getPlayerName(b.player_id), "cs")
+                  getPlayerName(a.player_id).localeCompare(
+                    getPlayerName(b.player_id),
+                    "cs"
+                  )
                 );
 
               const isExpanded = expandedTrainingId === training.id;
-              const isEditingPresence = editingPresenceTrainingId === training.id;
+              const isEditingPresence =
+                editingPresenceTrainingId === training.id;
+
               const canShowPollFineButton =
                 !isTrainingPlanned(training) &&
                 training.poll_enabled === true &&
                 !!anketyTemplate &&
-                !!activePeriod &&
-                isDateInsidePeriod(training.date, activePeriod) &&
                 nonVotedPlayers.length > 0;
 
               return (
@@ -1134,7 +1195,10 @@ export default function TrainingsScreen({
                                 background: "rgba(255, 193, 7, 0.95)",
                                 border: "none",
                                 color: "#111111",
-                                opacity: awardingPollFineTrainingId === training.id ? 0.7 : 1,
+                                opacity:
+                                  awardingPollFineTrainingId === training.id
+                                    ? 0.7
+                                    : 1,
                               }}
                             >
                               {awardingPollFineTrainingId === training.id
@@ -1155,7 +1219,9 @@ export default function TrainingsScreen({
                               opacity: saving ? 0.7 : 1,
                             }}
                           >
-                            {isEditingPresence ? "Upravuji docházku" : "Upravit docházku"}
+                            {isEditingPresence
+                              ? "Upravuji docházku"
+                              : "Upravit docházku"}
                           </button>
 
                           {isEditingPresence && (
@@ -1185,7 +1251,9 @@ export default function TrainingsScreen({
                                   lineHeight: 1.5,
                                 }}
                               >
-                                Výchozí stav se vezme z hráčů, kteří dali BUDU. Můžeš kohokoliv odebrat nebo přidat, i hráče bez hlasování.
+                                Výchozí stav se vezme z hráčů, kteří dali BUDU.
+                                Můžeš kohokoliv odebrat nebo přidat, i hráče bez
+                                hlasování.
                               </div>
 
                               <div style={{ display: "grid", gap: "8px" }}>
@@ -1193,7 +1261,9 @@ export default function TrainingsScreen({
                                   .slice()
                                   .sort((a, b) => a.number - b.number)
                                   .map((player) => {
-                                    const checked = presenceDraft.includes(player.id);
+                                    const checked = presenceDraft.includes(
+                                      player.id
+                                    );
 
                                     return (
                                       <label
@@ -1216,7 +1286,9 @@ export default function TrainingsScreen({
                                         <input
                                           type="checkbox"
                                           checked={checked}
-                                          onChange={() => togglePresenceDraftPlayer(player.id)}
+                                          onChange={() =>
+                                            togglePresenceDraftPlayer(player.id)
+                                          }
                                         />
 
                                         <div
@@ -1237,8 +1309,15 @@ export default function TrainingsScreen({
                                         </div>
 
                                         <div style={{ flex: 1 }}>
-                                          <div style={{ fontWeight: "bold" }}>{player.name}</div>
-                                          <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
+                                          <div style={{ fontWeight: "bold" }}>
+                                            {player.name}
+                                          </div>
+                                          <div
+                                            style={{
+                                              fontSize: "12px",
+                                              color: "#b8b8b8",
+                                            }}
+                                          >
                                             {player.position}
                                           </div>
                                         </div>
@@ -1250,7 +1329,9 @@ export default function TrainingsScreen({
                               <div style={{ display: "flex", gap: "8px" }}>
                                 <button
                                   type="button"
-                                  onClick={() => void handleSavePresence(training.id)}
+                                  onClick={() =>
+                                    void handleSavePresence(training.id)
+                                  }
                                   disabled={saving}
                                   style={{
                                     flex: 1,
