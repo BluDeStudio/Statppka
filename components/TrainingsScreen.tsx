@@ -132,6 +132,14 @@ function isDateInsidePeriod(dateValue: string, period: Period | null) {
   return normalizedDate >= normalizedStart && normalizedDate <= normalizedEnd;
 }
 
+function normalizeTemplateName(value?: string | null) {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
+}
+
 export default function TrainingsScreen({
   clubId,
   primaryColor = "#888888",
@@ -234,10 +242,20 @@ export default function TrainingsScreen({
     };
   }, [clubId]);
 
-  const anketyTemplate = useMemo(() => {
+  const pollFineTemplate = useMemo(() => {
+    const allowedNames = new Set([
+      "ankety",
+      "nehlasovani",
+      "nehlasovani na trening",
+      "nehlasovani na trenink",
+      "nehlasovani trenink",
+      "nehlasovani trening",
+    ]);
+
     return (
       fineTemplates.find(
-        (item) => item.name.trim().toLowerCase() === "ankety" && item.is_active
+        (item) =>
+          item.is_active && allowedNames.has(normalizeTemplateName(item.name))
       ) ?? null
     );
   }, [fineTemplates]);
@@ -632,8 +650,12 @@ export default function TrainingsScreen({
   };
 
   const handleAwardPollFine = async (training: Training) => {
-    if (!anketyTemplate) {
-      setMessage('Týmová pokuta "Ankety" není aktivní.');
+    const template = pollFineTemplate;
+
+    if (!template) {
+      setMessage(
+        'Chybí aktivní týmová pokuta "Ankety" / "Nehlasování".'
+      );
       return;
     }
 
@@ -670,8 +692,8 @@ export default function TrainingsScreen({
           clubId,
           periodId: trainingPeriod.id,
           playerId: player.id,
-          amount: Number(anketyTemplate.default_amount),
-          reason: anketyTemplate.name,
+          amount: Number(template.default_amount),
+          reason: template.name,
           note: `training:${training.id}`,
           fineDate: normalizeDateToIso(training.date),
           createdBy: currentUserId,
@@ -914,10 +936,7 @@ export default function TrainingsScreen({
                 editingPresenceTrainingId === training.id;
 
               const canShowPollFineButton =
-                !isTrainingPlanned(training) &&
-                training.poll_enabled === true &&
-                !!anketyTemplate &&
-                nonVotedPlayers.length > 0;
+                !isTrainingPlanned(training) && nonVotedPlayers.length > 0;
 
               return (
                 <div
