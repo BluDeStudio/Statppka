@@ -15,6 +15,15 @@ import {
   type TrainingAttendanceRow,
   type TrainingPresenceRow,
 } from "@/lib/trainings";
+import { getActivePeriod, type Period } from "@/lib/periods";
+import {
+  createFine,
+  findExistingPollFine,
+} from "@/lib/fines";
+import {
+  ensureDefaultFineTemplates,
+  type FineTemplateRow,
+} from "@/lib/fineTemplates";
 import { styles } from "@/styles/appStyles";
 
 type TrainingTab = "planned" | "older";
@@ -28,6 +37,7 @@ type Training = {
   time?: string | null;
   location?: string | null;
   note?: string | null;
+  poll_enabled?: boolean;
 };
 
 type TrainingsScreenProps = {
@@ -42,6 +52,37 @@ function formatDisplayDate(date: string) {
   if (!year || !month || !day) return date;
 
   return `${day}.${month}.${year}`;
+}
+
+function normalizeDateToIso(value?: string | null) {
+  if (!value) return "";
+
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const isoDateTimeMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+  if (isoDateTimeMatch) {
+    return isoDateTimeMatch[1];
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  const dotMatch = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+.*)?$/);
+  if (dotMatch) {
+    const [, day, month, year] = dotMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function normalizeTimeValue(value?: string | null) {
@@ -63,7 +104,7 @@ function getTrainingTimeLabel(training: Training) {
 function isTrainingPlanned(training: Training) {
   const now = new Date();
 
-  const datePart = training.date;
+  const datePart = normalizeDateToIso(training.date);
   const endTime =
     normalizeTimeValue(training.end_time) ||
     normalizeTimeValue(training.start_time) ||
@@ -72,6 +113,20 @@ function isTrainingPlanned(training: Training) {
   const trainingDate = new Date(`${datePart}T${endTime}:00`);
 
   return trainingDate.getTime() >= now.getTime();
+}
+
+function isDateInsidePeriod(dateValue: string, period: Period | null) {
+  if (!period) return false;
+
+  const normalizedDate = normalizeDateToIso(dateValue);
+  const normalizedStart = normalizeDateToIso(period.start_date);
+  const normalizedEnd = normalizeDateToIso(period.end_date);
+
+  if (!normalizedDate || !normalizedStart || !normalizedEnd) {
+    return false;
+  }
+
+  return normalizedDate >= normalizedStart && normalizedDate <= normalizedEnd;
 }
 
 export default function TrainingsScreen({
@@ -93,6 +148,9 @@ export default function TrainingsScreen({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [linkedPlayer, setLinkedPlayer] = useState<Player | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [activePeriod, setActivePeriod] = useState<Period | null>(null);
+  const [fineTemplates, setFineTemplates] = useState<FineTemplateRow[]>([]);
+  const [awardingPollFineTrainingId, setAwardingPollFineTrainingId] = useState<string | null>(null);
 
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -110,12 +168,16 @@ export default function TrainingsScreen({
       const [
         loadedTrainings,
         loadedPlayers,
+        loadedActivePeriod,
+        loadedTemplates,
         {
           data: { user },
         },
       ] = await Promise.all([
         getTrainingsByClubId(clubId),
         getPlayersByClubId(clubId),
+        getActivePeriod(clubId),
+        ensureDefaultFineTemplates(clubId),
         supabase.auth.getUser(),
       ]);
 
@@ -143,6 +205,8 @@ export default function TrainingsScreen({
       setPresenceMap(nextPresenceMap);
       setCurrentUserId(user?.id ?? null);
       setLinkedPlayer(currentLinkedPlayer);
+      setActivePeriod(loadedActivePeriod);
+      setFineTemplates(loadedTemplates);
       setLoading(false);
     };
 
@@ -152,6 +216,14 @@ export default function TrainingsScreen({
       active = false;
     };
   }, [clubId]);
+
+  const anketyTemplate = useMemo(() => {
+    return (
+      fineTemplates.find(
+        (item) => item.name.trim().toLowerCase() === "ankety" && item.is_active
+      ) ?? null
+    );
+  }, [fineTemplates]);
 
   const resetForm = () => {
     setEditingTrainingId(null);
@@ -167,8 +239,8 @@ export default function TrainingsScreen({
     return trainings
       .filter((training) => isTrainingPlanned(training))
       .sort((a, b) => {
-        const aKey = `${a.date} ${normalizeTimeValue(a.start_time) || "00:00"}`;
-        const bKey = `${b.date} ${normalizeTimeValue(b.start_time) || "00:00"}`;
+        const aKey = `${normalizeDateToIso(a.date)} ${normalizeTimeValue(a.start_time) || "00:00"}`;
+        const bKey = `${normalizeDateToIso(b.date)} ${normalizeTimeValue(b.start_time) || "00:00"}`;
         return aKey.localeCompare(bKey);
       });
   }, [trainings]);
@@ -177,8 +249,8 @@ export default function TrainingsScreen({
     return trainings
       .filter((training) => !isTrainingPlanned(training))
       .sort((a, b) => {
-        const aKey = `${a.date} ${normalizeTimeValue(a.start_time) || "00:00"}`;
-        const bKey = `${b.date} ${normalizeTimeValue(b.start_time) || "00:00"}`;
+        const aKey = `${normalizeDateToIso(a.date)} ${normalizeTimeValue(a.start_time) || "00:00"}`;
+        const bKey = `${normalizeDateToIso(b.date)} ${normalizeTimeValue(b.start_time) || "00:00"}`;
         return bKey.localeCompare(aKey);
       });
   }, [trainings]);
@@ -201,12 +273,28 @@ export default function TrainingsScreen({
     const rows = getTrainingAttendanceRows(trainingId);
     const yesCount = rows.filter((row) => row.status === "yes").length;
     const noCount = rows.filter((row) => row.status === "no").length;
+    const votedPlayerIds = new Set(rows.map((row) => row.player_id));
+    const notVotedCount = players.filter((player) => !votedPlayerIds.has(player.id)).length;
 
     return {
       total: rows.length,
       yesCount,
       noCount,
+      notVotedCount,
     };
+  };
+
+  const getNonVotedPlayers = (trainingId: string) => {
+    const rows = getTrainingAttendanceRows(trainingId);
+    const votedPlayerIds = new Set(
+      rows
+        .filter((row) => row.status === "yes" || row.status === "no")
+        .map((row) => row.player_id)
+    );
+
+    return players
+      .filter((player) => !votedPlayerIds.has(player.id))
+      .sort((a, b) => a.name.localeCompare(b.name, "cs"));
   };
 
   const getPresenceSummary = (trainingId: string) => {
@@ -262,6 +350,7 @@ export default function TrainingsScreen({
         end_time: endTime,
         location: location || null,
         note: note || null,
+        poll_enabled: true,
       },
     });
 
@@ -289,7 +378,7 @@ export default function TrainingsScreen({
   const handleStartEdit = (training: Training) => {
     setShowForm(true);
     setEditingTrainingId(training.id);
-    setDate(training.date);
+    setDate(normalizeDateToIso(training.date));
     setStartTime(normalizeTimeValue(training.start_time));
     setEndTime(normalizeTimeValue(training.end_time));
     setLocation(training.location ?? "");
@@ -331,6 +420,7 @@ export default function TrainingsScreen({
         end_time: endTime,
         location: location || null,
         note: note || null,
+        poll_enabled: true,
       },
     });
 
@@ -486,6 +576,82 @@ export default function TrainingsScreen({
     setPresenceDraft([]);
     setMessage("Reálná docházka byla uložena.");
     setSaving(false);
+  };
+
+  const handleAwardPollFine = async (training: Training) => {
+    if (!anketyTemplate) {
+      setMessage('Týmová pokuta "Ankety" není aktivní.');
+      return;
+    }
+
+    if (!activePeriod) {
+      setMessage("Nejdřív je potřeba mít aktivní období.");
+      return;
+    }
+
+    if (!isDateInsidePeriod(training.date, activePeriod)) {
+      setMessage("Trénink nespadá do aktivního období.");
+      return;
+    }
+
+    const nonVotedPlayers = getNonVotedPlayers(training.id);
+
+    if (nonVotedPlayers.length === 0) {
+      setMessage("Nikdo nezůstal bez hlasování.");
+      return;
+    }
+
+    setAwardingPollFineTrainingId(training.id);
+    setMessage("");
+
+    let createdCount = 0;
+
+    for (const player of nonVotedPlayers) {
+      try {
+        const existing = await findExistingPollFine({
+          periodId: activePeriod.id,
+          playerId: player.id,
+          trainingId: training.id,
+        });
+
+        if (existing) continue;
+
+        const created = await createFine({
+          clubId,
+          periodId: activePeriod.id,
+          playerId: player.id,
+          amount: Number(anketyTemplate.default_amount),
+          reason: anketyTemplate.name,
+          note: `training:${training.id}`,
+          fineDate: normalizeDateToIso(training.date),
+          createdBy: currentUserId,
+        });
+
+        if (created) {
+          createdCount += 1;
+        } else {
+          console.error("Nepodařilo se vytvořit pokutu za nehlasování.", {
+            trainingId: training.id,
+            playerId: player.id,
+          });
+        }
+      } catch (error) {
+        console.error("Chyba při vytváření pokuty za nehlasování:", {
+          error,
+          trainingId: training.id,
+          playerId: player.id,
+        });
+      }
+    }
+
+    setAwardingPollFineTrainingId(null);
+
+    if (createdCount === 0) {
+      setMessage("Žádné nové pokuty nebyly vytvořeny. Možná už existují.");
+      return;
+    }
+
+    setMessage(`Pokuta za nehlasování byla udělena ${createdCount} hráčům.`);
   };
 
   const tabButtonBaseStyle: React.CSSProperties = {
@@ -662,6 +828,7 @@ export default function TrainingsScreen({
               const myStatus = getMyAttendanceStatus(training.id);
               const attendanceRows = getTrainingAttendanceRows(training.id);
               const presenceRows = getTrainingPresenceRows(training.id);
+              const nonVotedPlayers = getNonVotedPlayers(training.id);
 
               const yesRows = attendanceRows
                 .filter((row) => row.status === "yes")
@@ -683,6 +850,13 @@ export default function TrainingsScreen({
 
               const isExpanded = expandedTrainingId === training.id;
               const isEditingPresence = editingPresenceTrainingId === training.id;
+              const canShowPollFineButton =
+                !isTrainingPlanned(training) &&
+                training.poll_enabled === true &&
+                !!anketyTemplate &&
+                !!activePeriod &&
+                isDateInsidePeriod(training.date, activePeriod) &&
+                nonVotedPlayers.length > 0;
 
               return (
                 <div
@@ -795,6 +969,20 @@ export default function TrainingsScreen({
                             }}
                           >
                             NEBUDU: {summary.noCount}
+                          </div>
+
+                          <div
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: "999px",
+                              background: "rgba(255, 193, 7, 0.16)",
+                              border: "1px solid rgba(255, 193, 7, 0.24)",
+                              color: "#ffd97a",
+                              fontSize: "12px",
+                              fontWeight: "bold",
+                            }}
+                          >
+                            NEHLASOVALO: {summary.notVotedCount}
                           </div>
 
                           {!isTrainingPlanned(training) && (
@@ -935,6 +1123,26 @@ export default function TrainingsScreen({
 
                       {!isTrainingPlanned(training) && (
                         <div style={{ display: "grid", gap: "10px" }}>
+                          {canShowPollFineButton && (
+                            <button
+                              type="button"
+                              onClick={() => void handleAwardPollFine(training)}
+                              disabled={awardingPollFineTrainingId === training.id}
+                              style={{
+                                ...styles.primaryButton,
+                                marginTop: 0,
+                                background: "rgba(255, 193, 7, 0.95)",
+                                border: "none",
+                                color: "#111111",
+                                opacity: awardingPollFineTrainingId === training.id ? 0.7 : 1,
+                              }}
+                            >
+                              {awardingPollFineTrainingId === training.id
+                                ? "Uděluji pokuty..."
+                                : "POKUTA ZA NEHLASOVÁNÍ"}
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             onClick={() => handleStartPresenceEdit(training.id)}
@@ -1151,6 +1359,42 @@ export default function TrainingsScreen({
                           )}
                         </div>
 
+                        <div
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: "12px",
+                            background: "rgba(255, 193, 7, 0.10)",
+                            border: "1px solid rgba(255, 193, 7, 0.20)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontWeight: "bold",
+                              color: "#ffd97a",
+                              marginBottom: "8px",
+                            }}
+                          >
+                            NEHLASOVALO ({nonVotedPlayers.length})
+                          </div>
+
+                          {nonVotedPlayers.length === 0 ? (
+                            <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
+                              Všichni hlasovali.
+                            </div>
+                          ) : (
+                            <div style={{ display: "grid", gap: "6px" }}>
+                              {nonVotedPlayers.map((player) => (
+                                <div
+                                  key={`${training.id}-not-voted-${player.id}`}
+                                  style={{ fontSize: "13px", color: "white" }}
+                                >
+                                  {player.name}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
                         {!isTrainingPlanned(training) && (
                           <div
                             style={{
@@ -1204,4 +1448,3 @@ export default function TrainingsScreen({
     </div>
   );
 }
-
