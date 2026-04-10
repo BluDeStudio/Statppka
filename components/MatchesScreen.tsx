@@ -10,6 +10,7 @@ type MatchesScreenProps = {
   clubId: string;
   clubName: string;
   hasBTeam: boolean;
+  userId: string;
   primaryColor?: string;
   plannedMatches: PlannedMatch[];
   finishedMatchIds: string[];
@@ -62,6 +63,7 @@ export default function MatchesScreen({
   clubId,
   clubName,
   hasBTeam,
+  userId,
   primaryColor = "#888888",
   plannedMatches,
   finishedMatchIds,
@@ -665,5 +667,3 @@ export default function MatchesScreen({
     </div>
   );
 }
-
-
