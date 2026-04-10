@@ -47,6 +47,24 @@ type MatchAttendanceRow = {
   created_at?: string;
 };
 
+type PeriodRow = {
+  id: string;
+  club_id: string;
+  name: string;
+  type: "year" | "season";
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+};
+
+type FineTemplateRow = {
+  id: string;
+  club_id: string;
+  name: string;
+  default_amount: number;
+  is_active: boolean;
+};
+
 function formatDisplayDate(date: string) {
   const [year, month, day] = date.split("-");
   return `${day}.${month}.${year}`;
@@ -77,6 +95,57 @@ function getMatchStatusLabel(status?: PlannedMatch["status"]) {
     default:
       return "PLÁNOVANÝ";
   }
+}
+
+function normalizeDateToIso(value?: string | null) {
+  if (!value) return "";
+
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const isoDateTimeMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+  if (isoDateTimeMatch) {
+    return isoDateTimeMatch[1];
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  const dotMatch = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+.*)?$/);
+  if (dotMatch) {
+    const [, day, month, year] = dotMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  const slashMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+.*)?$/);
+  if (slashMatch) {
+    const [, day, month, year] = slashMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function isDateInsidePeriod(dateValue: string, period: PeriodRow | null) {
+  if (!period) return false;
+
+  const normalizedDate = normalizeDateToIso(dateValue);
+  const normalizedStart = normalizeDateToIso(period.start_date);
+  const normalizedEnd = normalizeDateToIso(period.end_date);
+
+  if (!normalizedDate || !normalizedStart || !normalizedEnd) {
+    return false;
+  }
+
+  return normalizedDate >= normalizedStart && normalizedDate <= normalizedEnd;
 }
 
 export default function MatchesScreen({
@@ -124,6 +193,9 @@ export default function MatchesScreen({
   const [savingAttendanceMatchId, setSavingAttendanceMatchId] = useState<
     string | null
   >(null);
+  const [savingFineMatchId, setSavingFineMatchId] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     onLiveModeChange(selectedMode === "live");
@@ -355,6 +427,126 @@ export default function MatchesScreen({
     setSavingAttendanceMatchId(null);
   };
 
+  const handleCreateNoVoteFines = async (
+    match: PlannedMatch,
+    notVotedPlayers: Player[]
+  ) => {
+    if (notVotedPlayers.length === 0) {
+      setMessage("Nikdo není v seznamu NEHLASOVAL.");
+      return;
+    }
+
+    const normalizedMatchDate = normalizeDateToIso(match.date);
+
+    if (!normalizedMatchDate) {
+      setMessage("Datum zápasu není ve správném formátu.");
+      return;
+    }
+
+    setSavingFineMatchId(match.id);
+    setMessage("");
+
+    const [{ data: periodsData, error: periodsError }, { data: templatesData, error: templatesError }] =
+      await Promise.all([
+        supabase
+          .from("periods")
+          .select("*")
+          .eq("club_id", clubId),
+        supabase
+          .from("fine_templates")
+          .select("*")
+          .eq("club_id", clubId),
+      ]);
+
+    if (periodsError) {
+      console.error("Nepodařilo se načíst období:", periodsError);
+      setMessage("Nepodařilo se načíst období.");
+      setSavingFineMatchId(null);
+      return;
+    }
+
+    if (templatesError) {
+      console.error("Nepodařilo se načíst předvolby pokut:", templatesError);
+      setMessage("Nepodařilo se načíst předvolby pokut.");
+      setSavingFineMatchId(null);
+      return;
+    }
+
+    const periods = (periodsData as PeriodRow[]) ?? [];
+    const fineTemplates = (templatesData as FineTemplateRow[]) ?? [];
+
+    const matchedPeriod =
+      periods.find((period) => isDateInsidePeriod(normalizedMatchDate, period)) ??
+      null;
+
+    if (!matchedPeriod) {
+      setMessage("Pro datum zápasu nebylo nalezeno žádné období.");
+      setSavingFineMatchId(null);
+      return;
+    }
+
+    const zapasyTemplate =
+      fineTemplates.find(
+        (item) =>
+          item.name.trim().toLowerCase() === "zápasy" && item.is_active
+      ) ?? null;
+
+    if (!zapasyTemplate) {
+      setMessage('Chybí aktivní týmová pokuta s názvem "Zápasy".');
+      setSavingFineMatchId(null);
+      return;
+    }
+
+    let createdCount = 0;
+
+    for (const player of notVotedPlayers) {
+      const { data: existingFine, error: existingFineError } = await supabase
+        .from("fines")
+        .select("id")
+        .eq("period_id", matchedPeriod.id)
+        .eq("player_id", player.id)
+        .eq("note", `match:${match.id}`)
+        .maybeSingle();
+
+      if (existingFineError) {
+        console.error("Nepodařilo se ověřit existující pokutu:", existingFineError);
+        continue;
+      }
+
+      if (existingFine) {
+        continue;
+      }
+
+      const { error: createFineError } = await supabase.from("fines").insert({
+        club_id: clubId,
+        period_id: matchedPeriod.id,
+        player_id: player.id,
+        amount: Number(zapasyTemplate.default_amount),
+        reason: zapasyTemplate.name,
+        note: `match:${match.id}`,
+        fine_date: normalizedMatchDate,
+        created_by: userId,
+        is_paid: false,
+      });
+
+      if (createFineError) {
+        console.error("Nepodařilo se vytvořit pokutu za zápas:", createFineError);
+        continue;
+      }
+
+      createdCount += 1;
+    }
+
+    if (createdCount === 0) {
+      setMessage("Žádné nové pokuty nevznikly. Možná už byly přidělené dřív.");
+      setSavingFineMatchId(null);
+      return;
+    }
+
+    setMessage(`Bylo přidáno ${createdCount} pokut za nehlasování k zápasu.`);
+    setSavingFineMatchId(null);
+  };
+
   const handleAddMatch = async () => {
     if (!newOpponent.trim() || !newDate) {
       setMessage("Vyplň soupeře a datum.");
@@ -545,6 +737,7 @@ export default function MatchesScreen({
               const summary = getMatchAttendanceSummary(match.id);
               const isExpanded = expandedAttendanceMatchId === match.id;
               const isSavingAttendance = savingAttendanceMatchId === match.id;
+              const isSavingFine = savingFineMatchId === match.id;
 
               const yesRows = attendanceRows
                 .filter((row) => row.status === "yes")
@@ -968,9 +1161,39 @@ export default function MatchesScreen({
                               fontWeight: "bold",
                               color: "#9fd3ff",
                               marginBottom: "8px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: "8px",
                             }}
                           >
-                            NEHLASOVAL ({notVotedPlayers.length})
+                            <span>NEHLASOVAL ({notVotedPlayers.length})</span>
+
+                            {notVotedPlayers.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleCreateNoVoteFines(
+                                    match,
+                                    notVotedPlayers
+                                  )
+                                }
+                                disabled={isSavingFine}
+                                style={{
+                                  border: "none",
+                                  borderRadius: "10px",
+                                  padding: "8px 10px",
+                                  background: "rgba(241, 196, 15, 0.95)",
+                                  color: "#111111",
+                                  fontWeight: "bold",
+                                  cursor: isSavingFine ? "default" : "pointer",
+                                  opacity: isSavingFine ? 0.7 : 1,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {isSavingFine ? "Ukládám..." : "POKUTA"}
+                              </button>
+                            )}
                           </div>
 
                           {notVotedPlayers.length === 0 ? (
