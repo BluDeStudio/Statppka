@@ -1282,6 +1282,7 @@ export default function Home() {
                   clubId={currentClub.id}
                   clubName={currentClub.name}
                   hasBTeam={currentClub.has_b_team}
+                  userId={session.user.id}
                   primaryColor={currentClub.primary_color}
                   plannedMatches={plannedMatches}
                   finishedMatchIds={finishedMatchIds}
