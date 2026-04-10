@@ -26,7 +26,6 @@ import {
 import {
   buildFineSummaryByPlayer,
   createFine,
-  deleteFine,
   findExistingPollFine,
   getFinesByPeriodId,
   getPaidFineAmount,
@@ -95,16 +94,27 @@ function normalizeDateToIso(value?: string | null) {
   return `${year}-${month}-${day}`;
 }
 
+function normalizeTimeValue(value?: string | null) {
+  if (!value) return "";
+  return value.slice(0, 5);
+}
+
 function isOlderTraining(training: TrainingRow) {
-  const now = Date.now();
+  const now = new Date();
   const isoDate = normalizeDateToIso(training.date);
 
   if (!isoDate) return false;
 
-  const parsed = new Date(isoDate);
-  if (Number.isNaN(parsed.getTime())) return false;
+  const endTime =
+    normalizeTimeValue(training.end_time) ||
+    normalizeTimeValue(training.start_time) ||
+    "23:59";
 
-  return parsed.getTime() < now;
+  const trainingDate = new Date(`${isoDate}T${endTime}:00`);
+
+  if (Number.isNaN(trainingDate.getTime())) return false;
+
+  return trainingDate.getTime() < now.getTime();
 }
 
 function isDateInsidePeriod(dateValue: string, period: Period | null) {
@@ -149,9 +159,9 @@ export default function DisciplineScreen({
     useState<AttendanceSort>("highest");
 
   const [players, setPlayers] = useState<Player[]>([]);
-  const [clubMemberPlayers, setClubMemberPlayers] = useState<ClubMemberPlayer[]>(
-    []
-  );
+  const [clubMemberPlayers, setClubMemberPlayers] = useState<
+    ClubMemberPlayer[]
+  >([]);
   const [trainings, setTrainings] = useState<TrainingRow[]>([]);
   const [presenceMap, setPresenceMap] = useState<
     Record<string, TrainingPresenceRow[]>
@@ -170,7 +180,6 @@ export default function DisciplineScreen({
   const [fineTemplates, setFineTemplates] = useState<FineTemplateRow[]>([]);
 
   const [loading, setLoading] = useState(true);
-  const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [periodSaving, setPeriodSaving] = useState(false);
   const [fineSaving, setFineSaving] = useState(false);
   const [templateSaving, setTemplateSaving] = useState(false);
@@ -428,7 +437,6 @@ export default function DisciplineScreen({
 
       if (!active) return;
       setLoading(false);
-      setInitialLoadDone(true);
     };
 
     void load();
@@ -464,14 +472,12 @@ export default function DisciplineScreen({
       setFines(loadedFines);
     };
 
-    if (initialLoadDone) {
-      void loadVisibleFinesEffect();
-    }
+    void loadVisibleFinesEffect();
 
     return () => {
       active = false;
     };
-  }, [effectivePeriod, periodFilterMode, periods, initialLoadDone]);
+  }, [effectivePeriod, periodFilterMode, periods]);
 
   useEffect(() => {
     if (
@@ -788,26 +794,6 @@ export default function DisciplineScreen({
     );
   };
 
-  const handleDeleteFine = async (fine: FineRow) => {
-    const confirmed = window.confirm(
-      `Opravdu chceš smazat pokutu "${fine.reason}" ve výši ${formatMoney(
-        fine.amount
-      )}?`
-    );
-
-    if (!confirmed) return;
-
-    const success = await deleteFine(fine.id);
-
-    if (!success) {
-      setMessage("Nepodařilo se smazat pokutu.");
-      return;
-    }
-
-    await reloadVisibleFines();
-    setMessage("Pokuta byla smazána.");
-  };
-
   const handleCreateTemplate = async () => {
     if (!newTemplateName.trim()) {
       setMessage("Zadej název týmové pokuty.");
@@ -960,11 +946,7 @@ export default function DisciplineScreen({
 
   return (
     <div style={{ display: "grid", gap: "12px" }}>
-      {!initialLoadDone ? (
-        <div style={styles.card}>
-          <div style={{ color: "#b8b8b8" }}>Načítám disciplínu...</div>
-        </div>
-      ) : !activePeriod ? (
+      {!activePeriod ? (
         <div style={styles.card}>
           <h2 style={styles.screenTitle}>Vytvořit období</h2>
 
@@ -1087,72 +1069,70 @@ export default function DisciplineScreen({
         </div>
       )}
 
-      {initialLoadDone && (
-        <div style={styles.card}>
-          <h2 style={styles.screenTitle}>Filtr období</h2>
+      <div style={styles.card}>
+        <h2 style={styles.screenTitle}>Filtr období</h2>
 
-          <div style={{ display: "grid", gap: "8px", marginTop: "12px" }}>
-            <div style={{ display: "flex", gap: "8px" }}>
-              <button
-                type="button"
-                onClick={() => setPeriodFilterMode("active")}
-                style={tabButton(periodFilterMode === "active")}
-              >
-                Aktivní období
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setPeriodFilterMode("all")}
-                style={tabButton(periodFilterMode === "all")}
-              >
-                Vše
-              </button>
-            </div>
+        <div style={{ display: "grid", gap: "8px", marginTop: "12px" }}>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              type="button"
+              onClick={() => setPeriodFilterMode("active")}
+              style={tabButton(periodFilterMode === "active")}
+            >
+              Aktivní období
+            </button>
 
             <button
               type="button"
-              onClick={() => {
-                setPeriodFilterMode("custom");
-                if (!selectedPeriodId && periods.length > 0) {
-                  setSelectedPeriodId(periods[0].id);
-                }
-              }}
-              style={tabButton(periodFilterMode === "custom")}
+              onClick={() => setPeriodFilterMode("all")}
+              style={tabButton(periodFilterMode === "all")}
             >
-              Vybrat konkrétní období
+              Vše
             </button>
-
-            {periodFilterMode === "custom" && (
-              <select
-                value={selectedPeriodId}
-                onChange={(e) => setSelectedPeriodId(e.target.value)}
-                style={{
-                  ...styles.input,
-                  appearance: "none",
-                  cursor: "pointer",
-                  marginBottom: 0,
-                }}
-              >
-                <option value="" style={{ background: "#111111", color: "white" }}>
-                  Vyber období
-                </option>
-
-                {periods.map((period) => (
-                  <option
-                    key={period.id}
-                    value={period.id}
-                    style={{ background: "#111111", color: "white" }}
-                  >
-                    {period.name}
-                    {period.is_active ? " (aktivní)" : ""}
-                  </option>
-                ))}
-              </select>
-            )}
           </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setPeriodFilterMode("custom");
+              if (!selectedPeriodId && periods.length > 0) {
+                setSelectedPeriodId(periods[0].id);
+              }
+            }}
+            style={tabButton(periodFilterMode === "custom")}
+          >
+            Vybrat konkrétní období
+          </button>
+
+          {periodFilterMode === "custom" && (
+            <select
+              value={selectedPeriodId}
+              onChange={(e) => setSelectedPeriodId(e.target.value)}
+              style={{
+                ...styles.input,
+                appearance: "none",
+                cursor: "pointer",
+                marginBottom: 0,
+              }}
+            >
+              <option value="" style={{ background: "#111111", color: "white" }}>
+                Vyber období
+              </option>
+
+              {periods.map((period) => (
+                <option
+                  key={period.id}
+                  value={period.id}
+                  style={{ background: "#111111", color: "white" }}
+                >
+                  {period.name}
+                  {period.is_active ? " (aktivní)" : ""}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
-      )}
+      </div>
 
       {message && (
         <div
@@ -1167,27 +1147,25 @@ export default function DisciplineScreen({
         </div>
       )}
 
-      {initialLoadDone && (
-        <div style={styles.card}>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button
-              style={tabButton(mainTab === "attendance")}
-              onClick={() => setMainTab("attendance")}
-            >
-              DOCHÁZKA
-            </button>
+      <div style={styles.card}>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button
+            style={tabButton(mainTab === "attendance")}
+            onClick={() => setMainTab("attendance")}
+          >
+            DOCHÁZKA
+          </button>
 
-            <button
-              style={tabButton(mainTab === "fines")}
-              onClick={() => setMainTab("fines")}
-            >
-              POKUTY
-            </button>
-          </div>
+          <button
+            style={tabButton(mainTab === "fines")}
+            onClick={() => setMainTab("fines")}
+          >
+            POKUTY
+          </button>
         </div>
-      )}
+      </div>
 
-      {initialLoadDone && mainTab === "attendance" && (
+      {mainTab === "attendance" && (
         <div style={styles.card}>
           <h2 style={styles.screenTitle}>Docházka na tréninky</h2>
 
@@ -1299,7 +1277,7 @@ export default function DisciplineScreen({
         </div>
       )}
 
-      {initialLoadDone && mainTab === "fines" && (
+      {mainTab === "fines" && (
         <div style={{ display: "grid", gap: "12px" }}>
           <div style={styles.card}>
             <div style={{ display: "flex", gap: "8px" }}>
@@ -1729,53 +1707,27 @@ export default function DisciplineScreen({
                                           </div>
                                         </div>
 
-                                        <div
-                                          style={{
-                                            display: "grid",
-                                            gap: "8px",
-                                            marginTop: "10px",
-                                          }}
-                                        >
-                                          {!fine.is_paid && (
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                void handleToggleFinePaid(fine)
-                                              }
-                                              style={{
-                                                width: "100%",
-                                                border: "none",
-                                                borderRadius: "10px",
-                                                padding: "10px 12px",
-                                                background: primaryColor,
-                                                color: "white",
-                                                fontWeight: "bold",
-                                                cursor: "pointer",
-                                              }}
-                                            >
-                                              Označit jako zaplacené
-                                            </button>
-                                          )}
-
+                                        {!fine.is_paid && (
                                           <button
                                             type="button"
                                             onClick={() =>
-                                              void handleDeleteFine(fine)
+                                              void handleToggleFinePaid(fine)
                                             }
                                             style={{
+                                              marginTop: "10px",
                                               width: "100%",
                                               border: "none",
                                               borderRadius: "10px",
                                               padding: "10px 12px",
-                                              background: "rgba(198,40,40,0.95)",
+                                              background: primaryColor,
                                               color: "white",
                                               fontWeight: "bold",
                                               cursor: "pointer",
                                             }}
                                           >
-                                            Smazat pokutu
+                                            Označit jako zaplacené
                                           </button>
-                                        </div>
+                                        )}
                                       </div>
                                     ))
                                   )}
