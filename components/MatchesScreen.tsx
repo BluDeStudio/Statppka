@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 import MatchDetail from "@/components/MatchDetail";
 import MatchLiveScreen from "@/components/MatchLiveScreen";
 import { styles } from "@/styles/appStyles";
@@ -25,6 +26,25 @@ type MatchesScreenProps = {
     matchId: string
   ) => Promise<{ success: boolean; errorMessage?: string }>;
   isAdmin: boolean;
+};
+
+type AttendanceStatus = "yes" | "no";
+
+type Player = {
+  id: string;
+  club_id: string;
+  name: string;
+  number: number;
+  position: string;
+  profile_id?: string | null;
+};
+
+type MatchAttendanceRow = {
+  id: string;
+  match_id: string;
+  user_id: string;
+  status: AttendanceStatus;
+  created_at?: string;
 };
 
 function formatDisplayDate(date: string) {
@@ -75,10 +95,21 @@ export default function MatchesScreen({
 }: MatchesScreenProps) {
   const [filter, setFilter] = useState<"ALL" | "A" | "B">("ALL");
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
-  const [selectedMode, setSelectedMode] = useState<"detail" | "live" | null>(null);
-  const [matchOverrides, setMatchOverrides] = useState<Record<string, PlannedMatch>>(
-    {}
+  const [selectedMode, setSelectedMode] = useState<"detail" | "live" | null>(
+    null
   );
+  const [matchOverrides, setMatchOverrides] = useState<
+    Record<string, PlannedMatch>
+  >({});
+
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [attendanceMap, setAttendanceMap] = useState<
+    Record<string, MatchAttendanceRow[]>
+  >({});
+  const [linkedPlayer, setLinkedPlayer] = useState<Player | null>(null);
+  const [expandedAttendanceMatchId, setExpandedAttendanceMatchId] = useState<
+    string | null
+  >(null);
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTeam, setNewTeam] = useState<"A" | "B">("A");
@@ -90,6 +121,9 @@ export default function MatchesScreen({
   const [message, setMessage] = useState("");
   const [deletingMatchId, setDeletingMatchId] = useState<string | null>(null);
   const [savingMatch, setSavingMatch] = useState(false);
+  const [savingAttendanceMatchId, setSavingAttendanceMatchId] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     onLiveModeChange(selectedMode === "live");
@@ -121,6 +155,64 @@ export default function MatchesScreen({
       return next;
     });
   }, [plannedMatches]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadAttendanceData = async () => {
+      const visibleMatchIds = plannedMatches.map((match) => match.id);
+
+      const [
+        { data: playersData, error: playersError },
+        { data: attendanceData, error: attendanceError },
+      ] = await Promise.all([
+        supabase
+          .from("players")
+          .select("*")
+          .eq("club_id", clubId)
+          .order("number", { ascending: true }),
+        visibleMatchIds.length === 0
+          ? Promise.resolve({ data: [], error: null })
+          : supabase
+              .from("match_attendance")
+              .select("*")
+              .in("match_id", visibleMatchIds),
+      ]);
+
+      if (!active) return;
+
+      if (playersError) {
+        console.error("Nepodařilo se načíst hráče pro zápasy:", playersError);
+      }
+
+      if (attendanceError) {
+        console.error("Nepodařilo se načíst účast na zápasy:", attendanceError);
+      }
+
+      const loadedPlayers = (playersData as Player[]) ?? [];
+      const loadedAttendance = (attendanceData as MatchAttendanceRow[]) ?? [];
+
+      setPlayers(loadedPlayers);
+      setLinkedPlayer(
+        loadedPlayers.find((player) => player.profile_id === userId) ?? null
+      );
+
+      const nextAttendanceMap: Record<string, MatchAttendanceRow[]> = {};
+      for (const matchId of visibleMatchIds) {
+        nextAttendanceMap[matchId] = loadedAttendance.filter(
+          (row) => row.match_id === matchId
+        );
+      }
+
+      setAttendanceMap(nextAttendanceMap);
+    };
+
+    void loadAttendanceData();
+
+    return () => {
+      active = false;
+    };
+  }, [clubId, plannedMatches, userId]);
 
   const mergedMatches = useMemo(() => {
     return plannedMatches.map((match) => matchOverrides[match.id] ?? match);
@@ -167,10 +259,101 @@ export default function MatchesScreen({
     flex: 1,
   };
 
-  const getFilterButtonStyle = (value: "ALL" | "A" | "B"): React.CSSProperties => ({
+  const getFilterButtonStyle = (
+    value: "ALL" | "A" | "B"
+  ): React.CSSProperties => ({
     ...inactiveButtonStyle,
     background: filter === value ? primaryColor : "rgba(255,255,255,0.1)",
   });
+
+  const getPlayerNameByUserId = (rowUserId: string) => {
+    return (
+      players.find((player) => player.profile_id === rowUserId)?.name ??
+      "Neznámý hráč"
+    );
+  };
+
+  const getMatchAttendanceRows = (matchId: string) => {
+    return attendanceMap[matchId] ?? [];
+  };
+
+  const getMyAttendanceStatus = (matchId: string): AttendanceStatus | null => {
+    const row = getMatchAttendanceRows(matchId).find(
+      (item) => item.user_id === userId
+    );
+
+    return row?.status ?? null;
+  };
+
+  const getMatchAttendanceSummary = (matchId: string) => {
+    const rows = getMatchAttendanceRows(matchId);
+    const yesCount = rows.filter((row) => row.status === "yes").length;
+    const noCount = rows.filter((row) => row.status === "no").length;
+    const votedUserIds = new Set(rows.map((row) => row.user_id));
+
+    const notVotedCount = players.filter(
+      (player) => player.profile_id && !votedUserIds.has(player.profile_id)
+    ).length;
+
+    return {
+      totalVotes: votedUserIds.size,
+      yesCount,
+      noCount,
+      notVotedCount,
+    };
+  };
+
+  const handleVote = async (matchId: string, status: AttendanceStatus) => {
+    if (!linkedPlayer || !linkedPlayer.profile_id) {
+      setMessage("Nejdřív je potřeba propojit účet s hráčem.");
+      return;
+    }
+
+    setSavingAttendanceMatchId(matchId);
+    setMessage("");
+
+    const { error: upsertError } = await supabase.from("match_attendance").upsert(
+      {
+        match_id: matchId,
+        user_id: linkedPlayer.profile_id,
+        status,
+      },
+      {
+        onConflict: "match_id,user_id",
+      }
+    );
+
+    if (upsertError) {
+      console.error("Nepodařilo se uložit hlasování k zápasu:", upsertError);
+      setMessage("Nepodařilo se uložit hlasování k zápasu.");
+      setSavingAttendanceMatchId(null);
+      return;
+    }
+
+    const { data: rows, error: reloadError } = await supabase
+      .from("match_attendance")
+      .select("*")
+      .eq("match_id", matchId);
+
+    if (reloadError) {
+      console.error("Nepodařilo se načíst hlasování k zápasu:", reloadError);
+      setMessage("Hlasování bylo uloženo, ale nepodařilo se obnovit data.");
+      setSavingAttendanceMatchId(null);
+      return;
+    }
+
+    setAttendanceMap((prev) => ({
+      ...prev,
+      [matchId]: (rows as MatchAttendanceRow[]) ?? [],
+    }));
+
+    setMessage(
+      status === "yes"
+        ? "Potvrdil jsi účast na zápas."
+        : "Označil jsi, že na zápas nepřijdeš."
+    );
+    setSavingAttendanceMatchId(null);
+  };
 
   const handleAddMatch = async () => {
     if (!newOpponent.trim() || !newDate) {
@@ -223,6 +406,18 @@ export default function MatchesScreen({
     setDeletingMatchId(matchId);
     setMessage("");
 
+    const { error: deleteAttendanceError } = await supabase
+      .from("match_attendance")
+      .delete()
+      .eq("match_id", matchId);
+
+    if (deleteAttendanceError) {
+      console.error("Nepodařilo se smazat docházku zápasu:", deleteAttendanceError);
+      setMessage("Nepodařilo se smazat docházku zápasu.");
+      setDeletingMatchId(null);
+      return;
+    }
+
     const result = await onDeleteMatch(matchId);
 
     if (!result.success) {
@@ -231,9 +426,19 @@ export default function MatchesScreen({
       return;
     }
 
+    setAttendanceMap((prev) => {
+      const next = { ...prev };
+      delete next[matchId];
+      return next;
+    });
+
     if (selectedMatchId === matchId) {
       setSelectedMatchId(null);
       setSelectedMode(null);
+    }
+
+    if (expandedAttendanceMatchId === matchId) {
+      setExpandedAttendanceMatchId(null);
     }
 
     setMessage("Zápas byl smazán.");
@@ -335,6 +540,38 @@ export default function MatchesScreen({
                 match.status === "live" ||
                 match.status === "halftime";
 
+              const myStatus = getMyAttendanceStatus(match.id);
+              const attendanceRows = getMatchAttendanceRows(match.id);
+              const summary = getMatchAttendanceSummary(match.id);
+              const isExpanded = expandedAttendanceMatchId === match.id;
+              const isSavingAttendance = savingAttendanceMatchId === match.id;
+
+              const yesRows = attendanceRows
+                .filter((row) => row.status === "yes")
+                .sort((a, b) =>
+                  getPlayerNameByUserId(a.user_id).localeCompare(
+                    getPlayerNameByUserId(b.user_id),
+                    "cs"
+                  )
+                );
+
+              const noRows = attendanceRows
+                .filter((row) => row.status === "no")
+                .sort((a, b) =>
+                  getPlayerNameByUserId(a.user_id).localeCompare(
+                    getPlayerNameByUserId(b.user_id),
+                    "cs"
+                  )
+                );
+
+              const votedUserIds = new Set(attendanceRows.map((row) => row.user_id));
+              const notVotedPlayers = players
+                .filter(
+                  (player) =>
+                    player.profile_id && !votedUserIds.has(player.profile_id)
+                )
+                .sort((a, b) => a.name.localeCompare(b.name, "cs"));
+
               return (
                 <div
                   key={match.id}
@@ -432,6 +669,69 @@ export default function MatchesScreen({
                           ? "Zápas je v přestávce. Můžeš pokračovat v live zápasu."
                           : "Klikni na správu zápasu."}
                       </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: "8px",
+                          marginTop: "10px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: "999px",
+                            background: "rgba(255,255,255,0.08)",
+                            fontSize: "12px",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          Hlasovalo: {summary.totalVotes}
+                        </div>
+
+                        <div
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: "999px",
+                            background: "rgba(46, 204, 113, 0.16)",
+                            border: "1px solid rgba(46, 204, 113, 0.24)",
+                            color: "#9af0b6",
+                            fontSize: "12px",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          BUDU: {summary.yesCount}
+                        </div>
+
+                        <div
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: "999px",
+                            background: "rgba(231, 76, 60, 0.16)",
+                            border: "1px solid rgba(231, 76, 60, 0.24)",
+                            color: "#ffb0a8",
+                            fontSize: "12px",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          NEBUDU: {summary.noCount}
+                        </div>
+
+                        <div
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: "999px",
+                            background: "rgba(52, 152, 219, 0.16)",
+                            border: "1px solid rgba(52, 152, 219, 0.24)",
+                            color: "#9fd3ff",
+                            fontSize: "12px",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          NEHLASOVAL: {summary.notVotedCount}
+                        </div>
+                      </div>
                     </div>
 
                     {isAdmin && (
@@ -461,6 +761,27 @@ export default function MatchesScreen({
                           }}
                         >
                           Správa
+                        </button>
+
+                        <button
+                          style={{
+                            minWidth: "92px",
+                            height: "36px",
+                            borderRadius: "8px",
+                            border: "none",
+                            background: "rgba(255,255,255,0.12)",
+                            color: "white",
+                            cursor: "pointer",
+                            fontWeight: "bold",
+                            padding: "0 10px",
+                          }}
+                          onClick={() =>
+                            setExpandedAttendanceMatchId((prev) =>
+                              prev === match.id ? null : match.id
+                            )
+                          }
+                        >
+                          {isExpanded ? "Skrýt" : "Anketa"}
                         </button>
 
                         {canOpenLive && (
@@ -512,6 +833,166 @@ export default function MatchesScreen({
                       </div>
                     )}
                   </div>
+
+                  {isExpanded && (
+                    <div style={{ marginTop: "14px", display: "grid", gap: "12px" }}>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button
+                          type="button"
+                          onClick={() => void handleVote(match.id, "yes")}
+                          disabled={isSavingAttendance}
+                          style={{
+                            flex: 1,
+                            border: "none",
+                            borderRadius: "12px",
+                            padding: "12px",
+                            background:
+                              myStatus === "yes"
+                                ? "rgba(46, 204, 113, 0.95)"
+                                : "rgba(46, 204, 113, 0.18)",
+                            color: "white",
+                            fontWeight: "bold",
+                            cursor: isSavingAttendance ? "default" : "pointer",
+                            opacity: isSavingAttendance ? 0.7 : 1,
+                          }}
+                        >
+                          BUDU
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void handleVote(match.id, "no")}
+                          disabled={isSavingAttendance}
+                          style={{
+                            flex: 1,
+                            border: "none",
+                            borderRadius: "12px",
+                            padding: "12px",
+                            background:
+                              myStatus === "no"
+                                ? "rgba(231, 76, 60, 0.95)"
+                                : "rgba(231, 76, 60, 0.18)",
+                            color: "white",
+                            fontWeight: "bold",
+                            cursor: isSavingAttendance ? "default" : "pointer",
+                            opacity: isSavingAttendance ? 0.7 : 1,
+                          }}
+                        >
+                          NEBUDU
+                        </button>
+                      </div>
+
+                      <div style={{ display: "grid", gap: "10px" }}>
+                        <div
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: "12px",
+                            background: "rgba(46, 204, 113, 0.10)",
+                            border: "1px solid rgba(46, 204, 113, 0.20)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontWeight: "bold",
+                              color: "#9af0b6",
+                              marginBottom: "8px",
+                            }}
+                          >
+                            BUDU ({yesRows.length})
+                          </div>
+
+                          {yesRows.length === 0 ? (
+                            <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
+                              Zatím nikdo.
+                            </div>
+                          ) : (
+                            <div style={{ display: "grid", gap: "6px" }}>
+                              {yesRows.map((row) => (
+                                <div
+                                  key={`${match.id}-yes-${row.user_id}`}
+                                  style={{ fontSize: "13px", color: "white" }}
+                                >
+                                  {getPlayerNameByUserId(row.user_id)}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: "12px",
+                            background: "rgba(231, 76, 60, 0.10)",
+                            border: "1px solid rgba(231, 76, 60, 0.20)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontWeight: "bold",
+                              color: "#ffb0a8",
+                              marginBottom: "8px",
+                            }}
+                          >
+                            NEBUDU ({noRows.length})
+                          </div>
+
+                          {noRows.length === 0 ? (
+                            <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
+                              Zatím nikdo.
+                            </div>
+                          ) : (
+                            <div style={{ display: "grid", gap: "6px" }}>
+                              {noRows.map((row) => (
+                                <div
+                                  key={`${match.id}-no-${row.user_id}`}
+                                  style={{ fontSize: "13px", color: "white" }}
+                                >
+                                  {getPlayerNameByUserId(row.user_id)}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: "12px",
+                            background: "rgba(52, 152, 219, 0.10)",
+                            border: "1px solid rgba(52, 152, 219, 0.20)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontWeight: "bold",
+                              color: "#9fd3ff",
+                              marginBottom: "8px",
+                            }}
+                          >
+                            NEHLASOVAL ({notVotedPlayers.length})
+                          </div>
+
+                          {notVotedPlayers.length === 0 ? (
+                            <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
+                              Všichni hlasovali.
+                            </div>
+                          ) : (
+                            <div style={{ display: "grid", gap: "6px" }}>
+                              {notVotedPlayers.map((player) => (
+                                <div
+                                  key={`${match.id}-not-voted-${player.id}`}
+                                  style={{ fontSize: "13px", color: "white" }}
+                                >
+                                  {player.name}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
