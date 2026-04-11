@@ -42,6 +42,56 @@ type Props = {
   primaryColor?: string;
 };
 
+type OptionColorSet = {
+  background: string;
+  border: string;
+  text: string;
+  strongBackground: string;
+};
+
+const OPTION_COLORS: OptionColorSet[] = [
+  {
+    background: "rgba(46, 204, 113, 0.12)",
+    border: "1px solid rgba(46, 204, 113, 0.22)",
+    text: "#9af0b6",
+    strongBackground: "rgba(46, 204, 113, 0.92)",
+  },
+  {
+    background: "rgba(52, 152, 219, 0.12)",
+    border: "1px solid rgba(52, 152, 219, 0.22)",
+    text: "#9fd3ff",
+    strongBackground: "rgba(52, 152, 219, 0.92)",
+  },
+  {
+    background: "rgba(231, 76, 60, 0.12)",
+    border: "1px solid rgba(231, 76, 60, 0.22)",
+    text: "#ffb0a8",
+    strongBackground: "rgba(231, 76, 60, 0.92)",
+  },
+  {
+    background: "rgba(155, 89, 182, 0.12)",
+    border: "1px solid rgba(155, 89, 182, 0.22)",
+    text: "#ddb7ff",
+    strongBackground: "rgba(155, 89, 182, 0.92)",
+  },
+  {
+    background: "rgba(241, 196, 15, 0.12)",
+    border: "1px solid rgba(241, 196, 15, 0.22)",
+    text: "#ffd86b",
+    strongBackground: "rgba(241, 196, 15, 0.92)",
+  },
+  {
+    background: "rgba(26, 188, 156, 0.12)",
+    border: "1px solid rgba(26, 188, 156, 0.22)",
+    text: "#8ef1df",
+    strongBackground: "rgba(26, 188, 156, 0.92)",
+  },
+];
+
+function getOptionColors(index: number): OptionColorSet {
+  return OPTION_COLORS[index % OPTION_COLORS.length];
+}
+
 export default function PollsScreen({
   clubId,
   userId,
@@ -638,256 +688,237 @@ export default function PollsScreen({
 
           return (
             <div key={poll.id} style={styles.card}>
-              <button
-                type="button"
-                onClick={() =>
-                  setExpandedPollId((prev) => (prev === poll.id ? null : poll.id))
-                }
+              <div
                 style={{
-                  width: "100%",
-                  background: "transparent",
-                  border: "none",
-                  padding: 0,
-                  color: "white",
-                  cursor: "pointer",
-                  textAlign: "left",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: "12px",
                 }}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    justifyContent: "space-between",
-                    gap: "12px",
-                  }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: "bold", fontSize: "16px" }}>
-                      {poll.question}
-                    </div>
-
-                    {poll.description && (
-                      <div
-                        style={{
-                          fontSize: "13px",
-                          color: "#b8b8b8",
-                          marginTop: "8px",
-                          lineHeight: 1.5,
-                        }}
-                      >
-                        {poll.description}
-                      </div>
-                    )}
-
-                    <div
-                      style={{
-                        marginTop: "10px",
-                        color: "#a8a8a8",
-                        fontSize: "12px",
-                      }}
-                    >
-                      {poll.allow_multiple ? "Více odpovědí" : "Jedna odpověď"}
-                      {poll.poll_date ? ` • Datum: ${poll.poll_date}` : ""}
-                    </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: "8px",
-                        marginTop: "12px",
-                      }}
-                    >
-                      {pollOptions.map((option) => (
-                        <div
-                          key={`${poll.id}-summary-${option.id}`}
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: "999px",
-                            background: "rgba(255,255,255,0.08)",
-                            fontSize: "12px",
-                            fontWeight: "bold",
-                          }}
-                        >
-                          {option.text}: {getVotesCount(option.id)}
-                        </div>
-                      ))}
-
-                      <div
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: "999px",
-                          background: "rgba(241, 196, 15, 0.16)",
-                          border: "1px solid rgba(241, 196, 15, 0.24)",
-                          color: "#ffd86b",
-                          fontSize: "12px",
-                          fontWeight: "bold",
-                        }}
-                      >
-                        NEHLASOVALO: {notVotedPlayers.length}
-                      </div>
-                    </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: "bold", fontSize: "16px" }}>
+                    {poll.question}
                   </div>
+
+                  {poll.description && (
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        color: "#b8b8b8",
+                        marginTop: "8px",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {poll.description}
+                    </div>
+                  )}
 
                   <div
                     style={{
+                      marginTop: "10px",
+                      color: "#a8a8a8",
                       fontSize: "12px",
-                      color: "#b8b8b8",
-                      fontWeight: "bold",
-                      whiteSpace: "nowrap",
                     }}
                   >
-                    {isExpanded ? "Skrýt" : "Detail"}
+                    {poll.allow_multiple ? "Více odpovědí" : "Jedna odpověď"}
+                    {poll.poll_date ? ` • Datum: ${poll.poll_date}` : ""}
                   </div>
                 </div>
-              </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedPollId((prev) => (prev === poll.id ? null : poll.id))
+                  }
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#b8b8b8",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    padding: 0,
+                  }}
+                >
+                  {isExpanded ? "Skrýt" : "Detail"}
+                </button>
+              </div>
+
+              <div style={{ marginTop: "14px", display: "grid", gap: "8px" }}>
+                {pollOptions.map((option, index) => {
+                  const selected = hasVoted(poll.id, option.id);
+                  const votesCount = getVotesCount(option.id);
+                  const colors = getOptionColors(index);
+
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() =>
+                        void handleVote(poll.id, option.id, poll.allow_multiple)
+                      }
+                      style={{
+                        padding: "16px 16px",
+                        borderRadius: "14px",
+                        border: selected ? "1px solid transparent" : colors.border,
+                        background: selected ? colors.strongBackground : colors.background,
+                        color: "white",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: "12px",
+                        fontSize: "15px",
+                        fontWeight: "bold",
+                        cursor: "pointer",
+                        textAlign: "left",
+                      }}
+                    >
+                      <span
+                        style={{
+                          flex: 1,
+                          lineHeight: 1.35,
+                          color: selected ? "white" : colors.text,
+                        }}
+                      >
+                        {option.text}
+                      </span>
+
+                      <span
+                        style={{
+                          minWidth: "24px",
+                          textAlign: "right",
+                          color: "white",
+                          fontWeight: "bold",
+                          fontSize: "16px",
+                        }}
+                      >
+                        {votesCount}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div
+                style={{
+                  marginTop: "10px",
+                  fontSize: "13px",
+                  color: "#c7c7c7",
+                }}
+              >
+                Celkem hlasů: {totalVotesByPollId.get(poll.id) ?? 0}
+              </div>
+
+              <div
+                style={{
+                  marginTop: "12px",
+                  display: "inline-flex",
+                  padding: "8px 12px",
+                  borderRadius: "999px",
+                  background: "rgba(241, 196, 15, 0.16)",
+                  border: "1px solid rgba(241, 196, 15, 0.24)",
+                  color: "#ffd86b",
+                  fontSize: "13px",
+                  fontWeight: "bold",
+                }}
+              >
+                NEHLASOVALO: {notVotedPlayers.length}
+              </div>
 
               {isExpanded && (
-                <div style={{ marginTop: "14px", display: "grid", gap: "12px" }}>
-                  <div style={{ display: "grid", gap: "8px" }}>
-                    {pollOptions.map((option) => {
-                      const selected = hasVoted(poll.id, option.id);
-                      const votesCount = getVotesCount(option.id);
+                <div style={{ marginTop: "14px", display: "grid", gap: "10px" }}>
+                  {pollOptions.map((option, index) => {
+                    const optionVotes = votes
+                      .filter((vote) => vote.option_id === option.id)
+                      .sort((a, b) =>
+                        getPlayerNameByUserId(a.user_id).localeCompare(
+                          getPlayerNameByUserId(b.user_id),
+                          "cs"
+                        )
+                      );
 
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() =>
-                            void handleVote(poll.id, option.id, poll.allow_multiple)
-                          }
+                    const colors = getOptionColors(index);
+
+                    return (
+                      <div
+                        key={`${poll.id}-detail-${option.id}`}
+                        style={{
+                          padding: "12px 14px",
+                          borderRadius: "14px",
+                          background: colors.background,
+                          border: colors.border,
+                        }}
+                      >
+                        <div
                           style={{
-                            padding: "14px 16px",
-                            borderRadius: "12px",
-                            border: selected
-                              ? `1px solid ${primaryColor}`
-                              : "1px solid rgba(255,255,255,0.08)",
-                            background: selected
-                              ? primaryColor
-                              : "rgba(255,255,255,0.04)",
-                            color: "white",
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            fontSize: "15px",
-                            fontWeight: selected ? "bold" : "normal",
-                            cursor: "pointer",
+                            fontWeight: "bold",
+                            color: colors.text,
+                            marginBottom: "10px",
+                            fontSize: "17px",
+                            lineHeight: 1.35,
                           }}
                         >
-                          <span>{option.text}</span>
-                          <span>{votesCount}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                          {option.text} ({optionVotes.length})
+                        </div>
+
+                        {optionVotes.length === 0 ? (
+                          <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
+                            Zatím nikdo.
+                          </div>
+                        ) : (
+                          <div style={{ display: "grid", gap: "6px" }}>
+                            {optionVotes.map((vote) => (
+                              <div
+                                key={`${poll.id}-${option.id}-${vote.user_id}`}
+                                style={{ fontSize: "14px", color: "white" }}
+                              >
+                                {getPlayerNameByUserId(vote.user_id)}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
 
                   <div
                     style={{
-                      marginTop: "2px",
-                      fontSize: "12px",
-                      color: "#9f9f9f",
+                      padding: "12px 14px",
+                      borderRadius: "14px",
+                      background: "rgba(241, 196, 15, 0.10)",
+                      border: "1px solid rgba(241, 196, 15, 0.20)",
                     }}
                   >
-                    Celkem hlasů: {totalVotesByPollId.get(poll.id) ?? 0}
-                  </div>
-
-                  <div style={{ display: "grid", gap: "10px" }}>
-                    {pollOptions.map((option) => {
-                      const optionVotes = votes
-                        .filter((vote) => vote.option_id === option.id)
-                        .sort((a, b) =>
-                          getPlayerNameByUserId(a.user_id).localeCompare(
-                            getPlayerNameByUserId(b.user_id),
-                            "cs"
-                          )
-                        );
-
-                      return (
-                        <div
-                          key={`${poll.id}-detail-${option.id}`}
-                          style={{
-                            padding: "10px 12px",
-                            borderRadius: "12px",
-                            background: "rgba(255,255,255,0.04)",
-                            border: "1px solid rgba(255,255,255,0.06)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: "bold",
-                              marginBottom: "8px",
-                              fontSize: "14px",
-                            }}
-                          >
-                            {option.text} ({optionVotes.length})
-                          </div>
-
-                          <div
-                            style={{
-                              fontSize: "13px",
-                              color: "#b8b8b8",
-                              marginBottom: optionVotes.length > 0 ? "10px" : "0",
-                              lineHeight: 1.45,
-                            }}
-                          >
-                            {option.text}
-                          </div>
-
-                          {optionVotes.length === 0 ? (
-                            <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
-                              Zatím nikdo.
-                            </div>
-                          ) : (
-                            <div style={{ display: "grid", gap: "6px" }}>
-                              {optionVotes.map((vote) => (
-                                <div
-                                  key={`${poll.id}-${option.id}-${vote.user_id}`}
-                                  style={{ fontSize: "13px", color: "white" }}
-                                >
-                                  {getPlayerNameByUserId(vote.user_id)}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-
                     <div
                       style={{
-                        padding: "10px 12px",
-                        borderRadius: "12px",
-                        background: "rgba(241, 196, 15, 0.10)",
-                        border: "1px solid rgba(241, 196, 15, 0.20)",
+                        fontWeight: "bold",
+                        color: "#ffd86b",
+                        marginBottom: "10px",
+                        fontSize: "17px",
+                        lineHeight: 1.35,
                       }}
                     >
-                      <div
-                        style={{
-                          fontWeight: "bold",
-                          color: "#ffd86b",
-                          marginBottom: "8px",
-                        }}
-                      >
-                        NEHLASOVALO ({notVotedPlayers.length})
-                      </div>
-
-                      {notVotedPlayers.length === 0 ? (
-                        <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
-                          Všichni hlasovali.
-                        </div>
-                      ) : (
-                        <div style={{ display: "grid", gap: "6px" }}>
-                          {notVotedPlayers.map((player) => (
-                            <div
-                              key={`${poll.id}-not-voted-${player.id}`}
-                              style={{ fontSize: "13px", color: "white" }}
-                            >
-                              {player.name}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      NEHLASOVALO ({notVotedPlayers.length})
                     </div>
+
+                    {notVotedPlayers.length === 0 ? (
+                      <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
+                        Všichni hlasovali.
+                      </div>
+                    ) : (
+                      <div style={{ display: "grid", gap: "6px" }}>
+                        {notVotedPlayers.map((player) => (
+                          <div
+                            key={`${poll.id}-not-voted-${player.id}`}
+                            style={{ fontSize: "14px", color: "white" }}
+                          >
+                            {player.name}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ display: "flex", gap: "10px", marginTop: "4px" }}>
