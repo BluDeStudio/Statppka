@@ -1448,6 +1448,7 @@ export default function Home() {
             <TrainingsScreen
               clubId={currentClub.id}
               primaryColor={currentClub.primary_color}
+              isAdmin={isCurrentUserAdmin}
             />
           )}
 
