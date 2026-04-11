@@ -431,6 +431,11 @@ export default function MatchesScreen({
     match: PlannedMatch,
     notVotedPlayers: Player[]
   ) => {
+    if (!isAdmin) {
+      setMessage("Pokuty může přidělovat jen admin.");
+      return;
+    }
+
     if (notVotedPlayers.length === 0) {
       setMessage("Nikdo není v seznamu NEHLASOVAL.");
       return;
@@ -446,17 +451,13 @@ export default function MatchesScreen({
     setSavingFineMatchId(match.id);
     setMessage("");
 
-    const [{ data: periodsData, error: periodsError }, { data: templatesData, error: templatesError }] =
-      await Promise.all([
-        supabase
-          .from("periods")
-          .select("*")
-          .eq("club_id", clubId),
-        supabase
-          .from("fine_templates")
-          .select("*")
-          .eq("club_id", clubId),
-      ]);
+    const [
+      { data: periodsData, error: periodsError },
+      { data: templatesData, error: templatesError },
+    ] = await Promise.all([
+      supabase.from("periods").select("*").eq("club_id", clubId),
+      supabase.from("fine_templates").select("*").eq("club_id", clubId),
+    ]);
 
     if (periodsError) {
       console.error("Nepodařilo se načíst období:", periodsError);
@@ -487,8 +488,7 @@ export default function MatchesScreen({
 
     const zapasyTemplate =
       fineTemplates.find(
-        (item) =>
-          item.name.trim().toLowerCase() === "zápasy" && item.is_active
+        (item) => item.name.trim().toLowerCase() === "zápasy" && item.is_active
       ) ?? null;
 
     if (!zapasyTemplate) {
@@ -548,6 +548,11 @@ export default function MatchesScreen({
   };
 
   const handleAddMatch = async () => {
+    if (!isAdmin) {
+      setMessage("Zápas může přidat jen admin.");
+      return;
+    }
+
     if (!newOpponent.trim() || !newDate) {
       setMessage("Vyplň soupeře a datum.");
       return;
@@ -591,6 +596,11 @@ export default function MatchesScreen({
   };
 
   const handleDeleteMatch = async (matchId: string, matchTitle: string) => {
+    if (!isAdmin) {
+      setMessage("Zápas může smazat jen admin.");
+      return;
+    }
+
     const confirmed = window.confirm(`Opravdu chceš smazat zápas "${matchTitle}"?`);
 
     if (!confirmed) return;
@@ -667,7 +677,125 @@ export default function MatchesScreen({
     );
   }
 
-  if (selectedMatch !== null && selectedMode === "detail" && isAdmin) {
+  if (selectedMatch !== null && selectedMode === "live" && !isAdmin) {
+    return (
+      <div style={styles.card}>
+        <h2 style={styles.screenTitle}>LIVE zápas</h2>
+
+        <div
+          style={{
+            padding: "14px",
+            borderRadius: "14px",
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.06)",
+            display: "grid",
+            gap: "10px",
+          }}
+        >
+          <div style={{ fontWeight: "bold", fontSize: "18px", lineHeight: 1.35 }}>
+            {selectedMatch.homeTeam} vs. {selectedMatch.awayTeam}
+          </div>
+
+          <div style={{ fontSize: "13px", color: "#d9d9d9" }}>
+            {formatDisplayDate(selectedMatch.date)}
+            {selectedMatch.time ? ` • ${selectedMatch.time}` : ""}
+            {" — "}
+            {selectedMatch.team}-tým
+          </div>
+
+          {selectedMatch.location && (
+            <div style={{ fontSize: "13px", color: "#b9c4bb" }}>
+              Hřiště: {selectedMatch.location}
+            </div>
+          )}
+
+          <div
+            style={{
+              display: "inline-flex",
+              width: "fit-content",
+              alignItems: "center",
+              padding: "6px 10px",
+              borderRadius: "999px",
+              fontSize: "12px",
+              fontWeight: "bold",
+              background:
+                selectedMatch.status === "prepared" ||
+                selectedMatch.status === "live"
+                  ? "rgba(61, 214, 140, 0.16)"
+                  : "rgba(255,255,255,0.08)",
+              color:
+                selectedMatch.status === "prepared" ||
+                selectedMatch.status === "live"
+                  ? "#7dffbc"
+                  : "#d5d5d5",
+              border:
+                selectedMatch.status === "prepared" ||
+                selectedMatch.status === "live"
+                  ? "1px solid rgba(61, 214, 140, 0.28)"
+                  : "1px solid rgba(255,255,255,0.08)",
+            }}
+          >
+            {getMatchStatusLabel(selectedMatch.status)}
+          </div>
+
+          <div
+            style={{
+              fontSize: "14px",
+              color: "#d4d4d4",
+              lineHeight: 1.55,
+            }}
+          >
+            Live náhled je pro členy zatím jen ke sledování. Ovládání zápasu
+            zůstává pouze pro admina.
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedMatchId(null);
+            setSelectedMode(null);
+          }}
+          style={{
+            ...styles.primaryButton,
+            marginTop: "12px",
+            background: primaryColor,
+            border: "none",
+          }}
+        >
+          Zpět
+        </button>
+      </div>
+    );
+  }
+
+  if (selectedMatch !== null && selectedMode === "detail") {
+    if (!isAdmin) {
+      return (
+        <div style={styles.card}>
+          <div style={{ color: "#d9d9d9" }}>
+            Správa zápasu je dostupná jen pro admina.
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedMatchId(null);
+              setSelectedMode(null);
+            }}
+            style={{
+              ...styles.primaryButton,
+              marginTop: "12px",
+              background: primaryColor,
+              border: "none",
+            }}
+          >
+            Zpět
+          </button>
+        </div>
+      );
+    }
+
     return (
       <MatchDetail
         clubId={clubId}
@@ -860,7 +988,7 @@ export default function MatchesScreen({
                           ? "Zápas už běží. Můžeš se do něj vrátit."
                           : match.status === "halftime"
                           ? "Zápas je v přestávce. Můžeš pokračovat v live zápasu."
-                          : "Klikni na správu zápasu."}
+                          : "Klikni na anketu nebo live podle stavu zápasu."}
                       </div>
 
                       <div
@@ -927,21 +1055,42 @@ export default function MatchesScreen({
                       </div>
                     </div>
 
-                    {isAdmin && (
-                      <div
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: "6px",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <button
                         style={{
-                          display: "grid",
-                          gap: "6px",
-                          flexShrink: 0,
+                          minWidth: "92px",
+                          height: "36px",
+                          borderRadius: "8px",
+                          border: "none",
+                          background: "rgba(255,255,255,0.12)",
+                          color: "white",
+                          cursor: "pointer",
+                          fontWeight: "bold",
+                          padding: "0 10px",
                         }}
+                        onClick={() =>
+                          setExpandedAttendanceMatchId((prev) =>
+                            prev === match.id ? null : match.id
+                          )
+                        }
                       >
+                        {isExpanded ? "Skrýt" : "Anketa"}
+                      </button>
+
+                      {canOpenLive && (
                         <button
                           style={{
                             minWidth: "92px",
                             height: "36px",
                             borderRadius: "8px",
                             border: "none",
-                            background: primaryColor,
+                            background: "#16a34a",
                             color: "white",
                             cursor: "pointer",
                             fontWeight: "bold",
@@ -949,42 +1098,23 @@ export default function MatchesScreen({
                           }}
                           onClick={() => {
                             setSelectedMatchId(match.id);
-                            setSelectedMode("detail");
+                            setSelectedMode("live");
                             setMessage("");
                           }}
                         >
-                          Správa
+                          LIVE
                         </button>
+                      )}
 
-                        <button
-                          style={{
-                            minWidth: "92px",
-                            height: "36px",
-                            borderRadius: "8px",
-                            border: "none",
-                            background: "rgba(255,255,255,0.12)",
-                            color: "white",
-                            cursor: "pointer",
-                            fontWeight: "bold",
-                            padding: "0 10px",
-                          }}
-                          onClick={() =>
-                            setExpandedAttendanceMatchId((prev) =>
-                              prev === match.id ? null : match.id
-                            )
-                          }
-                        >
-                          {isExpanded ? "Skrýt" : "Anketa"}
-                        </button>
-
-                        {canOpenLive && (
+                      {isAdmin && (
+                        <>
                           <button
                             style={{
                               minWidth: "92px",
                               height: "36px",
                               borderRadius: "8px",
                               border: "none",
-                              background: "#16a34a",
+                              background: primaryColor,
                               color: "white",
                               cursor: "pointer",
                               fontWeight: "bold",
@@ -992,39 +1122,39 @@ export default function MatchesScreen({
                             }}
                             onClick={() => {
                               setSelectedMatchId(match.id);
-                              setSelectedMode("live");
+                              setSelectedMode("detail");
                               setMessage("");
                             }}
                           >
-                            LIVE
+                            Správa
                           </button>
-                        )}
 
-                        <button
-                          style={{
-                            minWidth: "92px",
-                            height: "36px",
-                            borderRadius: "8px",
-                            border: "none",
-                            background: "#ff3b3b",
-                            color: "white",
-                            cursor: deletingMatchId === match.id ? "default" : "pointer",
-                            fontWeight: "bold",
-                            padding: "0 10px",
-                            opacity: deletingMatchId === match.id ? 0.7 : 1,
-                          }}
-                          onClick={() =>
-                            void handleDeleteMatch(
-                              match.id,
-                              `${match.homeTeam} vs. ${match.awayTeam}`
-                            )
-                          }
-                          disabled={deletingMatchId === match.id}
-                        >
-                          {deletingMatchId === match.id ? "..." : "Smazat"}
-                        </button>
-                      </div>
-                    )}
+                          <button
+                            style={{
+                              minWidth: "92px",
+                              height: "36px",
+                              borderRadius: "8px",
+                              border: "none",
+                              background: "#ff3b3b",
+                              color: "white",
+                              cursor: deletingMatchId === match.id ? "default" : "pointer",
+                              fontWeight: "bold",
+                              padding: "0 10px",
+                              opacity: deletingMatchId === match.id ? 0.7 : 1,
+                            }}
+                            onClick={() =>
+                              void handleDeleteMatch(
+                                match.id,
+                                `${match.homeTeam} vs. ${match.awayTeam}`
+                              )
+                            }
+                            disabled={deletingMatchId === match.id}
+                          >
+                            {deletingMatchId === match.id ? "..." : "Smazat"}
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   {isExpanded && (
@@ -1169,7 +1299,7 @@ export default function MatchesScreen({
                           >
                             <span>NEHLASOVAL ({notVotedPlayers.length})</span>
 
-                            {notVotedPlayers.length > 0 && (
+                            {isAdmin && notVotedPlayers.length > 0 && (
                               <button
                                 type="button"
                                 onClick={() =>
@@ -1360,7 +1490,7 @@ export default function MatchesScreen({
               fontSize: "14px",
             }}
           >
-            Jako člen týmu můžeš plánované zápasy zatím pouze sledovat.
+            Jako člen týmu můžeš sledovat zápasy, hlasovat v anketě a otevřít live zápas.
           </div>
         )}
 
