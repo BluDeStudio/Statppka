@@ -12,6 +12,7 @@ type Poll = {
   allow_multiple: boolean;
   poll_date?: string | null;
   created_at: string;
+  is_closed: boolean;
 };
 
 type PollOption = {
@@ -34,6 +35,24 @@ type Player = {
   number: number;
   position: string;
   profile_id?: string | null;
+};
+
+type PeriodRow = {
+  id: string;
+  club_id: string;
+  name: string;
+  type: "year" | "season";
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+};
+
+type FineTemplateRow = {
+  id: string;
+  club_id: string;
+  name: string;
+  default_amount: number;
+  is_active: boolean;
 };
 
 type Props = {
@@ -92,6 +111,57 @@ function getOptionColors(index: number): OptionColorSet {
   return OPTION_COLORS[index % OPTION_COLORS.length];
 }
 
+function normalizeDateToIso(value?: string | null) {
+  if (!value) return "";
+
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const isoDateTimeMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+  if (isoDateTimeMatch) {
+    return isoDateTimeMatch[1];
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  const dotMatch = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+.*)?$/);
+  if (dotMatch) {
+    const [, day, month, year] = dotMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  const slashMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+.*)?$/);
+  if (slashMatch) {
+    const [, day, month, year] = slashMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function isDateInsidePeriod(dateValue: string, period: PeriodRow | null) {
+  if (!period) return false;
+
+  const normalizedDate = normalizeDateToIso(dateValue);
+  const normalizedStart = normalizeDateToIso(period.start_date);
+  const normalizedEnd = normalizeDateToIso(period.end_date);
+
+  if (!normalizedDate || !normalizedStart || !normalizedEnd) {
+    return false;
+  }
+
+  return normalizedDate >= normalizedStart && normalizedDate <= normalizedEnd;
+}
+
 export default function PollsScreen({
   clubId,
   userId,
@@ -115,6 +185,8 @@ export default function PollsScreen({
   const [allowMultiple, setAllowMultiple] = useState(false);
   const [pollDate, setPollDate] = useState("");
   const [newOptions, setNewOptions] = useState<string[]>(["", ""]);
+  const [closingPollId, setClosingPollId] = useState<string | null>(null);
+  const [savingFinePollId, setSavingFinePollId] = useState<string | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -296,6 +368,7 @@ export default function PollsScreen({
         description: description.trim() || null,
         allow_multiple: allowMultiple,
         poll_date: pollDate || null,
+        is_closed: false,
       })
       .select("*")
       .single();
@@ -382,11 +455,43 @@ export default function PollsScreen({
     setMessage("Anketa byla smazána.");
   };
 
+  const handleClosePoll = async (poll: Poll) => {
+    if (poll.is_closed) return;
+
+    const confirmed = window.confirm(`Opravdu chceš uzavřít anketu "${poll.question}"?`);
+    if (!confirmed) return;
+
+    setClosingPollId(poll.id);
+    setMessage("");
+
+    const { error } = await supabase
+      .from("polls")
+      .update({ is_closed: true })
+      .eq("id", poll.id);
+
+    if (error) {
+      console.error("Nepodařilo se uzavřít anketu:", error);
+      setMessage("Nepodařilo se uzavřít anketu.");
+      setClosingPollId(null);
+      return;
+    }
+
+    await loadData();
+    setMessage("Anketa byla uzavřena.");
+    setClosingPollId(null);
+  };
+
   const handleVote = async (
     pollId: string,
     optionId: string,
-    multiple: boolean
+    multiple: boolean,
+    isClosed: boolean
   ) => {
+    if (isClosed) {
+      setMessage("Tato anketa je uzavřená.");
+      return;
+    }
+
     setMessage("");
 
     if (!multiple) {
@@ -453,6 +558,118 @@ export default function PollsScreen({
     }
 
     await loadData();
+  };
+
+  const handleCreateNoVoteFines = async (poll: Poll, notVotedPlayers: Player[]) => {
+    if (notVotedPlayers.length === 0) {
+      setMessage("Nikdo není v seznamu NEHLASOVALO.");
+      return;
+    }
+
+    const normalizedPollDate = normalizeDateToIso(
+      poll.poll_date || poll.created_at
+    );
+
+    if (!normalizedPollDate) {
+      setMessage("Anketa nemá platné datum.");
+      return;
+    }
+
+    setSavingFinePollId(poll.id);
+    setMessage("");
+
+    const [{ data: periodsData, error: periodsError }, { data: templatesData, error: templatesError }] =
+      await Promise.all([
+        supabase.from("periods").select("*").eq("club_id", clubId),
+        supabase.from("fine_templates").select("*").eq("club_id", clubId),
+      ]);
+
+    if (periodsError) {
+      console.error("Nepodařilo se načíst období:", periodsError);
+      setMessage("Nepodařilo se načíst období.");
+      setSavingFinePollId(null);
+      return;
+    }
+
+    if (templatesError) {
+      console.error("Nepodařilo se načíst předvolby pokut:", templatesError);
+      setMessage("Nepodařilo se načíst předvolby pokut.");
+      setSavingFinePollId(null);
+      return;
+    }
+
+    const periods = (periodsData as PeriodRow[]) ?? [];
+    const fineTemplates = (templatesData as FineTemplateRow[]) ?? [];
+
+    const matchedPeriod =
+      periods.find((period) => isDateInsidePeriod(normalizedPollDate, period)) ??
+      null;
+
+    if (!matchedPeriod) {
+      setMessage("Pro datum ankety nebylo nalezeno žádné období.");
+      setSavingFinePollId(null);
+      return;
+    }
+
+    const anketyTemplate =
+      fineTemplates.find(
+        (item) => item.name.trim().toLowerCase() === "ankety" && item.is_active
+      ) ?? null;
+
+    if (!anketyTemplate) {
+      setMessage('Chybí aktivní týmová pokuta s názvem "Ankety".');
+      setSavingFinePollId(null);
+      return;
+    }
+
+    let createdCount = 0;
+
+    for (const player of notVotedPlayers) {
+      const { data: existingFine, error: existingFineError } = await supabase
+        .from("fines")
+        .select("id")
+        .eq("period_id", matchedPeriod.id)
+        .eq("player_id", player.id)
+        .eq("note", `poll:${poll.id}`)
+        .maybeSingle();
+
+      if (existingFineError) {
+        console.error("Nepodařilo se ověřit existující pokutu:", existingFineError);
+        continue;
+      }
+
+      if (existingFine) {
+        continue;
+      }
+
+      const { error: createFineError } = await supabase.from("fines").insert({
+        club_id: clubId,
+        period_id: matchedPeriod.id,
+        player_id: player.id,
+        amount: Number(anketyTemplate.default_amount),
+        reason: anketyTemplate.name,
+        note: `poll:${poll.id}`,
+        fine_date: normalizedPollDate,
+        created_by: userId,
+        is_paid: false,
+      });
+
+      if (createFineError) {
+        console.error("Nepodařilo se vytvořit pokutu za anketu:", createFineError);
+        continue;
+      }
+
+      createdCount += 1;
+    }
+
+    if (createdCount === 0) {
+      setMessage("Žádné nové pokuty nevznikly. Možná už byly přidělené dřív.");
+      setSavingFinePollId(null);
+      return;
+    }
+
+    setMessage(`Bylo přidáno ${createdCount} pokut za nehlasování v anketě.`);
+    setSavingFinePollId(null);
   };
 
   const getOptionsByPollId = (pollId: string) =>
@@ -673,6 +890,7 @@ export default function PollsScreen({
         polls.map((poll) => {
           const pollOptions = getOptionsByPollId(poll.id);
           const isExpanded = expandedPollId === poll.id;
+          const isClosed = poll.is_closed === true;
           const votedUserIds = new Set(
             votes
               .filter((vote) => vote.poll_id === poll.id)
@@ -723,6 +941,7 @@ export default function PollsScreen({
                   >
                     {poll.allow_multiple ? "Více odpovědí" : "Jedna odpověď"}
                     {poll.poll_date ? ` • Datum: ${poll.poll_date}` : ""}
+                    {isClosed ? " • UZAVŘENÁ" : ""}
                   </div>
                 </div>
 
@@ -757,8 +976,14 @@ export default function PollsScreen({
                       key={option.id}
                       type="button"
                       onClick={() =>
-                        void handleVote(poll.id, option.id, poll.allow_multiple)
+                        void handleVote(
+                          poll.id,
+                          option.id,
+                          poll.allow_multiple,
+                          isClosed
+                        )
                       }
+                      disabled={isClosed}
                       style={{
                         padding: "16px 16px",
                         borderRadius: "14px",
@@ -771,8 +996,9 @@ export default function PollsScreen({
                         gap: "12px",
                         fontSize: "15px",
                         fontWeight: "bold",
-                        cursor: "pointer",
+                        cursor: isClosed ? "default" : "pointer",
                         textAlign: "left",
+                        opacity: isClosed ? 0.7 : 1,
                       }}
                     >
                       <span
@@ -898,9 +1124,37 @@ export default function PollsScreen({
                         marginBottom: "10px",
                         fontSize: "17px",
                         lineHeight: 1.35,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "8px",
                       }}
                     >
-                      NEHLASOVALO ({notVotedPlayers.length})
+                      <span>NEHLASOVALO ({notVotedPlayers.length})</span>
+
+                      {notVotedPlayers.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handleCreateNoVoteFines(poll, notVotedPlayers)
+                          }
+                          disabled={savingFinePollId === poll.id}
+                          style={{
+                            border: "none",
+                            borderRadius: "10px",
+                            padding: "8px 10px",
+                            background: "rgba(241, 196, 15, 0.95)",
+                            color: "#111111",
+                            fontWeight: "bold",
+                            cursor:
+                              savingFinePollId === poll.id ? "default" : "pointer",
+                            opacity: savingFinePollId === poll.id ? 0.7 : 1,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {savingFinePollId === poll.id ? "Ukládám..." : "POKUTA"}
+                        </button>
+                      )}
                     </div>
 
                     {notVotedPlayers.length === 0 ? (
@@ -922,6 +1176,27 @@ export default function PollsScreen({
                   </div>
 
                   <div style={{ display: "flex", gap: "10px", marginTop: "4px" }}>
+                    {!isClosed && (
+                      <button
+                        type="button"
+                        onClick={() => void handleClosePoll(poll)}
+                        disabled={closingPollId === poll.id}
+                        style={{
+                          flex: 1,
+                          border: "none",
+                          borderRadius: "12px",
+                          padding: "12px 14px",
+                          background: "rgba(241, 196, 15, 0.95)",
+                          color: "#111111",
+                          fontWeight: "bold",
+                          cursor: closingPollId === poll.id ? "default" : "pointer",
+                          opacity: closingPollId === poll.id ? 0.7 : 1,
+                        }}
+                      >
+                        {closingPollId === poll.id ? "Uzavírám..." : "UZAVŘÍT"}
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => handleEditPoll(poll)}
