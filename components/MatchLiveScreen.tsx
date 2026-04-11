@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -23,6 +24,7 @@ import type { FinishedMatch, PlannedMatch } from "@/app/page";
 type MatchLiveScreenProps = {
   clubId: string;
   primaryColor?: string;
+  isAdmin: boolean;
   onBack: () => void;
   onFinishMatch: (
     finishedMatch: FinishedMatch
@@ -39,6 +41,7 @@ type MatchLiveScreenProps = {
 export default function MatchLiveScreen({
   clubId,
   primaryColor = "#22c55e",
+  isAdmin,
   onBack,
   onFinishMatch,
   onMatchStateChanged,
@@ -140,6 +143,13 @@ export default function MatchLiveScreen({
   const scoreFor = events.filter((event) => event.type === "goal_for").length;
   const scoreAgainst = events.filter((event) => event.type === "goal_against").length;
 
+  const canControlMatch = isAdmin;
+  const canEditEvents = isAdmin && matchState?.status === "live";
+  const canStartMatch = isAdmin && matchState?.status !== "live" && matchState?.status !== "halftime";
+  const canEndFirstHalf = isAdmin && matchState?.status === "live" && currentPeriod === 1;
+  const canStartSecondHalf = isAdmin && matchState?.status === "halftime";
+  const canFinishMatchNow = isAdmin;
+
   const getPlayerNameById = (playerId: string | null) => {
     if (!playerId) return "—";
     return players.find((player) => player.id === playerId)?.name ?? "Neznámý hráč";
@@ -163,6 +173,11 @@ export default function MatchLiveScreen({
   }, [matchState?.goalkeeper_player_id, goalkeeper, players]);
 
   const handleStartMatch = async () => {
+    if (!isAdmin) {
+      setMessage("Zápas může ovládat jen admin.");
+      return;
+    }
+
     setStartingMatch(true);
     setMessage("");
 
@@ -181,6 +196,11 @@ export default function MatchLiveScreen({
   };
 
   const handleEndFirstHalf = async () => {
+    if (!isAdmin) {
+      setMessage("Zápas může ovládat jen admin.");
+      return;
+    }
+
     if (!matchState || matchState.status !== "live" || currentPeriod !== 1) {
       return;
     }
@@ -206,6 +226,11 @@ export default function MatchLiveScreen({
   };
 
   const handleStartSecondHalf = async () => {
+    if (!isAdmin) {
+      setMessage("Zápas může ovládat jen admin.");
+      return;
+    }
+
     setChangingHalf(true);
     setMessage("");
 
@@ -224,6 +249,11 @@ export default function MatchLiveScreen({
   };
 
   const handleAddGoalFor = async () => {
+    if (!isAdmin) {
+      setMessage("Události může přidávat jen admin.");
+      return;
+    }
+
     if (!matchState || matchState.status !== "live") {
       setMessage("Nejdřív zahaj zápas.");
       return;
@@ -261,6 +291,11 @@ export default function MatchLiveScreen({
   };
 
   const handleAddGoalAgainst = async () => {
+    if (!isAdmin) {
+      setMessage("Události může přidávat jen admin.");
+      return;
+    }
+
     if (!matchState || matchState.status !== "live") {
       setMessage("Nejdřív zahaj zápas.");
       return;
@@ -289,6 +324,11 @@ export default function MatchLiveScreen({
   };
 
   const handleAddYellowCard = async () => {
+    if (!isAdmin) {
+      setMessage("Události může přidávat jen admin.");
+      return;
+    }
+
     if (!matchState || matchState.status !== "live") {
       setMessage("Nejdřív zahaj zápas.");
       return;
@@ -324,6 +364,11 @@ export default function MatchLiveScreen({
   };
 
   const handleAddRedCard = async () => {
+    if (!isAdmin) {
+      setMessage("Události může přidávat jen admin.");
+      return;
+    }
+
     if (!matchState || matchState.status !== "live") {
       setMessage("Nejdřív zahaj zápas.");
       return;
@@ -359,6 +404,11 @@ export default function MatchLiveScreen({
   };
 
   const handleDeleteEvent = async (eventId: string) => {
+    if (!isAdmin) {
+      setMessage("Události může mazat jen admin.");
+      return;
+    }
+
     const confirmed = window.confirm("Opravdu chceš smazat tuto událost?");
     if (!confirmed) return;
 
@@ -379,6 +429,11 @@ export default function MatchLiveScreen({
   };
 
   const handleFinishMatch = async () => {
+    if (!isAdmin) {
+      setMessage("Zápas může ukončit jen admin.");
+      return;
+    }
+
     if (selectedPlayerObjects.length === 0) {
       setMessage("Zápas nemá načtenou sestavu.");
       return;
@@ -604,7 +659,24 @@ export default function MatchLiveScreen({
           </div>
         </div>
 
-        {matchState?.status !== "live" && matchState?.status !== "halftime" && (
+        {!canControlMatch && (
+          <div
+            style={{
+              marginBottom: "14px",
+              padding: "12px 14px",
+              borderRadius: "12px",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.06)",
+              color: "#d9d9d9",
+              fontSize: "14px",
+              lineHeight: 1.5,
+            }}
+          >
+            Jako člen týmu můžeš live zápas sledovat, ale ovládání zápasu má jen admin.
+          </div>
+        )}
+
+        {canStartMatch && (
           <button
             style={{
               ...styles.primaryButton,
@@ -618,7 +690,7 @@ export default function MatchLiveScreen({
           </button>
         )}
 
-        {matchState?.status === "live" && currentPeriod === 1 && (
+        {canEndFirstHalf && (
           <button
             style={{
               ...styles.primaryButton,
@@ -633,7 +705,7 @@ export default function MatchLiveScreen({
           </button>
         )}
 
-        {matchState?.status === "halftime" && (
+        {canStartSecondHalf && (
           <button
             style={{
               ...styles.primaryButton,
@@ -648,198 +720,202 @@ export default function MatchLiveScreen({
           </button>
         )}
 
-        <div style={{ marginTop: "14px", marginBottom: "14px" }}>
-          <div style={{ fontWeight: "bold", marginBottom: "8px" }}>
-            Přidat náš gól
-          </div>
+        {isAdmin && (
+          <>
+            <div style={{ marginTop: "14px", marginBottom: "14px" }}>
+              <div style={{ fontWeight: "bold", marginBottom: "8px" }}>
+                Přidat náš gól
+              </div>
 
-          {playersLoading ? (
-            <div
-              style={{
-                padding: "12px",
-                borderRadius: "12px",
-                background: "rgba(255,255,255,0.04)",
-                color: "#b8b8b8",
-              }}
-            >
-              Načítám hráče...
+              {playersLoading ? (
+                <div
+                  style={{
+                    padding: "12px",
+                    borderRadius: "12px",
+                    background: "rgba(255,255,255,0.04)",
+                    color: "#b8b8b8",
+                  }}
+                >
+                  Načítám hráče...
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: "10px" }}>
+                  <select
+                    value={scorerId}
+                    onChange={(e) => setScorerId(e.target.value)}
+                    style={{
+                      ...styles.input,
+                      appearance: "none",
+                    }}
+                    disabled={!canEditEvents || savingEvent || deletingEventId !== null}
+                  >
+                    <option value="" style={{ color: "black" }}>
+                      Vyber střelce
+                    </option>
+                    {selectedPlayerObjects.map((player) => (
+                      <option
+                        key={`scorer-${player.id}`}
+                        value={player.id}
+                        style={{ color: "black" }}
+                      >
+                        {player.number} — {player.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={assistId}
+                    onChange={(e) =>
+                      setAssistId(e.target.value === "none" ? "none" : e.target.value)
+                    }
+                    style={{
+                      ...styles.input,
+                      appearance: "none",
+                    }}
+                    disabled={!canEditEvents || savingEvent || deletingEventId !== null}
+                  >
+                    <option value="none" style={{ color: "black" }}>
+                      Bez asistence
+                    </option>
+                    {selectedPlayerObjects.map((player) => (
+                      <option
+                        key={`assist-${player.id}`}
+                        value={player.id}
+                        style={{ color: "black" }}
+                      >
+                        {player.number} — {player.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    style={{
+                      ...styles.primaryButton,
+                      background: primaryColor,
+                      opacity:
+                        savingEvent || !canEditEvents || deletingEventId !== null
+                          ? 0.7
+                          : 1,
+                    }}
+                    onClick={() => void handleAddGoalFor()}
+                    disabled={savingEvent || !canEditEvents || deletingEventId !== null}
+                  >
+                    Uložit gól + asistenci
+                  </button>
+                </div>
+              )}
             </div>
-          ) : (
-            <div style={{ display: "grid", gap: "10px" }}>
-              <select
-                value={scorerId}
-                onChange={(e) => setScorerId(e.target.value)}
-                style={{
-                  ...styles.input,
-                  appearance: "none",
-                }}
-                disabled={matchState?.status !== "live" || savingEvent || deletingEventId !== null}
-              >
-                <option value="" style={{ color: "black" }}>
-                  Vyber střelce
-                </option>
-                {selectedPlayerObjects.map((player) => (
-                  <option
-                    key={`scorer-${player.id}`}
-                    value={player.id}
-                    style={{ color: "black" }}
-                  >
-                    {player.number} — {player.name}
-                  </option>
-                ))}
-              </select>
 
-              <select
-                value={assistId}
-                onChange={(e) =>
-                  setAssistId(e.target.value === "none" ? "none" : e.target.value)
-                }
-                style={{
-                  ...styles.input,
-                  appearance: "none",
-                }}
-                disabled={matchState?.status !== "live" || savingEvent || deletingEventId !== null}
-              >
-                <option value="none" style={{ color: "black" }}>
-                  Bez asistence
-                </option>
-                {selectedPlayerObjects.map((player) => (
-                  <option
-                    key={`assist-${player.id}`}
-                    value={player.id}
-                    style={{ color: "black" }}
-                  >
-                    {player.number} — {player.name}
-                  </option>
-                ))}
-              </select>
-
+            <div style={{ marginBottom: "14px" }}>
               <button
                 style={{
                   ...styles.primaryButton,
-                  background: primaryColor,
+                  background: "#c62828",
                   opacity:
-                    savingEvent || matchState?.status !== "live" || deletingEventId !== null
+                    savingEvent || !canEditEvents || deletingEventId !== null
                       ? 0.7
                       : 1,
                 }}
-                onClick={() => void handleAddGoalFor()}
-                disabled={savingEvent || matchState?.status !== "live" || deletingEventId !== null}
+                onClick={() => void handleAddGoalAgainst()}
+                disabled={savingEvent || !canEditEvents || deletingEventId !== null}
               >
-                Uložit gól + asistenci
+                Inkasovaný gól
               </button>
             </div>
-          )}
-        </div>
 
-        <div style={{ marginBottom: "14px" }}>
-          <button
-            style={{
-              ...styles.primaryButton,
-              background: "#c62828",
-              opacity:
-                savingEvent || matchState?.status !== "live" || deletingEventId !== null
-                  ? 0.7
-                  : 1,
-            }}
-            onClick={() => void handleAddGoalAgainst()}
-            disabled={savingEvent || matchState?.status !== "live" || deletingEventId !== null}
-          >
-            Inkasovaný gól
-          </button>
-        </div>
+            <div style={{ marginBottom: "14px" }}>
+              <div style={{ fontWeight: "bold", marginBottom: "8px" }}>
+                Přidat žlutou kartu
+              </div>
 
-        <div style={{ marginBottom: "14px" }}>
-          <div style={{ fontWeight: "bold", marginBottom: "8px" }}>
-            Přidat žlutou kartu
-          </div>
-
-          <div style={{ display: "grid", gap: "10px" }}>
-            <select
-              value={yellowCardPlayerId}
-              onChange={(e) => setYellowCardPlayerId(e.target.value)}
-              style={{
-                ...styles.input,
-                appearance: "none",
-              }}
-              disabled={matchState?.status !== "live" || savingEvent || deletingEventId !== null}
-            >
-              <option value="" style={{ color: "black" }}>
-                Vyber hráče
-              </option>
-              {selectedPlayerObjects.map((player) => (
-                <option
-                  key={`yellow-${player.id}`}
-                  value={player.id}
-                  style={{ color: "black" }}
+              <div style={{ display: "grid", gap: "10px" }}>
+                <select
+                  value={yellowCardPlayerId}
+                  onChange={(e) => setYellowCardPlayerId(e.target.value)}
+                  style={{
+                    ...styles.input,
+                    appearance: "none",
+                  }}
+                  disabled={!canEditEvents || savingEvent || deletingEventId !== null}
                 >
-                  {player.number} — {player.name}
-                </option>
-              ))}
-            </select>
+                  <option value="" style={{ color: "black" }}>
+                    Vyber hráče
+                  </option>
+                  {selectedPlayerObjects.map((player) => (
+                    <option
+                      key={`yellow-${player.id}`}
+                      value={player.id}
+                      style={{ color: "black" }}
+                    >
+                      {player.number} — {player.name}
+                    </option>
+                  ))}
+                </select>
 
-            <button
-              style={{
-                ...styles.primaryButton,
-                background: "#f59e0b",
-                opacity:
-                  savingEvent || matchState?.status !== "live" || deletingEventId !== null
-                    ? 0.7
-                    : 1,
-              }}
-              onClick={() => void handleAddYellowCard()}
-              disabled={savingEvent || matchState?.status !== "live" || deletingEventId !== null}
-            >
-              Uložit žlutou kartu
-            </button>
-          </div>
-        </div>
-
-        <div style={{ marginBottom: "14px" }}>
-          <div style={{ fontWeight: "bold", marginBottom: "8px" }}>
-            Přidat červenou kartu
-          </div>
-
-          <div style={{ display: "grid", gap: "10px" }}>
-            <select
-              value={redCardPlayerId}
-              onChange={(e) => setRedCardPlayerId(e.target.value)}
-              style={{
-                ...styles.input,
-                appearance: "none",
-              }}
-              disabled={matchState?.status !== "live" || savingEvent || deletingEventId !== null}
-            >
-              <option value="" style={{ color: "black" }}>
-                Vyber hráče
-              </option>
-              {selectedPlayerObjects.map((player) => (
-                <option
-                  key={`red-${player.id}`}
-                  value={player.id}
-                  style={{ color: "black" }}
+                <button
+                  style={{
+                    ...styles.primaryButton,
+                    background: "#f59e0b",
+                    opacity:
+                      savingEvent || !canEditEvents || deletingEventId !== null
+                        ? 0.7
+                        : 1,
+                  }}
+                  onClick={() => void handleAddYellowCard()}
+                  disabled={savingEvent || !canEditEvents || deletingEventId !== null}
                 >
-                  {player.number} — {player.name}
-                </option>
-              ))}
-            </select>
+                  Uložit žlutou kartu
+                </button>
+              </div>
+            </div>
 
-            <button
-              style={{
-                ...styles.primaryButton,
-                background: "#b91c1c",
-                opacity:
-                  savingEvent || matchState?.status !== "live" || deletingEventId !== null
-                    ? 0.7
-                    : 1,
-              }}
-              onClick={() => void handleAddRedCard()}
-              disabled={savingEvent || matchState?.status !== "live" || deletingEventId !== null}
-            >
-              Uložit červenou kartu
-            </button>
-          </div>
-        </div>
+            <div style={{ marginBottom: "14px" }}>
+              <div style={{ fontWeight: "bold", marginBottom: "8px" }}>
+                Přidat červenou kartu
+              </div>
+
+              <div style={{ display: "grid", gap: "10px" }}>
+                <select
+                  value={redCardPlayerId}
+                  onChange={(e) => setRedCardPlayerId(e.target.value)}
+                  style={{
+                    ...styles.input,
+                    appearance: "none",
+                  }}
+                  disabled={!canEditEvents || savingEvent || deletingEventId !== null}
+                >
+                  <option value="" style={{ color: "black" }}>
+                    Vyber hráče
+                  </option>
+                  {selectedPlayerObjects.map((player) => (
+                    <option
+                      key={`red-${player.id}`}
+                      value={player.id}
+                      style={{ color: "black" }}
+                    >
+                      {player.number} — {player.name}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  style={{
+                    ...styles.primaryButton,
+                    background: "#b91c1c",
+                    opacity:
+                      savingEvent || !canEditEvents || deletingEventId !== null
+                        ? 0.7
+                        : 1,
+                  }}
+                  onClick={() => void handleAddRedCard()}
+                  disabled={savingEvent || !canEditEvents || deletingEventId !== null}
+                >
+                  Uložit červenou kartu
+                </button>
+              </div>
+            </div>
+          </>
+        )}
 
         <div style={{ marginBottom: "14px" }}>
           <div style={{ fontWeight: "bold", marginBottom: "8px" }}>
@@ -935,47 +1011,51 @@ export default function MatchLiveScreen({
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteEvent(event.id)}
-                    disabled={deletingEventId === event.id || savingEvent || finishingMatch}
-                    style={{
-                      minWidth: "74px",
-                      height: "34px",
-                      borderRadius: "8px",
-                      border: "none",
-                      background: "rgba(255,255,255,0.12)",
-                      color: "white",
-                      cursor:
-                        deletingEventId === event.id || savingEvent || finishingMatch
-                          ? "default"
-                          : "pointer",
-                      fontWeight: "bold",
-                      padding: "0 10px",
-                      opacity:
-                        deletingEventId === event.id || savingEvent || finishingMatch ? 0.7 : 1,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {deletingEventId === event.id ? "..." : "Smazat"}
-                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteEvent(event.id)}
+                      disabled={deletingEventId === event.id || savingEvent || finishingMatch}
+                      style={{
+                        minWidth: "74px",
+                        height: "34px",
+                        borderRadius: "8px",
+                        border: "none",
+                        background: "rgba(255,255,255,0.12)",
+                        color: "white",
+                        cursor:
+                          deletingEventId === event.id || savingEvent || finishingMatch
+                            ? "default"
+                            : "pointer",
+                        fontWeight: "bold",
+                        padding: "0 10px",
+                        opacity:
+                          deletingEventId === event.id || savingEvent || finishingMatch ? 0.7 : 1,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {deletingEventId === event.id ? "..." : "Smazat"}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
 
-        <button
-          style={{
-            ...styles.primaryButton,
-            background: primaryColor,
-            opacity: finishingMatch || deletingEventId !== null ? 0.7 : 1,
-          }}
-          onClick={() => void handleFinishMatch()}
-          disabled={finishingMatch || deletingEventId !== null}
-        >
-          {finishingMatch ? "Ukončuji zápas..." : "KONEC ZÁPASU"}
-        </button>
+        {canFinishMatchNow && (
+          <button
+            style={{
+              ...styles.primaryButton,
+              background: primaryColor,
+              opacity: finishingMatch || deletingEventId !== null ? 0.7 : 1,
+            }}
+            onClick={() => void handleFinishMatch()}
+            disabled={finishingMatch || deletingEventId !== null}
+          >
+            {finishingMatch ? "Ukončuji zápas..." : "KONEC ZÁPASU"}
+          </button>
+        )}
 
         <button
           style={{

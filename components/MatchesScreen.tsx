@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -647,11 +648,12 @@ export default function MatchesScreen({
     setDeletingMatchId(null);
   };
 
-  if (selectedMatch !== null && selectedMode === "live" && isAdmin) {
+  if (selectedMatch !== null && selectedMode === "live") {
     return (
       <MatchLiveScreen
         clubId={clubId}
         primaryColor={primaryColor}
+        isAdmin={isAdmin}
         onBack={() => {
           setSelectedMatchId(null);
           setSelectedMode(null);
@@ -674,98 +676,6 @@ export default function MatchesScreen({
         selectedPlayers={[]}
         goalkeeper={null}
       />
-    );
-  }
-
-  if (selectedMatch !== null && selectedMode === "live" && !isAdmin) {
-    return (
-      <div style={styles.card}>
-        <h2 style={styles.screenTitle}>LIVE zápas</h2>
-
-        <div
-          style={{
-            padding: "14px",
-            borderRadius: "14px",
-            background: "rgba(255,255,255,0.04)",
-            border: "1px solid rgba(255,255,255,0.06)",
-            display: "grid",
-            gap: "10px",
-          }}
-        >
-          <div style={{ fontWeight: "bold", fontSize: "18px", lineHeight: 1.35 }}>
-            {selectedMatch.homeTeam} vs. {selectedMatch.awayTeam}
-          </div>
-
-          <div style={{ fontSize: "13px", color: "#d9d9d9" }}>
-            {formatDisplayDate(selectedMatch.date)}
-            {selectedMatch.time ? ` • ${selectedMatch.time}` : ""}
-            {" — "}
-            {selectedMatch.team}-tým
-          </div>
-
-          {selectedMatch.location && (
-            <div style={{ fontSize: "13px", color: "#b9c4bb" }}>
-              Hřiště: {selectedMatch.location}
-            </div>
-          )}
-
-          <div
-            style={{
-              display: "inline-flex",
-              width: "fit-content",
-              alignItems: "center",
-              padding: "6px 10px",
-              borderRadius: "999px",
-              fontSize: "12px",
-              fontWeight: "bold",
-              background:
-                selectedMatch.status === "prepared" ||
-                selectedMatch.status === "live"
-                  ? "rgba(61, 214, 140, 0.16)"
-                  : "rgba(255,255,255,0.08)",
-              color:
-                selectedMatch.status === "prepared" ||
-                selectedMatch.status === "live"
-                  ? "#7dffbc"
-                  : "#d5d5d5",
-              border:
-                selectedMatch.status === "prepared" ||
-                selectedMatch.status === "live"
-                  ? "1px solid rgba(61, 214, 140, 0.28)"
-                  : "1px solid rgba(255,255,255,0.08)",
-            }}
-          >
-            {getMatchStatusLabel(selectedMatch.status)}
-          </div>
-
-          <div
-            style={{
-              fontSize: "14px",
-              color: "#d4d4d4",
-              lineHeight: 1.55,
-            }}
-          >
-            Live náhled je pro členy zatím jen ke sledování. Ovládání zápasu
-            zůstává pouze pro admina.
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            setSelectedMatchId(null);
-            setSelectedMode(null);
-          }}
-          style={{
-            ...styles.primaryButton,
-            marginTop: "12px",
-            background: primaryColor,
-            border: "none",
-          }}
-        >
-          Zpět
-        </button>
-      </div>
     );
   }
 
@@ -985,10 +895,10 @@ export default function MatchesScreen({
                         {match.status === "prepared"
                           ? "Sestava je uložená. Můžeš jít do live zápasu."
                           : match.status === "live"
-                          ? "Zápas už běží. Můžeš se do něj vrátit."
-                          : match.status === "halftime"
-                          ? "Zápas je v přestávce. Můžeš pokračovat v live zápasu."
-                          : "Klikni na anketu nebo live podle stavu zápasu."}
+                            ? "Zápas už běží. Můžeš se do něj vrátit."
+                            : match.status === "halftime"
+                              ? "Zápas je v přestávce. Můžeš pokračovat v live zápasu."
+                              : "Klikni na anketu nebo live podle stavu zápasu."}
                       </div>
 
                       <div
