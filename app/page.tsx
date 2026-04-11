@@ -176,6 +176,8 @@ export default function Home() {
   const [playerLinkSavingId, setPlayerLinkSavingId] = useState<string | null>(null);
   const [playerLinkMessage, setPlayerLinkMessage] = useState("");
 
+  const isCurrentUserAdmin = currentMembership?.role === "admin";
+
   const isMainMenuVisible =
     !isLiveMatch && selectedPlayedMatchId === null && screen === "home";
 
@@ -404,7 +406,7 @@ export default function Home() {
   };
 
   const handleCreateInvite = async () => {
-    if (!currentClub || !session) return;
+    if (!currentClub || !session || !isCurrentUserAdmin) return;
 
     const link = await createInviteLink(currentClub.id, session.user.id);
 
@@ -1009,15 +1011,28 @@ export default function Home() {
                 {session.user.email}
               </p>
               {linkedPlayer ? (
-                <p
-                  style={{
-                    color: teamTheme.mutedText,
-                    marginTop: "4px",
-                    fontSize: "12px",
-                  }}
-                >
-                  Přihlášený hráč: {linkedPlayer.name}
-                </p>
+                <>
+                  <p
+                    style={{
+                      color: teamTheme.mutedText,
+                      marginTop: "4px",
+                      fontSize: "12px",
+                    }}
+                  >
+                    Přihlášený hráč: {linkedPlayer.name}
+                  </p>
+
+                  <p
+                    style={{
+                      color: isCurrentUserAdmin ? "#ffd86b" : teamTheme.mutedText,
+                      marginTop: "4px",
+                      fontSize: "12px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Role: {isCurrentUserAdmin ? "ADMIN" : "ČLEN"}
+                  </p>
+                </>
               ) : (
                 <p
                   style={{
@@ -1159,19 +1174,23 @@ export default function Home() {
                   HRÁČI
                 </button>
 
-                <button
-                  style={getSubTabStyle(teamTab === "periods")}
-                  onClick={() => setTeamTab("periods")}
-                >
-                  OBDOBÍ
-                </button>
+                {isCurrentUserAdmin && (
+                  <button
+                    style={getSubTabStyle(teamTab === "periods")}
+                    onClick={() => setTeamTab("periods")}
+                  >
+                    OBDOBÍ
+                  </button>
+                )}
 
-                <button
-                  style={getSubTabStyle(teamTab === "edit")}
-                  onClick={() => setTeamTab("edit")}
-                >
-                  EDIT TÝMU
-                </button>
+                {isCurrentUserAdmin && (
+                  <button
+                    style={getSubTabStyle(teamTab === "edit")}
+                    onClick={() => setTeamTab("edit")}
+                  >
+                    EDIT TÝMU
+                  </button>
+                )}
               </div>
 
               {teamTab === "overview" && (
@@ -1199,16 +1218,19 @@ export default function Home() {
                           lineHeight: 1.5,
                         }}
                       >
-                        Sdílej pozvánkový odkaz s hráči a členy týmu, aby se mohli
-                        připojit do stejného klubu.
+                        {isCurrentUserAdmin
+                          ? "Sdílej pozvánkový odkaz s hráči a členy týmu, aby se mohli připojit do stejného klubu."
+                          : "Jako člen týmu můžeš prohlížet týmové informace. Pozvánky a nastavení týmu spravuje admin."}
                       </div>
                     </div>
 
-                    <button style={primaryButtonStyle} onClick={handleCreateInvite}>
-                      Vygenerovat pozvánkový odkaz
-                    </button>
+                    {isCurrentUserAdmin && (
+                      <button style={primaryButtonStyle} onClick={handleCreateInvite}>
+                        Vygenerovat pozvánkový odkaz
+                      </button>
+                    )}
 
-                    {inviteMessage && (
+                    {isCurrentUserAdmin && inviteMessage && (
                       <div
                         style={{
                           padding: "12px 14px",
@@ -1232,17 +1254,18 @@ export default function Home() {
                 <PlayersScreen
                   clubId={currentClub.id}
                   primaryColor={currentClub.primary_color}
+                  isAdmin={isCurrentUserAdmin}
                 />
               )}
 
-              {teamTab === "periods" && (
+              {teamTab === "periods" && isCurrentUserAdmin && (
                 <PeriodsScreen
                   clubId={currentClub.id}
                   primaryColor={currentClub.primary_color}
                 />
               )}
 
-              {teamTab === "edit" && (
+              {teamTab === "edit" && isCurrentUserAdmin && (
                 <EditTeamScreen
                   club={currentClub}
                   userId={session.user.id}
@@ -1382,7 +1405,7 @@ export default function Home() {
                       success: true,
                     };
                   }}
-                  isAdmin={true}
+                  isAdmin={isCurrentUserAdmin}
                 />
               )}
 

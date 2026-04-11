@@ -15,7 +15,7 @@ export type ClubMember = {
   id: string;
   club_id: string;
   user_id: string;
-  role?: "admin" | "member" | null;
+  role: "admin" | "member";
   created_at?: string;
 };
 
@@ -62,7 +62,12 @@ export async function getMyClubMembership(userId: string): Promise<ClubMember | 
       return null;
     }
 
-    return (data as ClubMember | null) ?? null;
+    if (!data) return null;
+
+    return {
+      ...(data as ClubMember),
+      role: ((data as ClubMember).role ?? "member") as "admin" | "member",
+    };
   } catch (error) {
     console.error("Chyba v getMyClubMembership:", error);
     return null;
@@ -151,7 +156,7 @@ export async function createClub(input: {
         {
           club_id: club.id,
           user_id: input.userId,
-          role: "member",
+          role: "admin",
         },
       ])
       .select()
@@ -168,7 +173,10 @@ export async function createClub(input: {
 
     return {
       club: club as Club,
-      membership: membership as ClubMember,
+      membership: {
+        ...(membership as ClubMember),
+        role: ((membership as ClubMember).role ?? "admin") as "admin" | "member",
+      },
     };
   } catch (error) {
     console.error("Chyba v createClub:", error);
@@ -301,7 +309,10 @@ export async function joinClubByInviteToken(
       const club = await getClubById(existingMembership.club_id);
       return {
         club,
-        membership: existingMembership as ClubMember,
+        membership: {
+          ...(existingMembership as ClubMember),
+          role: ((existingMembership as ClubMember).role ?? "member") as "admin" | "member",
+        },
         errorMessage: club ? undefined : "Už jsi členem klubu, ale klub se nepodařilo načíst.",
       };
     }
@@ -345,7 +356,10 @@ export async function joinClubByInviteToken(
 
     return {
       club,
-      membership: membership as ClubMember,
+      membership: {
+        ...(membership as ClubMember),
+        role: ((membership as ClubMember).role ?? "member") as "admin" | "member",
+      },
       errorMessage: club ? undefined : "Připojení proběhlo, ale klub se nepodařilo načíst.",
     };
   } catch (error) {

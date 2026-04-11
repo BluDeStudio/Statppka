@@ -13,6 +13,12 @@ import { supabase } from "@/lib/supabaseClient";
 type PlayersScreenProps = {
   clubId: string;
   primaryColor?: string;
+  isAdmin: boolean;
+};
+
+type ClubMemberRoleRow = {
+  user_id: string;
+  role: "admin" | "member";
 };
 
 const defaultPositions = [
@@ -54,11 +60,13 @@ function isBirthdayToday(birthDate?: string | null) {
 export default function PlayersScreen({
   clubId,
   primaryColor = "#888888",
+  isAdmin,
 }: PlayersScreenProps) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [memberRoles, setMemberRoles] = useState<Record<string, "admin" | "member">>({});
 
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -69,31 +77,50 @@ export default function PlayersScreen({
   const [birthDate, setBirthDate] = useState("");
   const [message, setMessage] = useState("");
 
+  const loadAll = async () => {
+    setLoading(true);
+    setMessage("");
+
+    const [
+      loadedPlayers,
+      {
+        data: { user },
+      },
+      { data: memberRows, error: memberRowsError },
+    ] = await Promise.all([
+      getPlayersByClubId(clubId),
+      supabase.auth.getUser(),
+      supabase
+        .from("club_members")
+        .select("user_id, role")
+        .eq("club_id", clubId),
+    ]);
+
+    if (memberRowsError) {
+      console.error("Nepodařilo se načíst role členů:", memberRowsError);
+    }
+
+    const nextRoles: Record<string, "admin" | "member"> = {};
+
+    ((memberRows as ClubMemberRoleRow[]) ?? []).forEach((row) => {
+      nextRoles[row.user_id] = row.role ?? "member";
+    });
+
+    setPlayers(loadedPlayers);
+    setCurrentUserId(user?.id ?? null);
+    setMemberRoles(nextRoles);
+    setLoading(false);
+  };
+
   useEffect(() => {
     let active = true;
 
-    const loadPlayers = async () => {
-      setLoading(true);
-      setMessage("");
-
-      const [
-        loadedPlayers,
-        {
-          data: { user },
-        },
-      ] = await Promise.all([
-        getPlayersByClubId(clubId),
-        supabase.auth.getUser(),
-      ]);
-
+    const run = async () => {
       if (!active) return;
-
-      setPlayers(loadedPlayers);
-      setCurrentUserId(user?.id ?? null);
-      setLoading(false);
+      await loadAll();
     };
 
-    void loadPlayers();
+    void run();
 
     return () => {
       active = false;
@@ -105,6 +132,10 @@ export default function PlayersScreen({
     [players]
   );
 
+  const adminCount = useMemo(() => {
+    return Object.values(memberRoles).filter((role) => role === "admin").length;
+  }, [memberRoles]);
+
   const resetForm = () => {
     setEditingPlayer(null);
     setName("");
@@ -114,6 +145,8 @@ export default function PlayersScreen({
   };
 
   const handleOpenAddForm = () => {
+    if (!isAdmin) return;
+
     if (editingPlayer) {
       return;
     }
@@ -132,6 +165,11 @@ export default function PlayersScreen({
   };
 
   const handleAddPlayer = async () => {
+    if (!isAdmin) {
+      setMessage("Pouze admin může přidávat hráče.");
+      return;
+    }
+
     if (!name.trim()) {
       setMessage("Zadej jméno hráče.");
       return;
@@ -180,6 +218,14 @@ export default function PlayersScreen({
   };
 
   const startEditingPlayer = (player: Player) => {
+    const isMe =
+      currentUserId !== null && player.profile_id === currentUserId;
+
+    if (!isAdmin && !isMe) {
+      setMessage("Můžeš upravit jen svůj profil.");
+      return;
+    }
+
     setEditingPlayer(player);
     setName(player.name);
     setNumber(String(player.number));
@@ -191,6 +237,14 @@ export default function PlayersScreen({
 
   const handleUpdatePlayer = async () => {
     if (!editingPlayer) return;
+
+    const isMe =
+      currentUserId !== null && editingPlayer.profile_id === currentUserId;
+
+    if (!isAdmin && !isMe) {
+      setMessage("Můžeš upravit jen svůj profil.");
+      return;
+    }
 
     if (!name.trim()) {
       setMessage("Zadej jméno hráče.");
@@ -254,6 +308,59 @@ export default function PlayersScreen({
     setMessage("");
   };
 
+  const handleToggleAdmin = async (player: Player) => {
+    if (!isAdmin) {
+      setMessage("Pouze admin může měnit role.");
+      return;
+    }
+
+    if (!player.profile_id) {
+      setMessage("Admina lze nastavit jen hráči, který má propojený účet.");
+      return;
+    }
+
+    const currentRole = memberRoles[player.profile_id] ?? "member";
+    const nextRole: "admin" | "member" =
+      currentRole === "admin" ? "member" : "admin";
+
+    if (
+      currentRole === "admin" &&
+      player.profile_id === currentUserId &&
+      adminCount <= 1
+    ) {
+      setMessage("Nemůžeš odebrat admina poslednímu adminovi v klubu.");
+      return;
+    }
+
+    setSaving(true);
+    setMessage("");
+
+    const { error } = await supabase
+      .from("club_members")
+      .update({ role: nextRole })
+      .eq("club_id", clubId)
+      .eq("user_id", player.profile_id);
+
+    if (error) {
+      console.error("Nepodařilo se změnit roli člena:", error);
+      setMessage("Nepodařilo se změnit roli.");
+      setSaving(false);
+      return;
+    }
+
+    setMemberRoles((prev) => ({
+      ...prev,
+      [player.profile_id as string]: nextRole,
+    }));
+
+    setMessage(
+      nextRole === "admin"
+        ? `${player.name} je teď admin.`
+        : `${player.name} už není admin.`
+    );
+    setSaving(false);
+  };
+
   return (
     <div>
       <h2 style={styles.screenTitle}>
@@ -276,9 +383,12 @@ export default function PlayersScreen({
           <div>
             Propojeno s účtem: <strong>{linkedCount}</strong>
           </div>
+          <div>
+            Adminů: <strong>{adminCount}</strong>
+          </div>
         </div>
 
-        {!editingPlayer && (
+        {!editingPlayer && isAdmin && (
           <button
             type="button"
             style={{
@@ -444,6 +554,10 @@ export default function PlayersScreen({
               const isLinked = Boolean(player.profile_id);
               const age = getAge(player.birth_date);
               const hasBirthdayToday = isBirthdayToday(player.birth_date);
+              const playerRole = player.profile_id
+                ? memberRoles[player.profile_id] ?? "member"
+                : "member";
+              const isPlayerAdmin = playerRole === "admin";
 
               return (
                 <div
@@ -541,7 +655,44 @@ export default function PlayersScreen({
                           UPRAVIT
                         </button>
                       </>
+                    ) : isAdmin ? (
+                      <button
+                        type="button"
+                        style={{
+                          border: "none",
+                          borderRadius: "8px",
+                          padding: "6px 10px",
+                          background: primaryColor,
+                          color: "white",
+                          cursor: "pointer",
+                          fontWeight: "bold",
+                          fontSize: "11px",
+                        }}
+                        onClick={() => startEditingPlayer(player)}
+                      >
+                        UPRAVIT
+                      </button>
                     ) : null}
+
+                    {isLinked && (
+                      <div
+                        style={{
+                          padding: "5px 9px",
+                          borderRadius: "999px",
+                          fontSize: "11px",
+                          fontWeight: "bold",
+                          background: isPlayerAdmin
+                            ? "rgba(241, 196, 15, 0.16)"
+                            : "rgba(255,255,255,0.10)",
+                          color: isPlayerAdmin ? "#ffd86b" : "#ffffff",
+                          border: isPlayerAdmin
+                            ? "1px solid rgba(241, 196, 15, 0.24)"
+                            : "1px solid rgba(255,255,255,0.12)",
+                        }}
+                      >
+                        {isPlayerAdmin ? "ADMIN" : "ČLEN"}
+                      </div>
+                    )}
 
                     <div
                       style={{
@@ -560,6 +711,29 @@ export default function PlayersScreen({
                     >
                       {isLinked ? "PROPOJENÝ" : "VOLNÝ"}
                     </div>
+
+                    {isAdmin && isLinked && !isMe && (
+                      <button
+                        type="button"
+                        style={{
+                          border: "none",
+                          borderRadius: "8px",
+                          padding: "6px 10px",
+                          background: isPlayerAdmin
+                            ? "rgba(198,40,40,0.95)"
+                            : "rgba(241,196,15,0.95)",
+                          color: isPlayerAdmin ? "white" : "#111111",
+                          cursor: saving ? "default" : "pointer",
+                          fontWeight: "bold",
+                          fontSize: "11px",
+                          opacity: saving ? 0.7 : 1,
+                        }}
+                        onClick={() => void handleToggleAdmin(player)}
+                        disabled={saving}
+                      >
+                        {isPlayerAdmin ? "ODEBRAT ADMIN" : "UDĚLAT ADMINA"}
+                      </button>
+                    )}
                   </div>
                 </div>
               );
