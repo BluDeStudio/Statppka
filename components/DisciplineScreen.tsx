@@ -53,6 +53,7 @@ type PeriodFilterMode = "active" | "all" | "custom";
 type Props = {
   clubId: string;
   primaryColor?: string;
+  isAdmin: boolean;
 };
 
 type DisciplinePlayer = Player | ClubMemberPlayer;
@@ -152,6 +153,7 @@ function formatFineNote(note?: string | null) {
 export default function DisciplineScreen({
   clubId,
   primaryColor = "#888",
+  isAdmin,
 }: Props) {
   const [mainTab, setMainTab] = useState<MainTab>("attendance");
   const [fineTab, setFineTab] = useState<FineTab>("awarded");
@@ -615,6 +617,11 @@ export default function DisciplineScreen({
   };
 
   const handleCreatePeriod = async () => {
+    if (!isAdmin) {
+      setMessage("Pouze admin může vytvářet období.");
+      return;
+    }
+
     if (!periodName.trim()) {
       setMessage("Zadej název období.");
       return;
@@ -668,6 +675,11 @@ export default function DisciplineScreen({
   };
 
   const handleClosePeriod = async () => {
+    if (!isAdmin) {
+      setMessage("Pouze admin může uzavírat období.");
+      return;
+    }
+
     if (!activePeriod) return;
 
     const confirmed = window.confirm(
@@ -704,6 +716,11 @@ export default function DisciplineScreen({
   };
 
   const handleCreateFine = async () => {
+    if (!isAdmin) {
+      setMessage("Pouze admin může přidávat pokuty.");
+      return;
+    }
+
     if (!activePeriod) {
       setMessage("Nejdřív vytvoř aktivní období.");
       return;
@@ -776,6 +793,11 @@ export default function DisciplineScreen({
   };
 
   const handleToggleFinePaid = async (fine: FineRow) => {
+    if (!isAdmin) {
+      setMessage("Pouze admin může měnit stav pokuty.");
+      return;
+    }
+
     const success = await setFinePaidStatus({
       fineId: fine.id,
       isPaid: !fine.is_paid,
@@ -795,6 +817,11 @@ export default function DisciplineScreen({
   };
 
   const handleCreateTemplate = async () => {
+    if (!isAdmin) {
+      setMessage("Pouze admin může vytvářet týmové pokuty.");
+      return;
+    }
+
     if (!newTemplateName.trim()) {
       setMessage("Zadej název týmové pokuty.");
       return;
@@ -836,6 +863,11 @@ export default function DisciplineScreen({
   };
 
   const handleStartEditTemplate = (template: FineTemplateRow) => {
+    if (!isAdmin) {
+      setMessage("Pouze admin může upravovat týmové pokuty.");
+      return;
+    }
+
     if (editingTemplateId === template.id) {
       resetInlineTemplateEdit();
       return;
@@ -849,6 +881,11 @@ export default function DisciplineScreen({
   };
 
   const handleUpdateTemplate = async () => {
+    if (!isAdmin) {
+      setMessage("Pouze admin může upravovat týmové pokuty.");
+      return;
+    }
+
     if (!editingTemplateId) return;
 
     if (!editingTemplateName.trim()) {
@@ -892,6 +929,11 @@ export default function DisciplineScreen({
   };
 
   const handleDeleteTemplate = async (templateId: string) => {
+    if (!isAdmin) {
+      setMessage("Pouze admin může mazat týmové pokuty.");
+      return;
+    }
+
     const confirmed = window.confirm("Opravdu chceš smazat tuto týmovou pokutu?");
     if (!confirmed) return;
 
@@ -946,7 +988,7 @@ export default function DisciplineScreen({
 
   return (
     <div style={{ display: "grid", gap: "12px" }}>
-      {!activePeriod ? (
+      {isAdmin && (!activePeriod ? (
         <div style={styles.card}>
           <h2 style={styles.screenTitle}>Vytvořit období</h2>
 
@@ -1067,7 +1109,7 @@ export default function DisciplineScreen({
             </button>
           </div>
         </div>
-      )}
+      ))}
 
       <div style={styles.card}>
         <h2 style={styles.screenTitle}>Filtr období</h2>
@@ -1288,151 +1330,155 @@ export default function DisciplineScreen({
                 UDĚLENÉ
               </button>
 
-              <button
-                style={subTabButton(fineTab === "templates")}
-                onClick={() => setFineTab("templates")}
-              >
-                TÝMOVÉ POKUTY
-              </button>
+              {isAdmin && (
+                <button
+                  style={subTabButton(fineTab === "templates")}
+                  onClick={() => setFineTab("templates")}
+                >
+                  TÝMOVÉ POKUTY
+                </button>
+              )}
             </div>
           </div>
 
           {fineTab === "awarded" && (
             <>
-              <div style={styles.card}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (showFineForm) {
-                      resetFineForm();
-                    }
-                    setShowFineForm((prev) => !prev);
-                  }}
-                  style={{
-                    ...styles.primaryButton,
-                    marginTop: 0,
-                    background: primaryColor,
-                    border: "none",
-                  }}
-                >
-                  {showFineForm ? "Zavřít formulář" : "Přidat pokutu"}
-                </button>
+              {isAdmin && (
+                <div style={styles.card}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (showFineForm) {
+                        resetFineForm();
+                      }
+                      setShowFineForm((prev) => !prev);
+                    }}
+                    style={{
+                      ...styles.primaryButton,
+                      marginTop: 0,
+                      background: primaryColor,
+                      border: "none",
+                    }}
+                  >
+                    {showFineForm ? "Zavřít formulář" : "Přidat pokutu"}
+                  </button>
 
-                {showFineForm && (
-                  <div style={{ display: "grid", gap: "10px", marginTop: "16px" }}>
-                    <h2 style={{ ...styles.screenTitle, marginTop: 0 }}>Přidat pokutu</h2>
+                  {showFineForm && (
+                    <div style={{ display: "grid", gap: "10px", marginTop: "16px" }}>
+                      <h2 style={{ ...styles.screenTitle, marginTop: 0 }}>Přidat pokutu</h2>
 
-                    {!activePeriod ? (
-                      <div style={{ color: "#b8b8b8" }}>
-                        Nejprve vytvoř aktivní období.
-                      </div>
-                    ) : (
-                      <>
-                        <select
-                          value={selectedPlayerId}
-                          onChange={(e) => setSelectedPlayerId(e.target.value)}
-                          style={{
-                            ...styles.input,
-                            appearance: "none",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <option value="" style={{ background: "#111111", color: "white" }}>
-                            Vyber hráče
-                          </option>
-                          {disciplinePlayers
-                            .slice()
-                            .sort((a, b) => a.name.localeCompare(b.name, "cs"))
-                            .map((player) => (
-                              <option
-                                key={player.id}
-                                value={player.id}
-                                style={{ background: "#111111", color: "white" }}
-                              >
-                                {player.name}
-                              </option>
-                            ))}
-                        </select>
+                      {!activePeriod ? (
+                        <div style={{ color: "#b8b8b8" }}>
+                          Nejprve vytvoř aktivní období.
+                        </div>
+                      ) : (
+                        <>
+                          <select
+                            value={selectedPlayerId}
+                            onChange={(e) => setSelectedPlayerId(e.target.value)}
+                            style={{
+                              ...styles.input,
+                              appearance: "none",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <option value="" style={{ background: "#111111", color: "white" }}>
+                              Vyber hráče
+                            </option>
+                            {disciplinePlayers
+                              .slice()
+                              .sort((a, b) => a.name.localeCompare(b.name, "cs"))
+                              .map((player) => (
+                                <option
+                                  key={player.id}
+                                  value={player.id}
+                                  style={{ background: "#111111", color: "white" }}
+                                >
+                                  {player.name}
+                                </option>
+                              ))}
+                          </select>
 
-                        <select
-                          value={selectedTemplateId}
-                          onChange={(e) => handleTemplateSelect(e.target.value)}
-                          style={{
-                            ...styles.input,
-                            appearance: "none",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <option value="" style={{ background: "#111111", color: "white" }}>
-                            Vyber týmovou pokutu
-                          </option>
-                          {fineTemplates
-                            .filter((item) => item.is_active)
-                            .map((template) => (
-                              <option
-                                key={template.id}
-                                value={template.id}
-                                style={{ background: "#111111", color: "white" }}
-                              >
-                                {template.name} ({template.default_amount} Kč)
-                              </option>
-                            ))}
-                        </select>
+                          <select
+                            value={selectedTemplateId}
+                            onChange={(e) => handleTemplateSelect(e.target.value)}
+                            style={{
+                              ...styles.input,
+                              appearance: "none",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <option value="" style={{ background: "#111111", color: "white" }}>
+                              Vyber týmovou pokutu
+                            </option>
+                            {fineTemplates
+                              .filter((item) => item.is_active)
+                              .map((template) => (
+                                <option
+                                  key={template.id}
+                                  value={template.id}
+                                  style={{ background: "#111111", color: "white" }}
+                                >
+                                  {template.name} ({template.default_amount} Kč)
+                                </option>
+                              ))}
+                          </select>
 
-                        <input
-                          type="text"
-                          placeholder="Důvod pokuty"
-                          value={fineReason}
-                          onChange={(e) => setFineReason(e.target.value)}
-                          style={styles.input}
-                        />
+                          <input
+                            type="text"
+                            placeholder="Důvod pokuty"
+                            value={fineReason}
+                            onChange={(e) => setFineReason(e.target.value)}
+                            style={styles.input}
+                          />
 
-                        <input
-                          type="number"
-                          placeholder="Částka"
-                          value={fineAmount}
-                          onChange={(e) => setFineAmount(e.target.value)}
-                          style={styles.input}
-                        />
+                          <input
+                            type="number"
+                            placeholder="Částka"
+                            value={fineAmount}
+                            onChange={(e) => setFineAmount(e.target.value)}
+                            style={styles.input}
+                          />
 
-                        <input
-                          type="date"
-                          value={fineDate}
-                          onChange={(e) => setFineDate(e.target.value)}
-                          style={styles.input}
-                        />
+                          <input
+                            type="date"
+                            value={fineDate}
+                            onChange={(e) => setFineDate(e.target.value)}
+                            style={styles.input}
+                          />
 
-                        <textarea
-                          placeholder="Poznámka"
-                          value={fineNote}
-                          onChange={(e) => setFineNote(e.target.value)}
-                          style={{
-                            ...styles.input,
-                            minHeight: "90px",
-                            resize: "vertical",
-                            fontFamily: "inherit",
-                          }}
-                        />
+                          <textarea
+                            placeholder="Poznámka"
+                            value={fineNote}
+                            onChange={(e) => setFineNote(e.target.value)}
+                            style={{
+                              ...styles.input,
+                              minHeight: "90px",
+                              resize: "vertical",
+                              fontFamily: "inherit",
+                            }}
+                          />
 
-                        <button
-                          type="button"
-                          onClick={handleCreateFine}
-                          disabled={fineSaving}
-                          style={{
-                            ...styles.primaryButton,
-                            marginTop: 0,
-                            background: primaryColor,
-                            border: "none",
-                            opacity: fineSaving ? 0.7 : 1,
-                          }}
-                        >
-                          {fineSaving ? "Ukládám..." : "Potvrdit pokutu"}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
+                          <button
+                            type="button"
+                            onClick={handleCreateFine}
+                            disabled={fineSaving}
+                            style={{
+                              ...styles.primaryButton,
+                              marginTop: 0,
+                              background: primaryColor,
+                              border: "none",
+                              opacity: fineSaving ? 0.7 : 1,
+                            }}
+                          >
+                            {fineSaving ? "Ukládám..." : "Potvrdit pokutu"}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div style={styles.card}>
                 <h2 style={styles.screenTitle}>Přehled hráčů a pokut</h2>
@@ -1707,7 +1753,7 @@ export default function DisciplineScreen({
                                           </div>
                                         </div>
 
-                                        {!fine.is_paid && (
+                                        {isAdmin && !fine.is_paid && (
                                           <button
                                             type="button"
                                             onClick={() =>
@@ -1744,7 +1790,7 @@ export default function DisciplineScreen({
             </>
           )}
 
-          {fineTab === "templates" && (
+          {isAdmin && fineTab === "templates" && (
             <>
               <div style={styles.card}>
                 <h2 style={styles.screenTitle}>Přidat týmovou pokutu</h2>

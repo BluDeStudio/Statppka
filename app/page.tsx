@@ -1472,6 +1472,7 @@ export default function Home() {
             <DisciplineScreen
               clubId={currentClub.id}
               primaryColor={currentClub.primary_color}
+              isAdmin={isCurrentUserAdmin}
             />
           )}
 
