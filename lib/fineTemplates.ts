@@ -20,6 +20,7 @@ const DEFAULT_FINE_TEMPLATES: Array<{
   { name: "Červená karta", default_amount: 225 },
   { name: "Nedorazí na zápas", default_amount: 300 },
   { name: "Ankety", default_amount: 10 },
+  { name: "Zápasy", default_amount: 20 },
 ];
 
 export async function getFineTemplatesByClubId(
@@ -48,31 +49,30 @@ export async function ensureDefaultFineTemplates(
 ): Promise<FineTemplateRow[]> {
   const existing = await getFineTemplatesByClubId(clubId);
 
-  if (existing.length > 0) {
-    return existing;
-  }
+  const existingNames = new Set(
+    existing.map((item) => item.name.trim().toLowerCase())
+  );
 
-  const { data, error } = await supabase
-    .from("fine_templates")
-    .insert(
-      DEFAULT_FINE_TEMPLATES.map((item) => ({
+  const missingTemplates = DEFAULT_FINE_TEMPLATES.filter(
+    (item) => !existingNames.has(item.name.trim().toLowerCase())
+  );
+
+  if (missingTemplates.length > 0) {
+    const { error } = await supabase.from("fine_templates").insert(
+      missingTemplates.map((item) => ({
         club_id: clubId,
         name: item.name,
         default_amount: item.default_amount,
         is_active: true,
       }))
-    )
-    .select("*");
+    );
 
-  if (error) {
-    console.error("Nepodařilo se vytvořit výchozí týmové pokuty:", error);
-    return [];
+    if (error) {
+      console.error("Nepodařilo se doplnit výchozí týmové pokuty:", error);
+    }
   }
 
-  return ((data as FineTemplateRow[]) ?? []).map((item) => ({
-    ...item,
-    default_amount: Number(item.default_amount),
-  }));
+  return await getFineTemplatesByClubId(clubId);
 }
 
 export async function createFineTemplate({
@@ -156,4 +156,3 @@ export async function deleteFineTemplate(templateId: string): Promise<boolean> {
 
   return true;
 }
-
