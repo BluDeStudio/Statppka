@@ -1,3 +1,4 @@
+
 import { supabase } from "@/lib/supabaseClient";
 
 export type FineRow = {

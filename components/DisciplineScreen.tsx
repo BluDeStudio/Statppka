@@ -26,6 +26,7 @@ import {
 import {
   buildFineSummaryByPlayer,
   createFine,
+  deleteFine,
   findExistingPollFine,
   getFinesByPeriodId,
   getPaidFineAmount,
@@ -185,6 +186,7 @@ export default function DisciplineScreen({
   const [periodSaving, setPeriodSaving] = useState(false);
   const [fineSaving, setFineSaving] = useState(false);
   const [templateSaving, setTemplateSaving] = useState(false);
+  const [deletingFineId, setDeletingFineId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -816,6 +818,33 @@ export default function DisciplineScreen({
     );
   };
 
+  const handleDeleteFine = async (fine: FineRow) => {
+    if (!isAdmin) {
+      setMessage("Pouze admin může mazat pokuty.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Opravdu chceš smazat pokutu "${fine.reason}" za ${formatMoney(fine.amount)}?`
+    );
+    if (!confirmed) return;
+
+    setDeletingFineId(fine.id);
+    setMessage("");
+
+    const success = await deleteFine(fine.id);
+
+    if (!success) {
+      setMessage("Nepodařilo se smazat pokutu.");
+      setDeletingFineId(null);
+      return;
+    }
+
+    await reloadVisibleFines();
+    setMessage("Pokuta byla smazána.");
+    setDeletingFineId(null);
+  };
+
   const handleCreateTemplate = async () => {
     if (!isAdmin) {
       setMessage("Pouze admin může vytvářet týmové pokuty.");
@@ -988,128 +1017,130 @@ export default function DisciplineScreen({
 
   return (
     <div style={{ display: "grid", gap: "12px" }}>
-      {isAdmin && (!activePeriod ? (
-        <div style={styles.card}>
-          <h2 style={styles.screenTitle}>Vytvořit období</h2>
+      {isAdmin &&
+        (!activePeriod ? (
+          <div style={styles.card}>
+            <h2 style={styles.screenTitle}>Vytvořit období</h2>
 
-          <div
-            style={{
-              color: "#cfcfcf",
-              fontSize: "13px",
-              lineHeight: 1.5,
-              marginBottom: "12px",
-            }}
-          >
-            Nejdřív je potřeba založit aktivní období. Může to být rok nebo sezóna.
-          </div>
-
-          <div style={{ display: "grid", gap: "10px" }}>
-            <input
-              type="text"
-              placeholder="Název období (např. 2026 nebo 2025/2026)"
-              value={periodName}
-              onChange={(e) => setPeriodName(e.target.value)}
-              style={styles.input}
-            />
-
-            <div style={{ display: "flex", gap: "8px" }}>
-              <button
-                type="button"
-                style={tabButton(periodType === "year")}
-                onClick={() => setPeriodType("year")}
-              >
-                ROK
-              </button>
-
-              <button
-                type="button"
-                style={tabButton(periodType === "season")}
-                onClick={() => setPeriodType("season")}
-              >
-                SEZÓNA
-              </button>
-            </div>
-
-            <input
-              type="date"
-              value={periodStartDate}
-              onChange={(e) => setPeriodStartDate(e.target.value)}
-              style={styles.input}
-            />
-
-            <input
-              type="date"
-              value={periodEndDate}
-              onChange={(e) => setPeriodEndDate(e.target.value)}
-              style={styles.input}
-            />
-
-            <button
-              type="button"
-              onClick={handleCreatePeriod}
-              disabled={periodSaving}
-              style={{
-                ...styles.primaryButton,
-                marginTop: 0,
-                background: primaryColor,
-                border: "none",
-                opacity: periodSaving ? 0.7 : 1,
-              }}
-            >
-              {periodSaving ? "Vytvářím..." : "Vytvořit období"}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div style={styles.card}>
-          <div style={{ display: "grid", gap: "10px" }}>
             <div
               style={{
-                padding: "12px 14px",
-                borderRadius: "12px",
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.06)",
+                color: "#cfcfcf",
+                fontSize: "13px",
+                lineHeight: 1.5,
+                marginBottom: "12px",
               }}
             >
-              <div
-                style={{
-                  fontWeight: "bold",
-                  fontSize: "15px",
-                  marginBottom: "6px",
-                }}
-              >
-                Aktivní období: {activePeriod.name}
-              </div>
-
-              <div
-                style={{
-                  color: "#cfcfcf",
-                  fontSize: "13px",
-                  lineHeight: 1.5,
-                }}
-              >
-                {formatPeriodType(activePeriod.type)} • {activePeriod.start_date} až{" "}
-                {activePeriod.end_date}
-              </div>
+              Nejdřív je potřeba založit aktivní období. Může to být rok nebo
+              sezóna.
             </div>
 
-            <button
-              type="button"
-              onClick={handleClosePeriod}
-              disabled={periodSaving}
-              style={{
-                ...styles.primaryButton,
-                marginTop: 0,
-                background: "rgba(198,40,40,0.95)",
-                border: "none",
-                opacity: periodSaving ? 0.7 : 1,
-              }}
-            >
-              {periodSaving ? "Uzavírám..." : "Uzavřít období"}
-            </button>
+            <div style={{ display: "grid", gap: "10px" }}>
+              <input
+                type="text"
+                placeholder="Název období (např. 2026 nebo 2025/2026)"
+                value={periodName}
+                onChange={(e) => setPeriodName(e.target.value)}
+                style={styles.input}
+              />
+
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  type="button"
+                  style={tabButton(periodType === "year")}
+                  onClick={() => setPeriodType("year")}
+                >
+                  ROK
+                </button>
+
+                <button
+                  type="button"
+                  style={tabButton(periodType === "season")}
+                  onClick={() => setPeriodType("season")}
+                >
+                  SEZÓNA
+                </button>
+              </div>
+
+              <input
+                type="date"
+                value={periodStartDate}
+                onChange={(e) => setPeriodStartDate(e.target.value)}
+                style={styles.input}
+              />
+
+              <input
+                type="date"
+                value={periodEndDate}
+                onChange={(e) => setPeriodEndDate(e.target.value)}
+                style={styles.input}
+              />
+
+              <button
+                type="button"
+                onClick={handleCreatePeriod}
+                disabled={periodSaving}
+                style={{
+                  ...styles.primaryButton,
+                  marginTop: 0,
+                  background: primaryColor,
+                  border: "none",
+                  opacity: periodSaving ? 0.7 : 1,
+                }}
+              >
+                {periodSaving ? "Vytvářím..." : "Vytvořit období"}
+              </button>
+            </div>
           </div>
-        </div>
-      ))}
+        ) : (
+          <div style={styles.card}>
+            <div style={{ display: "grid", gap: "10px" }}>
+              <div
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: "12px",
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: "bold",
+                    fontSize: "15px",
+                    marginBottom: "6px",
+                  }}
+                >
+                  Aktivní období: {activePeriod.name}
+                </div>
+
+                <div
+                  style={{
+                    color: "#cfcfcf",
+                    fontSize: "13px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {formatPeriodType(activePeriod.type)} •{" "}
+                  {activePeriod.start_date} až {activePeriod.end_date}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleClosePeriod}
+                disabled={periodSaving}
+                style={{
+                  ...styles.primaryButton,
+                  marginTop: 0,
+                  background: "rgba(198,40,40,0.95)",
+                  border: "none",
+                  opacity: periodSaving ? 0.7 : 1,
+                }}
+              >
+                {periodSaving ? "Uzavírám..." : "Uzavřít období"}
+              </button>
+            </div>
+          </div>
+        ))}
 
       <div style={styles.card}>
         <h2 style={styles.screenTitle}>Filtr období</h2>
@@ -1239,8 +1270,9 @@ export default function DisciplineScreen({
               lineHeight: 1.5,
             }}
           >
-            Do docházky se počítají všechny starší tréninky v právě zvoleném období.
-            Jakmile u staršího tréninku potvrdíš účast, zapíše se hráčům do docházky.
+            Do docházky se počítají všechny starší tréninky v právě zvoleném
+            období. Jakmile u staršího tréninku potvrdíš účast, zapíše se hráčům
+            do docházky.
           </div>
 
           {loading ? (
@@ -1365,7 +1397,9 @@ export default function DisciplineScreen({
 
                   {showFineForm && (
                     <div style={{ display: "grid", gap: "10px", marginTop: "16px" }}>
-                      <h2 style={{ ...styles.screenTitle, marginTop: 0 }}>Přidat pokutu</h2>
+                      <h2 style={{ ...styles.screenTitle, marginTop: 0 }}>
+                        Přidat pokutu
+                      </h2>
 
                       {!activePeriod ? (
                         <div style={{ color: "#b8b8b8" }}>
@@ -1550,9 +1584,7 @@ export default function DisciplineScreen({
                                 type="button"
                                 onClick={() =>
                                   setExpandedPlayerId((prev) =>
-                                    prev === item.player_id
-                                      ? null
-                                      : item.player_id
+                                    prev === item.player_id ? null : item.player_id
                                   )
                                 }
                                 style={{
@@ -1753,26 +1785,64 @@ export default function DisciplineScreen({
                                           </div>
                                         </div>
 
-                                        {isAdmin && !fine.is_paid && (
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              void handleToggleFinePaid(fine)
-                                            }
+                                        {isAdmin && (
+                                          <div
                                             style={{
+                                              display: "grid",
+                                              gap: "8px",
                                               marginTop: "10px",
-                                              width: "100%",
-                                              border: "none",
-                                              borderRadius: "10px",
-                                              padding: "10px 12px",
-                                              background: primaryColor,
-                                              color: "white",
-                                              fontWeight: "bold",
-                                              cursor: "pointer",
                                             }}
                                           >
-                                            Označit jako zaplacené
-                                          </button>
+                                            {!fine.is_paid && (
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  void handleToggleFinePaid(fine)
+                                                }
+                                                style={{
+                                                  width: "100%",
+                                                  border: "none",
+                                                  borderRadius: "10px",
+                                                  padding: "10px 12px",
+                                                  background: primaryColor,
+                                                  color: "white",
+                                                  fontWeight: "bold",
+                                                  cursor: "pointer",
+                                                }}
+                                              >
+                                                Označit jako zaplacené
+                                              </button>
+                                            )}
+
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                void handleDeleteFine(fine)
+                                              }
+                                              disabled={deletingFineId === fine.id}
+                                              style={{
+                                                width: "100%",
+                                                border: "none",
+                                                borderRadius: "10px",
+                                                padding: "10px 12px",
+                                                background: "rgba(198,40,40,0.95)",
+                                                color: "white",
+                                                fontWeight: "bold",
+                                                cursor:
+                                                  deletingFineId === fine.id
+                                                    ? "default"
+                                                    : "pointer",
+                                                opacity:
+                                                  deletingFineId === fine.id
+                                                    ? 0.7
+                                                    : 1,
+                                              }}
+                                            >
+                                              {deletingFineId === fine.id
+                                                ? "Mažu..."
+                                                : "Smazat pokutu"}
+                                            </button>
+                                          </div>
                                         )}
                                       </div>
                                     ))
