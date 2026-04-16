@@ -59,10 +59,36 @@ export function getSecondHalfElapsedSeconds(match: LiveMatchFields) {
   return Math.min(HALF_DURATION_SECONDS, match.second_half_elapsed_seconds);
 }
 
+export function getCurrentHalfElapsedSeconds(match: LiveMatchFields) {
+  if (match.current_period === 1) {
+    return getFirstHalfElapsedSeconds(match);
+  }
+
+  if (match.current_period === 2) {
+    return getSecondHalfElapsedSeconds(match);
+  }
+
+  return 0;
+}
+
 export function getTotalElapsedSeconds(match: LiveMatchFields) {
   return (
     getFirstHalfElapsedSeconds(match) + getSecondHalfElapsedSeconds(match)
   );
+}
+
+export function isMatchTimerPaused(match: LiveMatchFields) {
+  if (match.status !== "live") return false;
+
+  if (match.current_period === 1) {
+    return !match.first_half_started_at;
+  }
+
+  if (match.current_period === 2) {
+    return !match.second_half_started_at;
+  }
+
+  return false;
 }
 
 export function formatMatchClock(totalSeconds: number) {

@@ -81,6 +81,9 @@ export type FinishedMatch = {
     assists: number;
     yellowCards?: number;
     redCards?: number;
+    playedSeconds?: number;
+    shotsOnTarget?: number;
+    shotsOffTarget?: number;
   }[];
   events: FinishedMatchEvent[];
   finished_at?: string | null;

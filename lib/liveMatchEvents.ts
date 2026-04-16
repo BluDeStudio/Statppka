@@ -115,6 +115,107 @@ export async function startPreparedMatch(matchId: string): Promise<{
   }
 }
 
+export async function pauseLiveMatch(input: {
+  matchId: string;
+  period: number;
+  currentHalfElapsedSeconds: number;
+}): Promise<{
+  success: boolean;
+  match: PlannedMatch | null;
+  errorMessage?: string;
+}> {
+  try {
+    const updatePayload =
+      input.period === 1
+        ? {
+            first_half_elapsed_seconds: input.currentHalfElapsedSeconds,
+            first_half_started_at: null,
+          }
+        : {
+            second_half_elapsed_seconds: input.currentHalfElapsedSeconds,
+            second_half_started_at: null,
+          };
+
+    const { data, error } = await supabase
+      .from("planned_matches")
+      .update(updatePayload)
+      .eq("id", input.matchId)
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      console.error("Nepodařilo se pozastavit zápas:", error);
+      return {
+        success: false,
+        match: null,
+        errorMessage: "Nepodařilo se pozastavit zápas.",
+      };
+    }
+
+    return {
+      success: true,
+      match: mapPlannedMatch(data as Record<string, unknown>),
+    };
+  } catch (error) {
+    console.error("Chyba v pauseLiveMatch:", error);
+    return {
+      success: false,
+      match: null,
+      errorMessage: "Při pozastavení zápasu nastala chyba.",
+    };
+  }
+}
+
+export async function resumeLiveMatch(input: {
+  matchId: string;
+  period: number;
+}): Promise<{
+  success: boolean;
+  match: PlannedMatch | null;
+  errorMessage?: string;
+}> {
+  try {
+    const startIso = new Date().toISOString();
+
+    const updatePayload =
+      input.period === 1
+        ? {
+            first_half_started_at: startIso,
+          }
+        : {
+            second_half_started_at: startIso,
+          };
+
+    const { data, error } = await supabase
+      .from("planned_matches")
+      .update(updatePayload)
+      .eq("id", input.matchId)
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      console.error("Nepodařilo se znovu spustit zápas:", error);
+      return {
+        success: false,
+        match: null,
+        errorMessage: "Nepodařilo se znovu spustit zápas.",
+      };
+    }
+
+    return {
+      success: true,
+      match: mapPlannedMatch(data as Record<string, unknown>),
+    };
+  } catch (error) {
+    console.error("Chyba v resumeLiveMatch:", error);
+    return {
+      success: false,
+      match: null,
+      errorMessage: "Při znovuspuštění zápasu nastala chyba.",
+    };
+  }
+}
+
 export async function endFirstHalf(input: {
   matchId: string;
   elapsedSeconds: number;
