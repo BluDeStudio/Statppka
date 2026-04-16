@@ -48,6 +48,51 @@ export default function LiveMatchDetailScreen({
 
   const sortedPlayers = [...players].sort((a, b) => a.number - b.number);
 
+  const currentlyPlayingPlayers = sortedPlayers.filter((player) => {
+    const detail = detailMap.get(player.id);
+    return detail?.is_playing === true;
+  });
+
+  const currentlyPlayingGoalkeepers = currentlyPlayingPlayers.filter(
+    (player) => player.position?.trim().toUpperCase() === "GK"
+  );
+
+  const currentlyPlayingFieldPlayers = currentlyPlayingPlayers.filter(
+    (player) => player.position?.trim().toUpperCase() !== "GK"
+  );
+
+  const handleTogglePlayer = async (player: Player, isPlaying: boolean) => {
+    if (!isAdmin || !canTogglePlaying) {
+      return;
+    }
+
+    if (!isPlaying) {
+      const isGoalkeeper = player.position?.trim().toUpperCase() === "GK";
+
+      if (isGoalkeeper) {
+        const anotherGoalkeeperPlaying = currentlyPlayingGoalkeepers.some(
+          (goalkeeper) => goalkeeper.id !== player.id
+        );
+
+        if (anotherGoalkeeperPlaying) {
+          window.alert("Na hřišti může být jen 1 brankář.");
+          return;
+        }
+      } else {
+        const anotherFieldPlayersPlayingCount = currentlyPlayingFieldPlayers.filter(
+          (fieldPlayer) => fieldPlayer.id !== player.id
+        ).length;
+
+        if (anotherFieldPlayersPlayingCount >= 4) {
+          window.alert("Na hřišti mohou být maximálně 4 hráči v poli.");
+          return;
+        }
+      }
+    }
+
+    await onTogglePlaying(player.id, !isPlaying);
+  };
+
   return (
     <div style={{ display: "grid", gap: "12px" }}>
       <div style={styles.card}>
@@ -90,9 +135,15 @@ export default function LiveMatchDetailScreen({
             color: "#d9d9d9",
             fontSize: "14px",
             fontWeight: "bold",
+            display: "grid",
+            gap: "6px",
           }}
         >
-          Aktuální čas zápasu: {formatSecondsToMinutes(totalElapsedSeconds)}
+          <div>Aktuální čas zápasu: {formatSecondsToMinutes(totalElapsedSeconds)}</div>
+          <div>
+            Na hřišti: {currentlyPlayingGoalkeepers.length}/1 GK •{" "}
+            {currentlyPlayingFieldPlayers.length}/4 hráči v poli
+          </div>
         </div>
       </div>
 
@@ -114,6 +165,7 @@ export default function LiveMatchDetailScreen({
           const shotsOnTarget = detail?.shots_on_target ?? 0;
           const shotsOffTarget = detail?.shots_off_target ?? 0;
           const isSaving = savingPlayerId === player.id;
+          const isGoalkeeper = player.position?.trim().toUpperCase() === "GK";
 
           return (
             <div
@@ -170,6 +222,7 @@ export default function LiveMatchDetailScreen({
                       }}
                     >
                       {player.position}
+                      {isGoalkeeper ? " • Brankář" : ""}
                     </div>
                   </div>
                 </div>
@@ -217,7 +270,7 @@ export default function LiveMatchDetailScreen({
                 <div style={{ display: "grid", gap: "8px" }}>
                   <button
                     type="button"
-                    onClick={() => void onTogglePlaying(player.id, !isPlaying)}
+                    onClick={() => void handleTogglePlayer(player, isPlaying)}
                     disabled={!canTogglePlaying || isSaving}
                     style={{
                       ...styles.primaryButton,

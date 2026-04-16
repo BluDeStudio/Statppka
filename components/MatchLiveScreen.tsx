@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getPlayersByClubId, type Player } from "@/lib/players";
 import { getMatchLineupPlayerIds } from "@/lib/matchLineups";
 import {
@@ -13,13 +12,28 @@ import {
   endFirstHalf,
   getLiveMatchEvents,
   getPlannedMatchById,
+  pauseLiveMatch,
+  resumeLiveMatch,
   startPreparedMatch,
   startSecondHalf,
   type LiveMatchEventRecord,
 } from "@/lib/liveMatchEvents";
-import { formatMatchClock, getTotalElapsedSeconds } from "@/lib/liveMatch";
+import {
+  formatMatchClock,
+  getCurrentHalfElapsedSeconds,
+  getTotalElapsedSeconds,
+  isMatchTimerPaused,
+} from "@/lib/liveMatch";
+import {
+  addLiveMatchPlayerShot,
+  finalizeLiveMatchPlayerDetails,
+  getLiveMatchPlayerDetails,
+  setLiveMatchPlayerPlaying,
+  type LiveMatchPlayerDetailRow,
+} from "@/lib/liveMatchDetails";
 import { styles } from "@/styles/appStyles";
 import type { FinishedMatch, PlannedMatch } from "@/app/page";
+import LiveMatchDetailScreen from "./LiveMatchDetailScreen";
 
 type MatchLiveScreenProps = {
   clubId: string;
@@ -37,6 +51,8 @@ type MatchLiveScreenProps = {
   selectedPlayers: number[];
   goalkeeper: number | null;
 };
+
+type LiveView = "main" | "detail";
 
 export default function MatchLiveScreen({
   clubId,
@@ -57,20 +73,48 @@ export default function MatchLiveScreen({
   const [lineupPlayerIds, setLineupPlayerIds] = useState<string[]>([]);
   const [matchState, setMatchState] = useState<PlannedMatch | null>(null);
   const [events, setEvents] = useState<LiveMatchEventRecord[]>([]);
+  const [detailRows, setDetailRows] = useState<LiveMatchPlayerDetailRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [view, setView] = useState<LiveView>("main");
 
   const [startingMatch, setStartingMatch] = useState(false);
   const [savingEvent, setSavingEvent] = useState(false);
   const [finishingMatch, setFinishingMatch] = useState(false);
   const [changingHalf, setChangingHalf] = useState(false);
+  const [togglingPause, setTogglingPause] = useState(false);
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
+  const [savingDetailPlayerId, setSavingDetailPlayerId] = useState<string | null>(null);
 
   const [tick, setTick] = useState(0);
   const [scorerId, setScorerId] = useState("");
   const [assistId, setAssistId] = useState<"none" | string>("none");
   const [yellowCardPlayerId, setYellowCardPlayerId] = useState("");
   const [redCardPlayerId, setRedCardPlayerId] = useState("");
+
+  const selectedPlayerObjects = useMemo(() => {
+    const idsToUse =
+      lineupPlayerIds.length > 0
+        ? lineupPlayerIds
+        : players
+            .filter((player) => selectedPlayers.includes(player.number))
+            .map((player) => player.id);
+
+    return players.filter((player) => idsToUse.includes(player.id));
+  }, [players, lineupPlayerIds, selectedPlayers]);
+
+  const loadDetailRows = useCallback(
+    async (playerIds: string[]) => {
+      if (playerIds.length === 0) {
+        setDetailRows([]);
+        return;
+      }
+
+      const loadedDetailRows = await getLiveMatchPlayerDetails(matchId, playerIds);
+      setDetailRows(loadedDetailRows);
+    },
+    [matchId]
+  );
 
   useEffect(() => {
     let active = true;
@@ -95,6 +139,17 @@ export default function MatchLiveScreen({
       setMatchState(loadedMatch);
       setEvents(loadedEvents);
       setPlayersLoading(false);
+
+      const playerIdsForDetail =
+        loadedLineupIds.length > 0
+          ? loadedLineupIds
+          : loadedPlayers
+              .filter((player) => selectedPlayers.includes(player.number))
+              .map((player) => player.id);
+
+      await loadDetailRows(playerIdsForDetail);
+
+      if (!active) return;
       setLoading(false);
     };
 
@@ -103,28 +158,30 @@ export default function MatchLiveScreen({
     return () => {
       active = false;
     };
-  }, [clubId, matchId]);
+  }, [clubId, matchId, selectedPlayers, loadDetailRows]);
+
+  const timerPaused = useMemo(() => {
+    if (!matchState) return false;
+
+    return isMatchTimerPaused({
+      status: matchState.status ?? "planned",
+      current_period: matchState.current_period ?? 0,
+      first_half_started_at: matchState.first_half_started_at ?? null,
+      first_half_elapsed_seconds: matchState.first_half_elapsed_seconds ?? 0,
+      second_half_started_at: matchState.second_half_started_at ?? null,
+      second_half_elapsed_seconds: matchState.second_half_elapsed_seconds ?? 0,
+    });
+  }, [matchState]);
 
   useEffect(() => {
-    if (matchState?.status !== "live") return;
+    if (matchState?.status !== "live" || timerPaused) return;
 
     const interval = window.setInterval(() => {
       setTick((prev) => prev + 1);
     }, 1000);
 
     return () => window.clearInterval(interval);
-  }, [matchState?.status]);
-
-  const selectedPlayerObjects = useMemo(() => {
-    const idsToUse =
-      lineupPlayerIds.length > 0
-        ? lineupPlayerIds
-        : players
-            .filter((player) => selectedPlayers.includes(player.number))
-            .map((player) => player.id);
-
-    return players.filter((player) => idsToUse.includes(player.id));
-  }, [players, lineupPlayerIds, selectedPlayers]);
+  }, [matchState?.status, timerPaused]);
 
   const totalElapsedSeconds = useMemo(() => {
     if (!matchState) return 0;
@@ -139,16 +196,43 @@ export default function MatchLiveScreen({
     });
   }, [matchState, tick]);
 
+  const currentHalfElapsedSeconds = useMemo(() => {
+    if (!matchState) return 0;
+
+    return getCurrentHalfElapsedSeconds({
+      status: matchState.status ?? "planned",
+      current_period: matchState.current_period ?? 0,
+      first_half_started_at: matchState.first_half_started_at ?? null,
+      first_half_elapsed_seconds: matchState.first_half_elapsed_seconds ?? 0,
+      second_half_started_at: matchState.second_half_started_at ?? null,
+      second_half_elapsed_seconds: matchState.second_half_elapsed_seconds ?? 0,
+    });
+  }, [matchState, tick]);
+
   const currentPeriod = matchState?.current_period ?? 0;
   const scoreFor = events.filter((event) => event.type === "goal_for").length;
   const scoreAgainst = events.filter((event) => event.type === "goal_against").length;
 
   const canControlMatch = isAdmin;
-  const canEditEvents = isAdmin && matchState?.status === "live";
-  const canStartMatch = isAdmin && matchState?.status !== "live" && matchState?.status !== "halftime";
-  const canEndFirstHalf = isAdmin && matchState?.status === "live" && currentPeriod === 1;
+  const canEditEvents =
+    isAdmin && matchState?.status === "live" && !timerPaused;
+  const canStartMatch =
+    isAdmin &&
+    matchState?.status !== "live" &&
+    matchState?.status !== "halftime";
+  const canEndFirstHalf =
+    isAdmin && matchState?.status === "live" && currentPeriod === 1;
   const canStartSecondHalf = isAdmin && matchState?.status === "halftime";
   const canFinishMatchNow = isAdmin;
+  const canPauseOrResume =
+    isAdmin && matchState?.status === "live" && currentPeriod > 0;
+  const canTogglePlaying =
+    isAdmin &&
+    !!matchState &&
+    matchState.status !== "planned" &&
+    matchState.status !== "prepared" &&
+    matchState.status !== "finished";
+  const canAddShots = isAdmin && matchState?.status === "live" && !timerPaused;
 
   const getPlayerNameById = (playerId: string | null) => {
     if (!playerId) return "—";
@@ -195,6 +279,42 @@ export default function MatchLiveScreen({
     setStartingMatch(false);
   };
 
+  const handleTogglePause = async () => {
+    if (!isAdmin || !matchState || currentPeriod === 0) {
+      return;
+    }
+
+    setTogglingPause(true);
+    setMessage("");
+
+    const result = timerPaused
+      ? await resumeLiveMatch({
+          matchId,
+          period: currentPeriod,
+        })
+      : await pauseLiveMatch({
+          matchId,
+          period: currentPeriod,
+          currentHalfElapsedSeconds,
+        });
+
+    if (!result.success || !result.match) {
+      setMessage(
+        result.errorMessage ??
+          (timerPaused
+            ? "Nepodařilo se pokračovat v zápase."
+            : "Nepodařilo se pozastavit zápas.")
+      );
+      setTogglingPause(false);
+      return;
+    }
+
+    setMatchState(result.match);
+    onMatchStateChanged?.(result.match);
+    setMessage(timerPaused ? "Čas zápasu znovu běží." : "Čas zápasu je pozastaven.");
+    setTogglingPause(false);
+  };
+
   const handleEndFirstHalf = async () => {
     if (!isAdmin) {
       setMessage("Zápas může ovládat jen admin.");
@@ -210,7 +330,7 @@ export default function MatchLiveScreen({
 
     const result = await endFirstHalf({
       matchId,
-      elapsedSeconds: totalElapsedSeconds,
+      elapsedSeconds: currentHalfElapsedSeconds,
     });
 
     if (!result.success || !result.match) {
@@ -259,6 +379,11 @@ export default function MatchLiveScreen({
       return;
     }
 
+    if (timerPaused) {
+      setMessage("Nejdřív znovu spusť čas zápasu.");
+      return;
+    }
+
     if (!scorerId) {
       setMessage("Vyber střelce.");
       return;
@@ -301,6 +426,11 @@ export default function MatchLiveScreen({
       return;
     }
 
+    if (timerPaused) {
+      setMessage("Nejdřív znovu spusť čas zápasu.");
+      return;
+    }
+
     setSavingEvent(true);
     setMessage("");
 
@@ -331,6 +461,11 @@ export default function MatchLiveScreen({
 
     if (!matchState || matchState.status !== "live") {
       setMessage("Nejdřív zahaj zápas.");
+      return;
+    }
+
+    if (timerPaused) {
+      setMessage("Nejdřív znovu spusť čas zápasu.");
       return;
     }
 
@@ -371,6 +506,11 @@ export default function MatchLiveScreen({
 
     if (!matchState || matchState.status !== "live") {
       setMessage("Nejdřív zahaj zápas.");
+      return;
+    }
+
+    if (timerPaused) {
+      setMessage("Nejdřív znovu spusť čas zápasu.");
       return;
     }
 
@@ -428,6 +568,74 @@ export default function MatchLiveScreen({
     setDeletingEventId(null);
   };
 
+  const handleTogglePlaying = async (playerId: string, nextIsPlaying: boolean) => {
+    if (!canTogglePlaying) {
+      setMessage("Detail hráčů může upravovat jen admin během zápasu.");
+      return;
+    }
+
+    setSavingDetailPlayerId(playerId);
+    setMessage("");
+
+    const result = await setLiveMatchPlayerPlaying({
+      matchId,
+      playerId,
+      isPlaying: nextIsPlaying,
+      currentMatchSecond: totalElapsedSeconds,
+    });
+
+    if (!result.success || !result.row) {
+      setMessage(result.errorMessage ?? "Nepodařilo se uložit stav hráče.");
+      setSavingDetailPlayerId(null);
+      return;
+    }
+
+    setDetailRows((prev) => {
+      const next = prev.filter((row) => row.player_id !== playerId);
+      return [...next, result.row as LiveMatchPlayerDetailRow];
+    });
+
+    setMessage(nextIsPlaying ? "Hráč je označen jako hrající." : "Hráč byl stažen ze hry.");
+    setSavingDetailPlayerId(null);
+  };
+
+  const handleAddShot = async (
+    playerId: string,
+    shotType: "on_target" | "off_target"
+  ) => {
+    if (!canAddShots) {
+      setMessage("Střely můžeš zapisovat jen při běžícím live zápase.");
+      return;
+    }
+
+    setSavingDetailPlayerId(playerId);
+    setMessage("");
+
+    const result = await addLiveMatchPlayerShot({
+      matchId,
+      playerId,
+      shotType,
+    });
+
+    if (!result.success || !result.row) {
+      setMessage(result.errorMessage ?? "Nepodařilo se uložit střelu.");
+      setSavingDetailPlayerId(null);
+      return;
+    }
+
+    setDetailRows((prev) => {
+      const next = prev.filter((row) => row.player_id !== playerId);
+      return [...next, result.row as LiveMatchPlayerDetailRow];
+    });
+
+    setMessage(
+      shotType === "on_target"
+        ? "Střela na bránu byla uložena."
+        : "Střela mimo byla uložena."
+    );
+    setSavingDetailPlayerId(null);
+  };
+
   const handleFinishMatch = async () => {
     if (!isAdmin) {
       setMessage("Zápas může ukončit jen admin.");
@@ -442,17 +650,44 @@ export default function MatchLiveScreen({
     setFinishingMatch(true);
     setMessage("");
 
+    const finalizedDetailRows = await finalizeLiveMatchPlayerDetails({
+      matchId,
+      currentMatchSecond: totalElapsedSeconds,
+    });
+
+    if (finalizedDetailRows.length > 0) {
+      setDetailRows(finalizedDetailRows);
+    }
+
+    const finalizedDetailMap = new Map<string, LiveMatchPlayerDetailRow>();
+    (finalizedDetailRows.length > 0 ? finalizedDetailRows : detailRows).forEach((row) => {
+      finalizedDetailMap.set(row.player_id, row);
+    });
+
     const statsMap = new Map<
       number,
-      { goals: number; assists: number; yellowCards: number; redCards: number }
+      {
+        goals: number;
+        assists: number;
+        yellowCards: number;
+        redCards: number;
+        playedSeconds: number;
+        shotsOnTarget: number;
+        shotsOffTarget: number;
+      }
     >();
 
     selectedPlayerObjects.forEach((player) => {
+      const detailRow = finalizedDetailMap.get(player.id);
+
       statsMap.set(player.number, {
         goals: 0,
         assists: 0,
         yellowCards: 0,
         redCards: 0,
+        playedSeconds: detailRow?.played_seconds ?? 0,
+        shotsOnTarget: detailRow?.shots_on_target ?? 0,
+        shotsOffTarget: detailRow?.shots_off_target ?? 0,
       });
     });
 
@@ -517,6 +752,9 @@ export default function MatchLiveScreen({
       assists: stats.assists,
       yellowCards: stats.yellowCards,
       redCards: stats.redCards,
+      playedSeconds: stats.playedSeconds,
+      shotsOnTarget: stats.shotsOnTarget,
+      shotsOffTarget: stats.shotsOffTarget,
     }));
 
     const goalkeeperNumberToSave =
@@ -556,6 +794,34 @@ export default function MatchLiveScreen({
     );
   }
 
+  if (view === "detail") {
+    return (
+      <div>
+        <h2 style={styles.screenTitle}>LIVE zápas</h2>
+
+        <LiveMatchDetailScreen
+          primaryColor={primaryColor}
+          players={selectedPlayerObjects}
+          detailRows={detailRows}
+          totalElapsedSeconds={totalElapsedSeconds}
+          isAdmin={isAdmin}
+          canTogglePlaying={canTogglePlaying}
+          canAddShots={canAddShots}
+          savingPlayerId={savingDetailPlayerId}
+          onBack={() => setView("main")}
+          onTogglePlaying={handleTogglePlaying}
+          onAddShot={handleAddShot}
+        />
+
+        {message && (
+          <div style={{ ...styles.card, marginTop: "12px" }}>
+            <div style={{ color: "#d9d9d9" }}>{message}</div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div>
       <h2 style={styles.screenTitle}>LIVE zápas</h2>
@@ -584,29 +850,37 @@ export default function MatchLiveScreen({
               fontWeight: "bold",
               background:
                 matchState?.status === "live"
-                  ? "rgba(61, 214, 140, 0.16)"
-                  : matchState?.status === "halftime"
+                  ? timerPaused
                     ? "rgba(255,204,0,0.16)"
-                    : "rgba(255,255,255,0.08)",
+                    : "rgba(61, 214, 140, 0.16)"
+                  : matchState?.status === "halftime"
+                  ? "rgba(255,204,0,0.16)"
+                  : "rgba(255,255,255,0.08)",
               color:
                 matchState?.status === "live"
-                  ? "#7dffbc"
-                  : matchState?.status === "halftime"
+                  ? timerPaused
                     ? "#ffdc73"
-                    : "#d5d5d5",
+                    : "#7dffbc"
+                  : matchState?.status === "halftime"
+                  ? "#ffdc73"
+                  : "#d5d5d5",
               border:
                 matchState?.status === "live"
-                  ? "1px solid rgba(61, 214, 140, 0.28)"
-                  : matchState?.status === "halftime"
+                  ? timerPaused
                     ? "1px solid rgba(255,204,0,0.28)"
-                    : "1px solid rgba(255,255,255,0.08)",
+                    : "1px solid rgba(61, 214, 140, 0.28)"
+                  : matchState?.status === "halftime"
+                  ? "1px solid rgba(255,204,0,0.28)"
+                  : "1px solid rgba(255,255,255,0.08)",
             }}
           >
             {matchState?.status === "live"
-              ? "LIVE"
+              ? timerPaused
+                ? "PAUZA"
+                : "LIVE"
               : matchState?.status === "halftime"
-                ? "PŘESTÁVKA"
-                : "PŘIPRAVENÝ"}
+              ? "PŘESTÁVKA"
+              : "PŘIPRAVENÝ"}
           </div>
         </div>
 
@@ -640,11 +914,13 @@ export default function MatchLiveScreen({
           <div style={{ fontSize: "14px", color: "#b8b8b8", marginBottom: "14px" }}>
             {matchState?.status === "halftime"
               ? "Přestávka"
+              : matchState?.status === "live" && timerPaused
+              ? "Pozastaveno"
               : currentPeriod === 1
-                ? "1. poločas"
-                : currentPeriod === 2
-                  ? "2. poločas"
-                  : "Před zápasem"}
+              ? "1. poločas"
+              : currentPeriod === 2
+              ? "2. poločas"
+              : "Před zápasem"}
           </div>
 
           <div
@@ -687,6 +963,39 @@ export default function MatchLiveScreen({
             disabled={startingMatch}
           >
             {startingMatch ? "Zahajuji zápas..." : "ZAHÁJIT ZÁPAS"}
+          </button>
+        )}
+
+        {canPauseOrResume && (
+          <button
+            style={{
+              ...styles.primaryButton,
+              background: timerPaused ? "#16a34a" : "#f59e0b",
+              opacity: togglingPause ? 0.7 : 1,
+              marginTop: "10px",
+            }}
+            onClick={() => void handleTogglePause()}
+            disabled={togglingPause || changingHalf || finishingMatch}
+          >
+            {togglingPause
+              ? "Ukládám..."
+              : timerPaused
+              ? "POKRAČOVAT V ČASE"
+              : "PAUZA ČASU"}
+          </button>
+        )}
+
+        {(matchState?.status === "live" || matchState?.status === "halftime") && (
+          <button
+            style={{
+              ...styles.primaryButton,
+              background: "rgba(255,255,255,0.12)",
+              marginTop: "10px",
+            }}
+            onClick={() => setView("detail")}
+            disabled={finishingMatch || deletingEventId !== null}
+          >
+            DETAIL SESTAVY
           </button>
         )}
 
@@ -954,18 +1263,18 @@ export default function MatchLiveScreen({
                     event.type === "goal_for"
                       ? "rgba(255,255,255,0.06)"
                       : event.type === "goal_against"
-                        ? "rgba(198,40,40,0.14)"
-                        : event.type === "yellow_card"
-                          ? "rgba(245, 158, 11, 0.16)"
-                          : "rgba(185, 28, 28, 0.18)",
+                      ? "rgba(198,40,40,0.14)"
+                      : event.type === "yellow_card"
+                      ? "rgba(245, 158, 11, 0.16)"
+                      : "rgba(185, 28, 28, 0.18)",
                   border:
                     event.type === "goal_for"
                       ? "1px solid rgba(255,255,255,0.08)"
                       : event.type === "goal_against"
-                        ? "1px solid rgba(198,40,40,0.35)"
-                        : event.type === "yellow_card"
-                          ? "1px solid rgba(245, 158, 11, 0.30)"
-                          : "1px solid rgba(185, 28, 28, 0.35)",
+                      ? "1px solid rgba(198,40,40,0.35)"
+                      : event.type === "yellow_card"
+                      ? "1px solid rgba(245, 158, 11, 0.30)"
+                      : "1px solid rgba(185, 28, 28, 0.35)",
                 }}
               >
                 <div
