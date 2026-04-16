@@ -27,7 +27,6 @@ import {
   buildFineSummaryByPlayer,
   createFine,
   deleteFine,
-  findExistingPollFine,
   getFinesByPeriodId,
   getPaidFineAmount,
   getTotalFineAmount,
@@ -146,6 +145,10 @@ function formatFineNote(note?: string | null) {
 
   if (note.startsWith("training:")) {
     return "Automatická pokuta za nehlasování v anketě na trénink.";
+  }
+
+  if (note.startsWith("poll:")) {
+    return "Pokuta za nehlasování v anketě.";
   }
 
   return note;
@@ -282,112 +285,6 @@ export default function DisciplineScreen({
     setFines(data);
   }, [effectivePeriod, periodFilterMode, periods]);
 
-  const syncAutomaticPollFines = useCallback(async () => {
-    if (!activePeriod) return;
-    if (disciplinePlayers.length === 0) return;
-    if (trainings.length === 0) return;
-    if (fineTemplates.length === 0) return;
-    if (Object.keys(attendanceMap).length === 0) return;
-
-    const anketyTemplate = fineTemplates.find(
-      (item) => item.name.trim().toLowerCase() === "ankety" && item.is_active
-    );
-
-    if (!anketyTemplate) return;
-
-    const eligibleTrainings = trainings.filter(
-      (training) =>
-        training.poll_enabled === true &&
-        isOlderTraining(training) &&
-        isDateInsidePeriod(training.date, activePeriod)
-    );
-
-    if (eligibleTrainings.length === 0) return;
-
-    let createdAny = false;
-
-    for (const training of eligibleTrainings) {
-      const attendanceRows = attendanceMap[training.id] ?? [];
-      const normalizedTrainingDate = normalizeDateToIso(training.date);
-
-      if (!normalizedTrainingDate) {
-        console.error(
-          "Automatic poll fine skipped: invalid training date",
-          training
-        );
-        continue;
-      }
-
-      for (const player of disciplinePlayers) {
-        const attendanceIdentity = player.id;
-        const fineIdentity = player.id;
-
-        const voted = attendanceRows.some(
-          (row) =>
-            row.player_id === attendanceIdentity &&
-            (row.status === "yes" || row.status === "no")
-        );
-
-        if (voted) continue;
-
-        try {
-          const existing = await findExistingPollFine({
-            periodId: activePeriod.id,
-            playerId: fineIdentity,
-            trainingId: training.id,
-          });
-
-          if (existing) continue;
-
-          const created = await createFine({
-            clubId,
-            periodId: activePeriod.id,
-            playerId: fineIdentity,
-            amount: Number(anketyTemplate.default_amount),
-            reason: anketyTemplate.name,
-            note: `training:${training.id}`,
-            fineDate: normalizedTrainingDate,
-            createdBy: currentUserId,
-          });
-
-          if (created) {
-            createdAny = true;
-          } else {
-            console.error("Automatic poll fine creation failed", {
-              clubId,
-              periodId: activePeriod.id,
-              playerId: fineIdentity,
-              trainingId: training.id,
-              templateId: anketyTemplate.id,
-            });
-          }
-        } catch (error) {
-          console.error("Automatic poll fine creation error", {
-            error,
-            clubId,
-            periodId: activePeriod.id,
-            playerId: fineIdentity,
-            trainingId: training.id,
-            templateId: anketyTemplate.id,
-          });
-        }
-      }
-    }
-
-    if (createdAny) {
-      await reloadVisibleFines();
-    }
-  }, [
-    activePeriod,
-    attendanceMap,
-    clubId,
-    currentUserId,
-    disciplinePlayers,
-    fineTemplates,
-    reloadVisibleFines,
-    trainings,
-  ]);
-
   useEffect(() => {
     let active = true;
 
@@ -482,31 +379,6 @@ export default function DisciplineScreen({
       active = false;
     };
   }, [effectivePeriod, periodFilterMode, periods]);
-
-  useEffect(() => {
-    if (
-      !activePeriod ||
-      disciplinePlayers.length === 0 ||
-      trainings.length === 0 ||
-      Object.keys(attendanceMap).length === 0
-    ) {
-      return;
-    }
-
-    void syncAutomaticPollFines();
-  }, [
-    activePeriod,
-    disciplinePlayers,
-    trainings,
-    attendanceMap,
-    syncAutomaticPollFines,
-  ]);
-
-  useEffect(() => {
-    if (mainTab === "fines") {
-      void syncAutomaticPollFines();
-    }
-  }, [mainTab, fineTab, syncAutomaticPollFines]);
 
   const filteredOlderTrainings = useMemo(() => {
     return trainings.filter(
@@ -671,7 +543,6 @@ export default function DisciplineScreen({
 
     await loadPeriodsState();
     resetPeriodForm();
-    await syncAutomaticPollFines();
     setMessage("Období bylo vytvořeno.");
     setPeriodSaving(false);
   };
@@ -884,7 +755,6 @@ export default function DisciplineScreen({
     }
 
     await reloadTemplates();
-    await syncAutomaticPollFines();
     setNewTemplateName("");
     setNewTemplateAmount("");
     setMessage("Týmová pokuta byla vytvořena.");
@@ -951,7 +821,6 @@ export default function DisciplineScreen({
     }
 
     await reloadTemplates();
-    await syncAutomaticPollFines();
     resetInlineTemplateEdit();
     setMessage("Týmová pokuta byla upravena.");
     setTemplateSaving(false);
