@@ -10,6 +10,25 @@ export type MatchRatingColor =
   | "dark_green"
   | "blue";
 
+function normalizeTemplateName(value?: string | null) {
+  if (!value) return "";
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function isYellowCardTemplate(name?: string | null) {
+  const normalized = normalizeTemplateName(name);
+  return normalized.includes("zluta") || normalized === "zk" || normalized === "zk karta";
+}
+
+function isRedCardTemplate(name?: string | null) {
+  const normalized = normalizeTemplateName(name);
+  return normalized.includes("cervena") || normalized === "ck" || normalized === "ck karta";
+}
+
 export async function getPlannedMatchesByClubId(clubId: string): Promise<PlannedMatch[]> {
   try {
     const { data, error } = await supabase
@@ -341,13 +360,15 @@ export async function saveFinishedMatch(input: {
 
         const playersRows = playersResponse.data ?? [];
 
-        const yellowTemplate = templates.find(
-          (item) => item.name.trim().toLowerCase() === "žlutá karta"
-        );
+        const yellowTemplate =
+          templates.find(
+            (item) => item.is_active && isYellowCardTemplate(item.name)
+          ) ?? null;
 
-        const redTemplate = templates.find(
-          (item) => item.name.trim().toLowerCase() === "červená karta"
-        );
+        const redTemplate =
+          templates.find(
+            (item) => item.is_active && isRedCardTemplate(item.name)
+          ) ?? null;
 
         const fineRows: {
           club_id: string;
@@ -374,13 +395,13 @@ export async function saveFinishedMatch(input: {
             continue;
           }
 
-          if (event.type === "yellow_card" && yellowTemplate?.is_active) {
+          if (event.type === "yellow_card" && yellowTemplate) {
             fineRows.push({
               club_id: input.clubId,
               period_id: activePeriod.id,
               player_id: String(playerRow.id),
               amount: Number(yellowTemplate.default_amount),
-              reason: "Žlutá karta",
+              reason: yellowTemplate.name,
               note: `match:${finishedMatch.id}:yellow_card:${event.playerNumber}`,
               fine_date: finishedMatch.date,
               is_paid: false,
@@ -388,13 +409,13 @@ export async function saveFinishedMatch(input: {
             });
           }
 
-          if (event.type === "red_card" && redTemplate?.is_active) {
+          if (event.type === "red_card" && redTemplate) {
             fineRows.push({
               club_id: input.clubId,
               period_id: activePeriod.id,
               player_id: String(playerRow.id),
               amount: Number(redTemplate.default_amount),
-              reason: "Červená karta",
+              reason: redTemplate.name,
               note: `match:${finishedMatch.id}:red_card:${event.playerNumber}`,
               fine_date: finishedMatch.date,
               is_paid: false,
