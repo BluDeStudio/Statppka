@@ -30,6 +30,20 @@ function formatSecondsToCompact(seconds: number) {
   return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
+function normalizePosition(value?: string | null) {
+  if (!value) return "";
+  return value
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function isGoalkeeperPosition(value?: string | null) {
+  const normalized = normalizePosition(value);
+  return normalized === "GK" || normalized === "G" || normalized === "BRANKAR";
+}
+
 export default function LiveMatchDetailScreen({
   primaryColor = "#22c55e",
   players,
@@ -53,12 +67,12 @@ export default function LiveMatchDetailScreen({
     return detail?.is_playing === true;
   });
 
-  const currentlyPlayingGoalkeepers = currentlyPlayingPlayers.filter(
-    (player) => player.position?.trim().toUpperCase() === "GK"
+  const currentlyPlayingGoalkeepers = currentlyPlayingPlayers.filter((player) =>
+    isGoalkeeperPosition(player.position)
   );
 
   const currentlyPlayingFieldPlayers = currentlyPlayingPlayers.filter(
-    (player) => player.position?.trim().toUpperCase() !== "GK"
+    (player) => !isGoalkeeperPosition(player.position)
   );
 
   const handleTogglePlayer = async (player: Player, isPlaying: boolean) => {
@@ -67,7 +81,7 @@ export default function LiveMatchDetailScreen({
     }
 
     if (!isPlaying) {
-      const isGoalkeeper = player.position?.trim().toUpperCase() === "GK";
+      const isGoalkeeper = isGoalkeeperPosition(player.position);
 
       if (isGoalkeeper) {
         const anotherGoalkeeperPlaying = currentlyPlayingGoalkeepers.some(
@@ -157,7 +171,7 @@ export default function LiveMatchDetailScreen({
           const shotsOnTarget = detail?.shots_on_target ?? 0;
           const shotsOffTarget = detail?.shots_off_target ?? 0;
           const isSaving = savingPlayerId === player.id;
-          const isGoalkeeper = player.position?.trim().toUpperCase() === "GK";
+          const isGoalkeeper = isGoalkeeperPosition(player.position);
 
           return (
             <div
