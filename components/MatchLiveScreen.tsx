@@ -77,6 +77,7 @@ export default function MatchLiveScreen({
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [view, setView] = useState<LiveView>("main");
+  const [goalkeeperAutoInitialized, setGoalkeeperAutoInitialized] = useState(false);
 
   const [startingMatch, setStartingMatch] = useState(false);
   const [savingEvent, setSavingEvent] = useState(false);
@@ -123,6 +124,7 @@ export default function MatchLiveScreen({
       setLoading(true);
       setPlayersLoading(true);
       setMessage("");
+      setGoalkeeperAutoInitialized(false);
 
       const [loadedPlayers, loadedLineupIds, loadedMatch, loadedEvents] =
         await Promise.all([
@@ -255,6 +257,76 @@ export default function MatchLiveScreen({
 
     return null;
   }, [matchState?.goalkeeper_player_id, goalkeeper, players]);
+
+  useEffect(() => {
+    if (goalkeeperAutoInitialized) return;
+    if (loading) return;
+    if (selectedPlayerObjects.length === 0) return;
+    if (detailRows.length === 0) return;
+
+    const goalkeeperPlayer =
+      (matchState?.goalkeeper_player_id
+        ? selectedPlayerObjects.find(
+            (player) => player.id === matchState.goalkeeper_player_id
+          )
+        : null) ??
+      (goalkeeper !== null
+        ? selectedPlayerObjects.find((player) => player.number === goalkeeper)
+        : null) ??
+      null;
+
+    if (!goalkeeperPlayer) {
+      setGoalkeeperAutoInitialized(true);
+      return;
+    }
+
+    const anyPlayerAlreadyPlaying = detailRows.some((row) => row.is_playing);
+
+    if (anyPlayerAlreadyPlaying) {
+      setGoalkeeperAutoInitialized(true);
+      return;
+    }
+
+    const goalkeeperAlreadyHasTime = detailRows.some(
+      (row) =>
+        row.player_id === goalkeeperPlayer.id &&
+        ((row.played_seconds ?? 0) > 0 || row.last_started_match_second !== null)
+    );
+
+    if (goalkeeperAlreadyHasTime) {
+      setGoalkeeperAutoInitialized(true);
+      return;
+    }
+
+    const setGoalkeeperPlaying = async () => {
+      const result = await setLiveMatchPlayerPlaying({
+        matchId,
+        playerId: goalkeeperPlayer.id,
+        isPlaying: true,
+        currentMatchSecond: totalElapsedSeconds,
+      });
+
+      if (result.success && result.row) {
+        setDetailRows((prev) => {
+          const next = prev.filter((row) => row.player_id !== goalkeeperPlayer.id);
+          return [...next, result.row as LiveMatchPlayerDetailRow];
+        });
+      }
+
+      setGoalkeeperAutoInitialized(true);
+    };
+
+    void setGoalkeeperPlaying();
+  }, [
+    goalkeeperAutoInitialized,
+    loading,
+    selectedPlayerObjects,
+    detailRows,
+    matchState?.goalkeeper_player_id,
+    goalkeeper,
+    matchId,
+    totalElapsedSeconds,
+  ]);
 
   const handleStartMatch = async () => {
     if (!isAdmin) {

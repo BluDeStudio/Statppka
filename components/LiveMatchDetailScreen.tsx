@@ -24,7 +24,7 @@ type Props = {
   ) => void | Promise<void>;
 };
 
-function formatSecondsToMinutes(seconds: number) {
+function formatSecondsToCompact(seconds: number) {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins}:${String(secs).padStart(2, "0")}`;
@@ -94,60 +94,52 @@ export default function LiveMatchDetailScreen({
   };
 
   return (
-    <div style={{ display: "grid", gap: "12px" }}>
+    <div style={{ display: "grid", gap: "8px" }}>
       <div style={styles.card}>
-        <button
-          type="button"
-          onClick={onBack}
-          style={{
-            ...styles.primaryButton,
-            marginTop: 0,
-            background: "rgba(255,255,255,0.12)",
-            border: "none",
-          }}
-        >
-          ← Zpět na LIVE
-        </button>
-      </div>
-
-      <div style={styles.card}>
-        <h2 style={{ ...styles.screenTitle, marginTop: 0 }}>Detail sestavy</h2>
-
         <div
           style={{
-            color: "#cfcfcf",
-            fontSize: "13px",
-            lineHeight: 1.5,
-            marginTop: "8px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "8px",
+            flexWrap: "wrap",
           }}
         >
-          Tady vybíráš, kdo právě hraje, a zapisuješ střely. Data se ukládají
-          průběžně, takže po návratu do LIVE zápasu nic nezmizí.
-        </div>
+          <button
+            type="button"
+            onClick={onBack}
+            style={{
+              border: "none",
+              borderRadius: "10px",
+              padding: "8px 12px",
+              background: "rgba(255,255,255,0.12)",
+              color: "white",
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            ← LIVE
+          </button>
 
-        <div
-          style={{
-            marginTop: "10px",
-            padding: "10px 12px",
-            borderRadius: "12px",
-            background: "rgba(255,255,255,0.04)",
-            border: "1px solid rgba(255,255,255,0.06)",
-            color: "#d9d9d9",
-            fontSize: "14px",
-            fontWeight: "bold",
-            display: "grid",
-            gap: "6px",
-          }}
-        >
-          <div>Aktuální čas zápasu: {formatSecondsToMinutes(totalElapsedSeconds)}</div>
-          <div>
-            Na hřišti: {currentlyPlayingGoalkeepers.length}/1 GK •{" "}
-            {currentlyPlayingFieldPlayers.length}/4 hráči v poli
+          <div
+            style={{
+              color: "#d9d9d9",
+              fontSize: "12px",
+              fontWeight: "bold",
+              textAlign: "right",
+              lineHeight: 1.4,
+            }}
+          >
+            <div>Čas: {formatSecondsToCompact(totalElapsedSeconds)}</div>
+            <div>
+              GK {currentlyPlayingGoalkeepers.length}/1 • Pole{" "}
+              {currentlyPlayingFieldPlayers.length}/4
+            </div>
           </div>
         </div>
       </div>
 
-      <div style={{ display: "grid", gap: "10px" }}>
+      <div style={{ display: "grid", gap: "6px" }}>
         {sortedPlayers.map((player) => {
           const detail = detailMap.get(player.id);
           const isPlaying = detail?.is_playing ?? false;
@@ -172,164 +164,157 @@ export default function LiveMatchDetailScreen({
               key={player.id}
               style={{
                 ...styles.card,
-                padding: "12px",
-                display: "grid",
-                gap: "10px",
+                padding: "8px 10px",
                 background: isPlaying
                   ? "rgba(46, 204, 113, 0.08)"
-                  : undefined,
+                  : "rgba(255,255,255,0.03)",
                 border: isPlaying
                   ? "1px solid rgba(46, 204, 113, 0.22)"
-                  : undefined,
+                  : "1px solid rgba(255,255,255,0.05)",
               }}
             >
               <div
                 style={{
-                  display: "flex",
+                  display: "grid",
+                  gridTemplateColumns: "44px minmax(0,1fr) auto",
+                  gap: "8px",
                   alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "12px",
                 }}
               >
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "12px" }}
-                >
-                  <div
-                    style={{
-                      minWidth: "42px",
-                      height: "42px",
-                      borderRadius: "10px",
-                      background: primaryColor,
-                      color: "white",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {player.number}
-                  </div>
-
-                  <div>
-                    <div style={{ fontWeight: "bold", fontSize: "15px" }}>
-                      {player.name}
-                    </div>
-                    <div
-                      style={{
-                        color: "#b8b8b8",
-                        fontSize: "12px",
-                        marginTop: "4px",
-                      }}
-                    >
-                      {player.position}
-                      {isGoalkeeper ? " • Brankář" : ""}
-                    </div>
-                  </div>
-                </div>
-
                 <div
                   style={{
-                    padding: "6px 10px",
-                    borderRadius: "999px",
-                    background: isPlaying
-                      ? "rgba(46, 204, 113, 0.18)"
-                      : "rgba(255,255,255,0.08)",
-                    color: isPlaying ? "#9af0b6" : "#b8b8b8",
-                    fontSize: "12px",
+                    width: "44px",
+                    height: "44px",
+                    borderRadius: "10px",
+                    background: primaryColor,
+                    color: "white",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                     fontWeight: "bold",
-                    whiteSpace: "nowrap",
+                    fontSize: "14px",
                   }}
                 >
-                  {isPlaying ? "HRAJE" : "NEHRAJE"}
+                  {player.number}
                 </div>
-              </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gap: "6px",
-                  padding: "10px 12px",
-                  borderRadius: "10px",
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.04)",
-                }}
-              >
-                <div style={{ fontSize: "13px", color: "#d9d9d9" }}>
-                  Herní čas:{" "}
-                  <strong>{formatSecondsToMinutes(totalPlayedSeconds)}</strong>
-                </div>
-                <div style={{ fontSize: "13px", color: "#d9d9d9" }}>
-                  Střely na bránu: <strong>{shotsOnTarget}</strong>
-                </div>
-                <div style={{ fontSize: "13px", color: "#d9d9d9" }}>
-                  Střely mimo: <strong>{shotsOffTarget}</strong>
-                </div>
-              </div>
-
-              {isAdmin && (
-                <div style={{ display: "grid", gap: "8px" }}>
-                  <button
-                    type="button"
-                    onClick={() => void handleTogglePlayer(player, isPlaying)}
-                    disabled={!canTogglePlaying || isSaving}
+                <div style={{ minWidth: 0 }}>
+                  <div
                     style={{
-                      ...styles.primaryButton,
-                      marginTop: 0,
-                      background: isPlaying
-                        ? "rgba(198,40,40,0.95)"
-                        : primaryColor,
-                      border: "none",
-                      opacity: !canTogglePlaying || isSaving ? 0.7 : 1,
+                      fontWeight: "bold",
+                      fontSize: "14px",
+                      lineHeight: 1.2,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
                     }}
                   >
-                    {isSaving
-                      ? "Ukládám..."
-                      : isPlaying
-                      ? "Označit jako NEHRAJE"
-                      : "Označit jako HRAJE"}
-                  </button>
+                    {player.name}
+                  </div>
 
-                  <div style={{ display: "flex", gap: "8px" }}>
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      color: isPlaying ? "#9af0b6" : "#b8b8b8",
+                      marginTop: "3px",
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    {isGoalkeeper ? "GK" : player.position} •{" "}
+                    {isPlaying ? "HRAJE" : "STŘÍDAČKA"} •{" "}
+                    {formatSecondsToCompact(totalPlayedSeconds)} • 🎯 {shotsOnTarget} • 🚫{" "}
+                    {shotsOffTarget}
+                  </div>
+                </div>
+
+                {isAdmin && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => void handleTogglePlayer(player, isPlaying)}
+                      disabled={!canTogglePlaying || isSaving}
+                      title={isPlaying ? "Poslat na střídačku" : "Poslat do hry"}
+                      style={{
+                        width: "34px",
+                        height: "34px",
+                        borderRadius: "8px",
+                        border: "none",
+                        background: isPlaying
+                          ? "rgba(198,40,40,0.95)"
+                          : primaryColor,
+                        color: "white",
+                        fontSize: "14px",
+                        fontWeight: "bold",
+                        cursor:
+                          !canTogglePlaying || isSaving ? "default" : "pointer",
+                        opacity: !canTogglePlaying || isSaving ? 0.7 : 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: 0,
+                      }}
+                    >
+                      {isSaving ? "…" : isPlaying ? "⏸" : "▶"}
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => void onAddShot(player.id, "on_target")}
                       disabled={!canAddShots || isSaving}
+                      title="Střela na bránu"
                       style={{
-                        flex: 1,
+                        width: "34px",
+                        height: "34px",
+                        borderRadius: "8px",
                         border: "none",
-                        borderRadius: "10px",
-                        padding: "10px 12px",
                         background: "#16a34a",
                         color: "white",
+                        fontSize: "14px",
                         fontWeight: "bold",
                         cursor: !canAddShots || isSaving ? "default" : "pointer",
                         opacity: !canAddShots || isSaving ? 0.7 : 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: 0,
                       }}
                     >
-                      STŘELA NA BRÁNU
+                      🎯
                     </button>
 
                     <button
                       type="button"
                       onClick={() => void onAddShot(player.id, "off_target")}
                       disabled={!canAddShots || isSaving}
+                      title="Střela mimo"
                       style={{
-                        flex: 1,
+                        width: "34px",
+                        height: "34px",
+                        borderRadius: "8px",
                         border: "none",
-                        borderRadius: "10px",
-                        padding: "10px 12px",
                         background: "#f59e0b",
                         color: "white",
+                        fontSize: "14px",
                         fontWeight: "bold",
                         cursor: !canAddShots || isSaving ? "default" : "pointer",
                         opacity: !canAddShots || isSaving ? 0.7 : 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: 0,
                       }}
                     >
-                      STŘELA MIMO
+                      🚫
                     </button>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           );
         })}
