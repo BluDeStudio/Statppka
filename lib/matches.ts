@@ -1,5 +1,4 @@
 import { supabase } from "./supabaseClient";
-import { getActivePeriod } from "./periods";
 import { getFineTemplatesByClubId } from "./fineTemplates";
 import type { FinishedMatch, FinishedMatchEvent, PlannedMatch } from "@/app/page";
 
@@ -21,15 +20,25 @@ function normalizeTemplateName(value?: string | null) {
 
 function isYellowCardTemplate(name?: string | null) {
   const normalized = normalizeTemplateName(name);
-  return normalized.includes("zluta") || normalized === "zk" || normalized === "zk karta";
+  return (
+    normalized.includes("zluta") ||
+    normalized === "zk" ||
+    normalized === "zk karta"
+  );
 }
 
 function isRedCardTemplate(name?: string | null) {
   const normalized = normalizeTemplateName(name);
-  return normalized.includes("cervena") || normalized === "ck" || normalized === "ck karta";
+  return (
+    normalized.includes("cervena") ||
+    normalized === "ck" ||
+    normalized === "ck karta"
+  );
 }
 
-export async function getPlannedMatchesByClubId(clubId: string): Promise<PlannedMatch[]> {
+export async function getPlannedMatchesByClubId(
+  clubId: string
+): Promise<PlannedMatch[]> {
   try {
     const { data, error } = await supabase
       .from("planned_matches")
@@ -54,13 +63,16 @@ export async function getPlannedMatchesByClubId(clubId: string): Promise<Planned
         awayTeam: row.away_team as string,
         status: (row.status as PlannedMatch["status"]) ?? "planned",
         current_period: (row.current_period as number | null) ?? 0,
-        first_half_started_at: (row.first_half_started_at as string | null) ?? null,
+        first_half_started_at:
+          (row.first_half_started_at as string | null) ?? null,
         first_half_elapsed_seconds:
           (row.first_half_elapsed_seconds as number | null) ?? 0,
-        second_half_started_at: (row.second_half_started_at as string | null) ?? null,
+        second_half_started_at:
+          (row.second_half_started_at as string | null) ?? null,
         second_half_elapsed_seconds:
           (row.second_half_elapsed_seconds as number | null) ?? 0,
-        goalkeeper_player_id: (row.goalkeeper_player_id as string | null) ?? null,
+        goalkeeper_player_id:
+          (row.goalkeeper_player_id as string | null) ?? null,
       })) ?? []
     );
   } catch (error) {
@@ -100,7 +112,9 @@ export async function createPlannedMatch(input: {
       console.error("Nepodařilo se vytvořit plánovaný zápas:", error);
       return {
         match: null,
-        errorMessage: `Nepodařilo se uložit zápas: ${error?.message ?? "neznámá chyba"}`,
+        errorMessage: `Nepodařilo se uložit zápas: ${
+          error?.message ?? "neznámá chyba"
+        }`,
       };
     }
 
@@ -116,13 +130,16 @@ export async function createPlannedMatch(input: {
         awayTeam: data.away_team as string,
         status: (data.status as PlannedMatch["status"]) ?? "planned",
         current_period: (data.current_period as number | null) ?? 0,
-        first_half_started_at: (data.first_half_started_at as string | null) ?? null,
+        first_half_started_at:
+          (data.first_half_started_at as string | null) ?? null,
         first_half_elapsed_seconds:
           (data.first_half_elapsed_seconds as number | null) ?? 0,
-        second_half_started_at: (data.second_half_started_at as string | null) ?? null,
+        second_half_started_at:
+          (data.second_half_started_at as string | null) ?? null,
         second_half_elapsed_seconds:
           (data.second_half_elapsed_seconds as number | null) ?? 0,
-        goalkeeper_player_id: (data.goalkeeper_player_id as string | null) ?? null,
+        goalkeeper_player_id:
+          (data.goalkeeper_player_id as string | null) ?? null,
       },
     };
   } catch (error) {
@@ -162,7 +179,9 @@ export async function deletePlannedMatch(matchId: string): Promise<{
   }
 }
 
-export async function getFinishedMatchesByClubId(clubId: string): Promise<FinishedMatch[]> {
+export async function getFinishedMatchesByClubId(
+  clubId: string
+): Promise<FinishedMatch[]> {
   try {
     const { data: matches, error: matchesError } = await supabase
       .from("finished_matches")
@@ -347,16 +366,29 @@ export async function saveFinishedMatch(input: {
     );
 
     if (cardEvents.length > 0) {
-      const activePeriod = await getActivePeriod(input.clubId);
-
-      if (activePeriod) {
-        const [templates, playersResponse] = await Promise.all([
+      const [{ data: periodsData, error: periodsError }, templates, playersResponse] =
+        await Promise.all([
+          supabase.from("periods").select("*").eq("club_id", input.clubId),
           getFineTemplatesByClubId(input.clubId),
-          supabase
-            .from("players")
-            .select("id, number")
-            .eq("club_id", input.clubId),
+          supabase.from("players").select("id, number").eq("club_id", input.clubId),
         ]);
+
+      if (periodsError) {
+        console.error("Nepodařilo se načíst období pro pokuty za karty:", periodsError);
+      } else {
+        const normalizedMatchDate = String(finishedMatch.date).slice(0, 10);
+
+        const matchedPeriod =
+          ((periodsData ?? []) as Array<{
+            id: string;
+            start_date: string;
+            end_date: string;
+            is_active?: boolean;
+          }>).find((period) => {
+            const start = String(period.start_date).slice(0, 10);
+            const end = String(period.end_date).slice(0, 10);
+            return normalizedMatchDate >= start && normalizedMatchDate <= end;
+          }) ?? null;
 
         const playersRows = playersResponse.data ?? [];
 
@@ -370,67 +402,84 @@ export async function saveFinishedMatch(input: {
             (item) => item.is_active && isRedCardTemplate(item.name)
           ) ?? null;
 
-        const fineRows: {
-          club_id: string;
-          period_id: string;
-          player_id: string;
-          amount: number;
-          reason: string;
-          note: string | null;
-          fine_date: string;
-          is_paid: boolean;
-          created_by: string;
-        }[] = [];
+        console.log("CARD EVENTS", cardEvents);
+        console.log("MATCH DATE", normalizedMatchDate);
+        console.log("MATCHED PERIOD", matchedPeriod);
+        console.log("YELLOW TEMPLATE", yellowTemplate);
+        console.log("RED TEMPLATE", redTemplate);
 
-        for (const event of cardEvents) {
-          const playerRow = playersRows.find((player) => {
-            return Number(player.number) === Number(event.playerNumber);
-          });
+        if (!matchedPeriod) {
+          console.warn(
+            "Nepodařilo se najít období pro pokuty za karty k datu zápasu:",
+            normalizedMatchDate
+          );
+        } else {
+          const fineRows: {
+            club_id: string;
+            period_id: string;
+            player_id: string;
+            amount: number;
+            reason: string;
+            note: string | null;
+            fine_date: string;
+            is_paid: boolean;
+            created_by: string;
+          }[] = [];
 
-          if (!playerRow) {
-            console.warn(
-              "Nepodařilo se dohledat hráče pro pokutu za kartu:",
-              event.playerNumber
-            );
-            continue;
-          }
-
-          if (event.type === "yellow_card" && yellowTemplate) {
-            fineRows.push({
-              club_id: input.clubId,
-              period_id: activePeriod.id,
-              player_id: String(playerRow.id),
-              amount: Number(yellowTemplate.default_amount),
-              reason: yellowTemplate.name,
-              note: `match:${finishedMatch.id}:yellow_card:${event.playerNumber}`,
-              fine_date: finishedMatch.date,
-              is_paid: false,
-              created_by: input.createdBy,
+          for (const event of cardEvents) {
+            const playerRow = playersRows.find((player) => {
+              return Number(player.number) === Number(event.playerNumber);
             });
+
+            if (!playerRow) {
+              console.warn(
+                "Nepodařilo se dohledat hráče pro pokutu za kartu:",
+                event.playerNumber
+              );
+              continue;
+            }
+
+            if (event.type === "yellow_card" && yellowTemplate) {
+              fineRows.push({
+                club_id: input.clubId,
+                period_id: matchedPeriod.id,
+                player_id: String(playerRow.id),
+                amount: Number(yellowTemplate.default_amount),
+                reason: yellowTemplate.name,
+                note: `match:${finishedMatch.id}:yellow_card:${event.playerNumber}`,
+                fine_date: normalizedMatchDate,
+                is_paid: false,
+                created_by: input.createdBy,
+              });
+            }
+
+            if (event.type === "red_card" && redTemplate) {
+              fineRows.push({
+                club_id: input.clubId,
+                period_id: matchedPeriod.id,
+                player_id: String(playerRow.id),
+                amount: Number(redTemplate.default_amount),
+                reason: redTemplate.name,
+                note: `match:${finishedMatch.id}:red_card:${event.playerNumber}`,
+                fine_date: normalizedMatchDate,
+                is_paid: false,
+                created_by: input.createdBy,
+              });
+            }
           }
 
-          if (event.type === "red_card" && redTemplate) {
-            fineRows.push({
-              club_id: input.clubId,
-              period_id: activePeriod.id,
-              player_id: String(playerRow.id),
-              amount: Number(redTemplate.default_amount),
-              reason: redTemplate.name,
-              note: `match:${finishedMatch.id}:red_card:${event.playerNumber}`,
-              fine_date: finishedMatch.date,
-              is_paid: false,
-              created_by: input.createdBy,
-            });
-          }
-        }
+          console.log("FINE ROWS", fineRows);
 
-        if (fineRows.length > 0) {
-          const { error: finesError } = await supabase
-            .from("fines")
-            .insert(fineRows);
+          if (fineRows.length > 0) {
+            const { error: finesError } = await supabase
+              .from("fines")
+              .insert(fineRows);
 
-          if (finesError) {
-            console.error("Nepodařilo se vytvořit pokuty za karty:", finesError);
+            if (finesError) {
+              console.error("Nepodařilo se vytvořit pokuty za karty:", finesError);
+            }
+          } else {
+            console.warn("Pro karty nevznikly žádné fineRows.");
           }
         }
       }
@@ -493,7 +542,8 @@ export async function removePlayerFromFinishedMatch(input: {
     const hasEvent = input.events.some((event) => {
       if (event.type === "goal_for") {
         return (
-          event.scorer === input.playerNumber || event.assist === input.playerNumber
+          event.scorer === input.playerNumber ||
+          event.assist === input.playerNumber
         );
       }
 
@@ -629,7 +679,10 @@ export async function deleteFinishedMatch(matchId: string): Promise<{
   }
 }
 
-export function getRatingColor(value: number, isBest: boolean): MatchRatingColor {
+export function getRatingColor(
+  value: number,
+  isBest: boolean
+): MatchRatingColor {
   if (isBest) return "blue";
   if (value <= 6.0) return "red";
   if (value <= 6.9) return "orange";
