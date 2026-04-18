@@ -36,6 +36,43 @@ function isRedCardTemplate(name?: string | null) {
   );
 }
 
+function normalizeDateToIso(value?: string | null) {
+  if (!value) return "";
+
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const isoDateTimeMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+  if (isoDateTimeMatch) {
+    return isoDateTimeMatch[1];
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  const dotMatch = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+.*)?$/);
+  if (dotMatch) {
+    const [, day, month, year] = dotMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  const slashMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+.*)?$/);
+  if (slashMatch) {
+    const [, day, month, year] = slashMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 export async function getPlannedMatchesByClubId(
   clubId: string
 ): Promise<PlannedMatch[]> {
@@ -287,6 +324,14 @@ export async function saveFinishedMatch(input: {
 }): Promise<{ finishedMatch: FinishedMatch | null; errorMessage?: string }> {
   try {
     const { finishedMatch } = input;
+    const normalizedFinishedMatchDate = normalizeDateToIso(finishedMatch.date);
+
+    if (!normalizedFinishedMatchDate) {
+      return {
+        finishedMatch: null,
+        errorMessage: "Datum zápasu není ve správném formátu.",
+      };
+    }
 
     const { error: matchError } = await supabase.from("finished_matches").insert([
       {
@@ -294,7 +339,7 @@ export async function saveFinishedMatch(input: {
         club_id: input.clubId,
         match_title: finishedMatch.matchTitle,
         team: finishedMatch.team,
-        date: finishedMatch.date,
+        date: normalizedFinishedMatchDate,
         time: finishedMatch.time ?? null,
         location: finishedMatch.location ?? null,
         score: finishedMatch.score,
@@ -324,6 +369,9 @@ export async function saveFinishedMatch(input: {
             assists: stat.assists,
             yellow_cards: stat.yellowCards ?? 0,
             red_cards: stat.redCards ?? 0,
+            played_seconds: (stat as typeof stat & { playedSeconds?: number }).playedSeconds ?? 0,
+            shots_on_target: (stat as typeof stat & { shotsOnTarget?: number }).shotsOnTarget ?? 0,
+            shots_off_target: (stat as typeof stat & { shotsOffTarget?: number }).shotsOffTarget ?? 0,
           }))
         );
 
@@ -376,7 +424,7 @@ export async function saveFinishedMatch(input: {
       if (periodsError) {
         console.error("Nepodařilo se načíst období pro pokuty za karty:", periodsError);
       } else {
-        const normalizedMatchDate = String(finishedMatch.date).slice(0, 10);
+        const normalizedMatchDate = normalizedFinishedMatchDate;
 
         const matchedPeriod =
           ((periodsData ?? []) as Array<{
@@ -385,9 +433,9 @@ export async function saveFinishedMatch(input: {
             end_date: string;
             is_active?: boolean;
           }>).find((period) => {
-            const start = String(period.start_date).slice(0, 10);
-            const end = String(period.end_date).slice(0, 10);
-            return normalizedMatchDate >= start && normalizedMatchDate <= end;
+            const start = normalizeDateToIso(period.start_date);
+            const end = normalizeDateToIso(period.end_date);
+            return !!start && !!end && normalizedMatchDate >= start && normalizedMatchDate <= end;
           }) ?? null;
 
         const playersRows = playersResponse.data ?? [];
@@ -494,7 +542,12 @@ export async function saveFinishedMatch(input: {
       console.error("Nepodařilo se smazat plánovaný zápas:", deletePlannedError);
     }
 
-    return { finishedMatch };
+    return {
+      finishedMatch: {
+        ...finishedMatch,
+        date: normalizedFinishedMatchDate,
+      },
+    };
   } catch (error) {
     console.error("Chyba v saveFinishedMatch:", error);
     return {
