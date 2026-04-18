@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -668,11 +667,7 @@ export default function MatchesScreen({
         matchId={selectedMatch.id}
         matchTitle={`${selectedMatch.homeTeam} vs. ${selectedMatch.awayTeam}`}
         team={selectedMatch.team}
-        date={
-          selectedMatch.time
-            ? `${formatDisplayDate(selectedMatch.date)} ${selectedMatch.time}`
-            : formatDisplayDate(selectedMatch.date)
-        }
+        date={selectedMatch.date}
         selectedPlayers={[]}
         goalkeeper={null}
       />
@@ -726,11 +721,7 @@ export default function MatchesScreen({
         }}
         matchTitle={`${selectedMatch.homeTeam} vs. ${selectedMatch.awayTeam}`}
         team={selectedMatch.team}
-        date={
-          selectedMatch.time
-            ? `${formatDisplayDate(selectedMatch.date)} ${selectedMatch.time}`
-            : formatDisplayDate(selectedMatch.date)
-        }
+        date={selectedMatch.date}
         initialStatus={selectedMatch.status ?? "planned"}
       />
     );
@@ -895,10 +886,10 @@ export default function MatchesScreen({
                         {match.status === "prepared"
                           ? "Sestava je uložená. Můžeš jít do live zápasu."
                           : match.status === "live"
-                            ? "Zápas už běží. Můžeš se do něj vrátit."
-                            : match.status === "halftime"
-                              ? "Zápas je v přestávce. Můžeš pokračovat v live zápasu."
-                              : "Klikni na anketu nebo live podle stavu zápasu."}
+                          ? "Zápas už běží. Můžeš se do něj vrátit."
+                          : match.status === "halftime"
+                          ? "Zápas je v přestávce. Můžeš pokračovat v live zápasu."
+                          : "Klikni na anketu nebo live podle stavu zápasu."}
                       </div>
 
                       <div
