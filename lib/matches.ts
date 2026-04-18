@@ -324,9 +324,10 @@ export async function saveFinishedMatch(input: {
 }): Promise<{ finishedMatch: FinishedMatch | null; errorMessage?: string }> {
   try {
     const { finishedMatch } = input;
-    const normalizedFinishedMatchDate = normalizeDateToIso(finishedMatch.date);
+    const normalizedMatchDate = normalizeDateToIso(finishedMatch.date);
 
-    if (!normalizedFinishedMatchDate) {
+    if (!normalizedMatchDate) {
+      console.error("Neplatné datum finishedMatch.date:", finishedMatch.date);
       return {
         finishedMatch: null,
         errorMessage: "Datum zápasu není ve správném formátu.",
@@ -339,7 +340,7 @@ export async function saveFinishedMatch(input: {
         club_id: input.clubId,
         match_title: finishedMatch.matchTitle,
         team: finishedMatch.team,
-        date: normalizedFinishedMatchDate,
+        date: normalizedMatchDate,
         time: finishedMatch.time ?? null,
         location: finishedMatch.location ?? null,
         score: finishedMatch.score,
@@ -369,9 +370,6 @@ export async function saveFinishedMatch(input: {
             assists: stat.assists,
             yellow_cards: stat.yellowCards ?? 0,
             red_cards: stat.redCards ?? 0,
-            played_seconds: (stat as typeof stat & { playedSeconds?: number }).playedSeconds ?? 0,
-            shots_on_target: (stat as typeof stat & { shotsOnTarget?: number }).shotsOnTarget ?? 0,
-            shots_off_target: (stat as typeof stat & { shotsOffTarget?: number }).shotsOffTarget ?? 0,
           }))
         );
 
@@ -424,8 +422,6 @@ export async function saveFinishedMatch(input: {
       if (periodsError) {
         console.error("Nepodařilo se načíst období pro pokuty za karty:", periodsError);
       } else {
-        const normalizedMatchDate = normalizedFinishedMatchDate;
-
         const matchedPeriod =
           ((periodsData ?? []) as Array<{
             id: string;
@@ -435,7 +431,10 @@ export async function saveFinishedMatch(input: {
           }>).find((period) => {
             const start = normalizeDateToIso(period.start_date);
             const end = normalizeDateToIso(period.end_date);
-            return !!start && !!end && normalizedMatchDate >= start && normalizedMatchDate <= end;
+
+            if (!start || !end) return false;
+
+            return normalizedMatchDate >= start && normalizedMatchDate <= end;
           }) ?? null;
 
         const playersRows = playersResponse.data ?? [];
@@ -545,7 +544,7 @@ export async function saveFinishedMatch(input: {
     return {
       finishedMatch: {
         ...finishedMatch,
-        date: normalizedFinishedMatchDate,
+        date: normalizedMatchDate,
       },
     };
   } catch (error) {
