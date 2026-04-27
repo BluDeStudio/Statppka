@@ -24,7 +24,7 @@ import {
 import { styles } from "@/styles/appStyles";
 
 type TrainingTab = "planned" | "older";
-type AttendanceStatus = "yes" | "no";
+type AttendanceStatus = "yes" | "maybe" | "no";
 
 type Training = {
   id: string;
@@ -319,19 +319,28 @@ export default function TrainingsScreen({
   const getTrainingSummary = (trainingId: string) => {
     const rows = getTrainingAttendanceRows(trainingId);
     const yesCount = rows.filter((row) => row.status === "yes").length;
+    const maybeCount = rows.filter((row) => row.status === "maybe").length;
     const noCount = rows.filter((row) => row.status === "no").length;
+
     const votedPlayerIds = new Set(
       rows
-        .filter((row) => row.status === "yes" || row.status === "no")
+        .filter(
+          (row) =>
+            row.status === "yes" ||
+            row.status === "maybe" ||
+            row.status === "no"
+        )
         .map((row) => row.player_id)
     );
+
     const notVotedCount = players.filter(
       (player) => !votedPlayerIds.has(player.id)
     ).length;
 
     return {
-      total: rows.length,
+      total: votedPlayerIds.size,
       yesCount,
+      maybeCount,
       noCount,
       notVotedCount,
     };
@@ -341,7 +350,12 @@ export default function TrainingsScreen({
     const rows = getTrainingAttendanceRows(trainingId);
     const votedPlayerIds = new Set(
       rows
-        .filter((row) => row.status === "yes" || row.status === "no")
+        .filter(
+          (row) =>
+            row.status === "yes" ||
+            row.status === "maybe" ||
+            row.status === "no"
+        )
         .map((row) => row.player_id)
     );
 
@@ -364,7 +378,7 @@ export default function TrainingsScreen({
       (item) => item.player_id === linkedPlayer.id
     );
 
-    return row?.status ?? null;
+    return (row?.status as AttendanceStatus | undefined) ?? null;
   };
 
   const findPeriodForTraining = (trainingDate: string) => {
@@ -609,6 +623,8 @@ export default function TrainingsScreen({
     setMessage(
       status === "yes"
         ? "Potvrdil jsi účast na tréninku."
+        : status === "maybe"
+        ? "Označil jsi účast jako možná."
         : "Označil jsi, že nepřijdeš."
     );
     setSaving(false);
@@ -944,8 +960,17 @@ export default function TrainingsScreen({
               const yesRows = attendanceRows
                 .filter((row) => row.status === "yes")
                 .sort((a, b) =>
-                  getPlayerName(a.player_id).localeCompare(
-                    getPlayerName(b.player_id),
+                  getPlayerName(rowToPlayerId(a)).localeCompare(
+                    getPlayerName(rowToPlayerId(b)),
+                    "cs"
+                  )
+                );
+
+              const maybeRows = attendanceRows
+                .filter((row) => row.status === "maybe")
+                .sort((a, b) =>
+                  getPlayerName(rowToPlayerId(a)).localeCompare(
+                    getPlayerName(rowToPlayerId(b)),
                     "cs"
                   )
                 );
@@ -953,8 +978,8 @@ export default function TrainingsScreen({
               const noRows = attendanceRows
                 .filter((row) => row.status === "no")
                 .sort((a, b) =>
-                  getPlayerName(a.player_id).localeCompare(
-                    getPlayerName(b.player_id),
+                  getPlayerName(rowToPlayerId(a)).localeCompare(
+                    getPlayerName(rowToPlayerId(b)),
                     "cs"
                   )
                 );
@@ -1080,6 +1105,20 @@ export default function TrainingsScreen({
                             style={{
                               padding: "6px 10px",
                               borderRadius: "999px",
+                              background: "rgba(52, 152, 219, 0.16)",
+                              border: "1px solid rgba(52, 152, 219, 0.24)",
+                              color: "#9fd3ff",
+                              fontSize: "12px",
+                              fontWeight: "bold",
+                            }}
+                          >
+                            MOŽNÁ: {summary.maybeCount}
+                          </div>
+
+                          <div
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: "999px",
                               background: "rgba(231, 76, 60, 0.16)",
                               border: "1px solid rgba(231, 76, 60, 0.24)",
                               color: "#ffb0a8",
@@ -1174,6 +1213,28 @@ export default function TrainingsScreen({
                             }}
                           >
                             BUDU
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => void handleVote(training.id, "maybe")}
+                            disabled={saving}
+                            style={{
+                              flex: 1,
+                              border: "none",
+                              borderRadius: "12px",
+                              padding: "12px",
+                              background:
+                                myStatus === "maybe"
+                                  ? "rgba(52, 152, 219, 0.95)"
+                                  : "rgba(52, 152, 219, 0.18)",
+                              color: "white",
+                              fontWeight: "bold",
+                              cursor: saving ? "default" : "pointer",
+                              opacity: saving ? 0.7 : 1,
+                            }}
+                          >
+                            MOŽNÁ
                           </button>
 
                           <button
@@ -1454,10 +1515,46 @@ export default function TrainingsScreen({
                             <div style={{ display: "grid", gap: "6px" }}>
                               {yesRows.map((row) => (
                                 <div
-                                  key={`${training.id}-yes-${row.player_id}`}
+                                  key={`${training.id}-yes-${rowToPlayerId(row)}`}
                                   style={{ fontSize: "13px", color: "white" }}
                                 >
-                                  {getPlayerName(row.player_id)}
+                                  {getPlayerName(rowToPlayerId(row))}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: "12px",
+                            background: "rgba(52, 152, 219, 0.10)",
+                            border: "1px solid rgba(52, 152, 219, 0.20)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontWeight: "bold",
+                              color: "#9fd3ff",
+                              marginBottom: "8px",
+                            }}
+                          >
+                            MOŽNÁ ({maybeRows.length})
+                          </div>
+
+                          {maybeRows.length === 0 ? (
+                            <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
+                              Zatím nikdo.
+                            </div>
+                          ) : (
+                            <div style={{ display: "grid", gap: "6px" }}>
+                              {maybeRows.map((row) => (
+                                <div
+                                  key={`${training.id}-maybe-${rowToPlayerId(row)}`}
+                                  style={{ fontSize: "13px", color: "white" }}
+                                >
+                                  {getPlayerName(rowToPlayerId(row))}
                                 </div>
                               ))}
                             </div>
@@ -1490,10 +1587,10 @@ export default function TrainingsScreen({
                             <div style={{ display: "grid", gap: "6px" }}>
                               {noRows.map((row) => (
                                 <div
-                                  key={`${training.id}-no-${row.player_id}`}
+                                  key={`${training.id}-no-${rowToPlayerId(row)}`}
                                   style={{ fontSize: "13px", color: "white" }}
                                 >
-                                  {getPlayerName(row.player_id)}
+                                  {getPlayerName(rowToPlayerId(row))}
                                 </div>
                               ))}
                             </div>
@@ -1590,3 +1687,6 @@ export default function TrainingsScreen({
   );
 }
 
+function rowToPlayerId(row: TrainingAttendanceRow): string {
+  return row.player_id;
+}

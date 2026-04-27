@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabaseClient";
 
-export type TrainingAttendanceStatus = "yes" | "no";
+export type TrainingAttendanceStatus = "yes" | "maybe" | "no";
 
 export type TrainingRow = {
   id: string;
