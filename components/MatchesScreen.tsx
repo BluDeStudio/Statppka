@@ -26,6 +26,8 @@ type MatchesScreenProps = {
     matchId: string
   ) => Promise<{ success: boolean; errorMessage?: string }>;
   isAdmin: boolean;
+  openMatchId?: string | null;
+  onOpenMatchHandled?: () => void;
 };
 
 type AttendanceStatus = "yes" | "no";
@@ -161,6 +163,8 @@ export default function MatchesScreen({
   onAddMatch,
   onDeleteMatch,
   isAdmin,
+  openMatchId = null,
+  onOpenMatchHandled,
 }: MatchesScreenProps) {
   const [filter, setFilter] = useState<"ALL" | "A" | "B">("ALL");
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
@@ -300,6 +304,24 @@ export default function MatchesScreen({
       });
   }, [mergedMatches, finishedMatchIds]);
 
+  useEffect(() => {
+    if (!openMatchId) return;
+
+    const targetMatch = availableMatches.find((match) => match.id === openMatchId);
+
+    if (!targetMatch) return;
+
+    setFilter("ALL");
+    setExpandedAttendanceMatchId(openMatchId);
+    onOpenMatchHandled?.();
+
+    window.setTimeout(() => {
+      document
+        .getElementById(`match-${openMatchId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+  }, [openMatchId, availableMatches, onOpenMatchHandled]);
+
   const filteredMatches =
     filter === "ALL"
       ? availableMatches
@@ -373,6 +395,19 @@ export default function MatchesScreen({
       noCount,
       notVotedCount,
     };
+  };
+
+  const handleCopyMatchLink = async (matchId: string) => {
+    if (typeof window === "undefined") return;
+
+    const url = `${window.location.origin}${window.location.pathname}?open=match&id=${matchId}`;
+
+    try {
+      await navigator.clipboard.writeText(url);
+      setMessage("Odkaz na anketu zápasu byl zkopírován.");
+    } catch {
+      setMessage(url);
+    }
   };
 
   const handleVote = async (matchId: string, status: AttendanceStatus) => {
@@ -796,6 +831,7 @@ export default function MatchesScreen({
 
               return (
                 <div
+                  id={`match-${match.id}`}
                   key={match.id}
                   style={{
                     background: "rgba(255,255,255,0.04)",
@@ -1038,7 +1074,8 @@ export default function MatchesScreen({
                               border: "none",
                               background: "#ff3b3b",
                               color: "white",
-                              cursor: deletingMatchId === match.id ? "default" : "pointer",
+                              cursor:
+                                deletingMatchId === match.id ? "default" : "pointer",
                               fontWeight: "bold",
                               padding: "0 10px",
                               opacity: deletingMatchId === match.id ? 0.7 : 1,
@@ -1060,6 +1097,19 @@ export default function MatchesScreen({
 
                   {isExpanded && (
                     <div style={{ marginTop: "14px", display: "grid", gap: "12px" }}>
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyMatchLink(match.id)}
+                        style={{
+                          ...styles.primaryButton,
+                          marginTop: 0,
+                          background: "rgba(255,255,255,0.12)",
+                          border: "none",
+                        }}
+                      >
+                        Kopírovat odkaz na anketu
+                      </button>
+
                       <div style={{ display: "flex", gap: "8px" }}>
                         <button
                           type="button"

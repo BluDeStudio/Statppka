@@ -41,7 +41,13 @@ type TrainingsScreenProps = {
   clubId: string;
   primaryColor?: string;
   isAdmin: boolean;
+  openTrainingId?: string | null;
+  onOpenTrainingHandled?: () => void;
 };
+
+function rowToPlayerId(row: TrainingAttendanceRow): string {
+  return row.player_id;
+}
 
 function formatDisplayDate(date: string) {
   if (date.includes(".")) return date;
@@ -145,6 +151,8 @@ export default function TrainingsScreen({
   clubId,
   primaryColor = "#888888",
   isAdmin,
+  openTrainingId = null,
+  onOpenTrainingHandled,
 }: TrainingsScreenProps) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [trainings, setTrainings] = useState<Training[]>([]);
@@ -243,6 +251,27 @@ export default function TrainingsScreen({
       active = false;
     };
   }, [clubId]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!openTrainingId) return;
+
+    const targetTraining = trainings.find(
+      (training) => training.id === openTrainingId
+    );
+
+    if (!targetTraining) return;
+
+    setTab(isTrainingPlanned(targetTraining) ? "planned" : "older");
+    setExpandedTrainingId(openTrainingId);
+    onOpenTrainingHandled?.();
+
+    window.setTimeout(() => {
+      document
+        .getElementById(`training-${openTrainingId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+  }, [loading, openTrainingId, trainings, onOpenTrainingHandled]);
 
   const pollFineTemplate = useMemo(() => {
     const allowedNames = new Set([
@@ -395,6 +424,19 @@ export default function TrainingsScreen({
         normalizeDateToIso(a.start_date)
       )
     )[0];
+  };
+
+  const handleCopyTrainingLink = async (trainingId: string) => {
+    if (typeof window === "undefined") return;
+
+    const url = `${window.location.origin}${window.location.pathname}?open=training&id=${trainingId}`;
+
+    try {
+      await navigator.clipboard.writeText(url);
+      setMessage("Odkaz na anketu tréninku byl zkopírován.");
+    } catch {
+      setMessage(url);
+    }
   };
 
   const handleCreateTraining = async () => {
@@ -1004,6 +1046,7 @@ export default function TrainingsScreen({
 
               return (
                 <div
+                  id={`training-${training.id}`}
                   key={training.id}
                   style={{
                     padding: "12px",
@@ -1190,6 +1233,19 @@ export default function TrainingsScreen({
                           {training.note}
                         </div>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyTrainingLink(training.id)}
+                        style={{
+                          ...styles.primaryButton,
+                          marginTop: 0,
+                          background: "rgba(255,255,255,0.12)",
+                          border: "none",
+                        }}
+                      >
+                        Kopírovat odkaz na anketu
+                      </button>
 
                       {isTrainingPlanned(training) && (
                         <div style={{ display: "flex", gap: "8px" }}>
@@ -1685,8 +1741,4 @@ export default function TrainingsScreen({
       </div>
     </div>
   );
-}
-
-function rowToPlayerId(row: TrainingAttendanceRow): string {
-  return row.player_id;
 }

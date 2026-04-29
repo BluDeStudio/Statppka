@@ -179,6 +179,9 @@ export default function Home() {
   const [playerLinkSavingId, setPlayerLinkSavingId] = useState<string | null>(null);
   const [playerLinkMessage, setPlayerLinkMessage] = useState("");
 
+  const [openTrainingId, setOpenTrainingId] = useState<string | null>(null);
+  const [openMatchId, setOpenMatchId] = useState<string | null>(null);
+
   const isCurrentUserAdmin = currentMembership?.role === "admin";
 
   const isMainMenuVisible =
@@ -382,6 +385,34 @@ export default function Home() {
     };
   }, [loadAppState]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!session || !currentClub) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const open = params.get("open");
+    const id = params.get("id");
+
+    if (!open || !id) return;
+
+    if (open === "training") {
+      setScreen("trainings");
+      setOpenTrainingId(id);
+      setOpenMatchId(null);
+      setSelectedPlayedMatchId(null);
+      setIsLiveMatch(false);
+    }
+
+    if (open === "match") {
+      setScreen("matches");
+      setMatchesTab("planned");
+      setOpenMatchId(id);
+      setOpenTrainingId(null);
+      setSelectedPlayedMatchId(null);
+      setIsLiveMatch(false);
+    }
+  }, [session, currentClub]);
+
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
@@ -400,6 +431,8 @@ export default function Home() {
       setLinkedPlayer(null);
       setAvailablePlayersToLink([]);
       setPlayerLinkMessage("");
+      setOpenTrainingId(null);
+      setOpenMatchId(null);
       setScreen("home");
       setTeamTab("overview");
       setMatchesTab("planned");
@@ -601,12 +634,7 @@ export default function Home() {
 
   if (bootLoading) {
     return (
-      <main
-        style={{
-          ...styles.page,
-          background: dynamicTheme.pageBackground,
-        }}
-      >
+      <main style={{ ...styles.page, background: dynamicTheme.pageBackground }}>
         <div
           style={{
             ...styles.phone,
@@ -633,12 +661,7 @@ export default function Home() {
 
   if (!session) {
     return (
-      <main
-        style={{
-          ...styles.page,
-          background: dynamicTheme.pageBackground,
-        }}
-      >
+      <main style={{ ...styles.page, background: dynamicTheme.pageBackground }}>
         <div
           style={{
             ...styles.phone,
@@ -654,11 +677,7 @@ export default function Home() {
               marginBottom: "20px",
             }}
           >
-            <img
-              src="/logo.png"
-              alt="MyTeamHub logo"
-              style={mainLogoStyle}
-            />
+            <img src="/logo.png" alt="MyTeamHub logo" style={mainLogoStyle} />
 
             <div>
               <h1 style={{ ...styles.title, margin: 0 }}>{appTitle}</h1>
@@ -688,12 +707,7 @@ export default function Home() {
 
   if (!currentClub || !currentMembership) {
     return (
-      <main
-        style={{
-          ...styles.page,
-          background: dynamicTheme.pageBackground,
-        }}
-      >
+      <main style={{ ...styles.page, background: dynamicTheme.pageBackground }}>
         <div
           style={{
             ...styles.phone,
@@ -710,18 +724,8 @@ export default function Home() {
               marginBottom: "20px",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "16px",
-              }}
-            >
-              <img
-                src="/icon.png"
-                alt="MyTeamHub icon"
-                style={iconLogoStyle}
-              />
+            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+              <img src="/icon.png" alt="MyTeamHub icon" style={iconLogoStyle} />
 
               <div>
                 <h1 style={{ ...styles.title, margin: 0 }}>{appTitle}</h1>
@@ -776,12 +780,7 @@ export default function Home() {
 
   if (shouldForcePlayerLink) {
     return (
-      <main
-        style={{
-          ...styles.page,
-          background: dynamicTheme.pageBackground,
-        }}
-      >
+      <main style={{ ...styles.page, background: dynamicTheme.pageBackground }}>
         <div
           style={{
             ...styles.phone,
@@ -806,11 +805,7 @@ export default function Home() {
                 minWidth: 0,
               }}
             >
-              <img
-                src="/icon.png"
-                alt="MyTeamHub icon"
-                style={iconLogoStyle}
-              />
+              <img src="/icon.png" alt="MyTeamHub icon" style={iconLogoStyle} />
 
               <div style={{ minWidth: 0 }}>
                 <h1
@@ -916,7 +911,9 @@ export default function Home() {
                       color: "white",
                       cursor: playerLinkSavingId ? "default" : "pointer",
                       opacity:
-                        playerLinkSavingId && playerLinkSavingId !== player.id ? 0.65 : 1,
+                        playerLinkSavingId && playerLinkSavingId !== player.id
+                          ? 0.65
+                          : 1,
                     }}
                   >
                     <div
@@ -963,12 +960,7 @@ export default function Home() {
   }
 
   return (
-    <main
-      style={{
-        ...styles.page,
-        background: dynamicTheme.pageBackground,
-      }}
-    >
+    <main style={{ ...styles.page, background: dynamicTheme.pageBackground }}>
       <div
         style={{
           ...styles.phone,
@@ -1111,31 +1103,19 @@ export default function Home() {
               ZÁPASY
             </button>
 
-            <button
-              style={menuButtonStyle}
-              onClick={() => setScreen("trainings")}
-            >
+            <button style={menuButtonStyle} onClick={() => setScreen("trainings")}>
               TRÉNINKY
             </button>
 
-            <button
-              style={menuButtonStyle}
-              onClick={() => setScreen("polls")}
-            >
+            <button style={menuButtonStyle} onClick={() => setScreen("polls")}>
               ANKETY
             </button>
 
-            <button
-              style={menuButtonStyle}
-              onClick={() => setScreen("stats")}
-            >
+            <button style={menuButtonStyle} onClick={() => setScreen("stats")}>
               STATISTIKY
             </button>
 
-            <button
-              style={menuButtonStyle}
-              onClick={() => setScreen("discipline")}
-            >
+            <button style={menuButtonStyle} onClick={() => setScreen("discipline")}>
               DISCIPLÍNA
             </button>
           </div>
@@ -1312,6 +1292,8 @@ export default function Home() {
                   primaryColor={currentClub.primary_color}
                   plannedMatches={plannedMatches}
                   finishedMatchIds={finishedMatchIds}
+                  openMatchId={openMatchId}
+                  onOpenMatchHandled={() => setOpenMatchId(null)}
                   onLiveModeChange={setIsLiveMatch}
                   onAddMatch={async (newMatch) => {
                     if (!session) {
@@ -1350,11 +1332,14 @@ export default function Home() {
                       setAppError(result.errorMessage ?? "Nepodařilo se smazat zápas.");
                       return {
                         success: false,
-                        errorMessage: result.errorMessage ?? "Nepodařilo se smazat zápas.",
+                        errorMessage:
+                          result.errorMessage ?? "Nepodařilo se smazat zápas.",
                       };
                     }
 
-                    setPlannedMatches((prev) => prev.filter((match) => match.id !== matchId));
+                    setPlannedMatches((prev) =>
+                      prev.filter((match) => match.id !== matchId)
+                    );
                     setAppError("");
 
                     return {
@@ -1423,7 +1408,8 @@ export default function Home() {
                       setAppError(result.errorMessage ?? "Nepodařilo se smazat zápas.");
                       return {
                         success: false,
-                        errorMessage: result.errorMessage ?? "Nepodařilo se smazat zápas.",
+                        errorMessage:
+                          result.errorMessage ?? "Nepodařilo se smazat zápas.",
                       };
                     }
 
@@ -1452,6 +1438,8 @@ export default function Home() {
               clubId={currentClub.id}
               primaryColor={currentClub.primary_color}
               isAdmin={isCurrentUserAdmin}
+              openTrainingId={openTrainingId}
+              onOpenTrainingHandled={() => setOpenTrainingId(null)}
             />
           )}
 
