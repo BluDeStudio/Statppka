@@ -1440,43 +1440,43 @@ export default function Home() {
         <div style={{ marginTop: isMainMenuVisible ? "20px" : "0px" }}>
           {screen === "team" && selectedPlayedMatchId === null && !isLiveMatch && (
             <div style={{ display: "grid", gap: "12px" }}>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  style={getSubTabStyle(teamTab === "overview")}
-                  onClick={() => {
-                    setTeamTab("overview");
-                    void loadOverviewPlayers(currentClub.id, true);
-                    void ensureClubMatchDataLoaded(currentClub.id);
-                  }}
-                >
-                  PŘEHLED
-                </button>
+              <div style={{ display: "flex", gap: "6px" }}>
+  <button
+    style={getSubTabStyle(teamTab === "overview")}
+    onClick={() => {
+      setTeamTab("overview");
+      void loadOverviewPlayers(currentClub.id, true);
+      void ensureClubMatchDataLoaded(currentClub.id);
+    }}
+  >
+    INFO
+  </button>
 
-                <button
-                  style={getSubTabStyle(teamTab === "players")}
-                  onClick={() => setTeamTab("players")}
-                >
-                  HRÁČI
-                </button>
+  <button
+    style={getSubTabStyle(teamTab === "players")}
+    onClick={() => setTeamTab("players")}
+  >
+    HRÁČI
+  </button>
 
-                {isCurrentUserAdmin && (
-                  <button
-                    style={getSubTabStyle(teamTab === "periods")}
-                    onClick={() => setTeamTab("periods")}
-                  >
-                    OBDOBÍ
-                  </button>
-                )}
+  {isCurrentUserAdmin && (
+    <button
+      style={getSubTabStyle(teamTab === "periods")}
+      onClick={() => setTeamTab("periods")}
+    >
+      OBDOBÍ
+    </button>
+  )}
 
-                {isCurrentUserAdmin && (
-                  <button
-                    style={getSubTabStyle(teamTab === "edit")}
-                    onClick={() => setTeamTab("edit")}
-                  >
-                    EDIT TÝMU
-                  </button>
-                )}
-              </div>
+  {isCurrentUserAdmin && (
+    <button
+      style={getSubTabStyle(teamTab === "edit")}
+      onClick={() => setTeamTab("edit")}
+    >
+      EDIT
+    </button>
+  )}
+</div>
 
               {teamTab === "overview" && (
                 <div
