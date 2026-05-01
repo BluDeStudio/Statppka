@@ -456,6 +456,23 @@ export default function PlayersScreen({
               style={styles.input}
             />
 
+            <div
+              style={{
+                padding: "10px 12px",
+                borderRadius: "12px",
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                color: "#cfcfcf",
+                fontSize: "12px",
+                lineHeight: 1.45,
+              }}
+            >
+              Datum narození slouží pouze pro účely této aplikace – pro zobrazení
+              narozenin a automatickou aktualizaci věku hráče. Vyplněním data
+              narození souhlasíš s jeho použitím v rámci týmové aplikace
+              MyTeamHub.
+            </div>
+
             {editingPlayer ? (
               <>
                 <button

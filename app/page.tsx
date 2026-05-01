@@ -164,6 +164,8 @@ export default function Home() {
   const [selectedPlayedMatchId, setSelectedPlayedMatchId] = useState<string | null>(null);
 
   const [plannedMatches, setPlannedMatches] = useState<PlannedMatch[]>([]);
+  const [matchesLoaded, setMatchesLoaded] = useState(false);
+  const [matchesLoading, setMatchesLoading] = useState(false);
 
   const [session, setSession] = useState<Session | null>(null);
   const [bootLoading, setBootLoading] = useState(true);
@@ -203,14 +205,32 @@ export default function Home() {
   }, [plannedMatches]);
 
   const loadClubMatchData = useCallback(async (clubId: string) => {
-    const [planned, finished] = await Promise.all([
-      getPlannedMatchesByClubId(clubId),
-      getFinishedMatchesByClubId(clubId),
-    ]);
+    try {
+      setMatchesLoading(true);
 
-    setPlannedMatches(planned);
-    setFinishedMatches(finished);
+      const [planned, finished] = await Promise.all([
+        getPlannedMatchesByClubId(clubId),
+        getFinishedMatchesByClubId(clubId),
+      ]);
+
+      setPlannedMatches(planned);
+      setFinishedMatches(finished);
+      setMatchesLoaded(true);
+    } catch (error) {
+      console.error("Nepodařilo se načíst zápasy:", error);
+      setAppError("Nepodařilo se načíst zápasy.");
+    } finally {
+      setMatchesLoading(false);
+    }
   }, []);
+
+  const ensureClubMatchDataLoaded = useCallback(
+    async (clubId: string) => {
+      if (matchesLoaded || matchesLoading) return;
+      await loadClubMatchData(clubId);
+    },
+    [loadClubMatchData, matchesLoaded, matchesLoading]
+  );
 
   const loadLinkedPlayerState = useCallback(
     async (clubId: string, userId: string) => {
@@ -280,6 +300,7 @@ export default function Home() {
           setCurrentMembership(null);
           setPlannedMatches([]);
           setFinishedMatches([]);
+          setMatchesLoaded(false);
           setLinkedPlayer(null);
           setAvailablePlayersToLink([]);
           setPlayerLinkMessage("");
@@ -298,6 +319,7 @@ export default function Home() {
           setCurrentClub(null);
           setPlannedMatches([]);
           setFinishedMatches([]);
+          setMatchesLoaded(false);
           setLinkedPlayer(null);
           setAvailablePlayersToLink([]);
           setPlayerLinkMessage("");
@@ -308,13 +330,11 @@ export default function Home() {
         setCurrentClub(club);
 
         if (club) {
-          await Promise.all([
-            loadClubMatchData(club.id),
-            loadLinkedPlayerState(club.id, currentSession.user.id),
-          ]);
+          await loadLinkedPlayerState(club.id, currentSession.user.id);
         } else {
           setPlannedMatches([]);
           setFinishedMatches([]);
+          setMatchesLoaded(false);
           setLinkedPlayer(null);
           setAvailablePlayersToLink([]);
           setPlayerLinkMessage("");
@@ -327,12 +347,13 @@ export default function Home() {
         setCurrentMembership(null);
         setPlannedMatches([]);
         setFinishedMatches([]);
+        setMatchesLoaded(false);
         setLinkedPlayer(null);
         setAvailablePlayersToLink([]);
         setPlayerLinkMessage("");
       }
     },
-    [loadClubMatchData, loadLinkedPlayerState]
+    [loadLinkedPlayerState]
   );
 
   useEffect(() => {
@@ -410,8 +431,9 @@ export default function Home() {
       setOpenTrainingId(null);
       setSelectedPlayedMatchId(null);
       setIsLiveMatch(false);
+      void loadClubMatchData(currentClub.id);
     }
-  }, [session, currentClub]);
+  }, [session, currentClub, loadClubMatchData]);
 
   const handleLogout = async () => {
     try {
@@ -428,6 +450,7 @@ export default function Home() {
       setIsLiveMatch(false);
       setPlannedMatches([]);
       setFinishedMatches([]);
+      setMatchesLoaded(false);
       setLinkedPlayer(null);
       setAvailablePlayersToLink([]);
       setPlayerLinkMessage("");
@@ -632,6 +655,19 @@ export default function Home() {
     color: active ? dynamicTheme.primaryText : "white",
   });
 
+  const renderMatchesLoadingCard = () => (
+    <div
+      style={{
+        ...styles.card,
+        background: dynamicTheme.cardBackground,
+        border: `1px solid ${dynamicTheme.cardBorder}`,
+        color: "#b8b8b8",
+      }}
+    >
+      Načítám zápasy...
+    </div>
+  );
+
   if (bootLoading) {
     return (
       <main style={{ ...styles.page, background: dynamicTheme.pageBackground }}>
@@ -769,7 +805,9 @@ export default function Home() {
               setCurrentClub(club);
               setCurrentMembership(membership);
               setAppError("");
-              await loadClubMatchData(club.id);
+              setPlannedMatches([]);
+              setFinishedMatches([]);
+              setMatchesLoaded(false);
               await loadLinkedPlayerState(club.id, session.user.id);
             }}
           />
@@ -1098,6 +1136,7 @@ export default function Home() {
               onClick={() => {
                 setScreen("matches");
                 setMatchesTab("planned");
+                void ensureClubMatchDataLoaded(currentClub.id);
               }}
             >
               ZÁPASY
@@ -1111,7 +1150,13 @@ export default function Home() {
               ANKETY
             </button>
 
-            <button style={menuButtonStyle} onClick={() => setScreen("stats")}>
+            <button
+              style={menuButtonStyle}
+              onClick={() => {
+                setScreen("stats");
+                void ensureClubMatchDataLoaded(currentClub.id);
+              }}
+            >
               STATISTIKY
             </button>
 
@@ -1268,167 +1313,180 @@ export default function Home() {
                 <div style={{ display: "flex", gap: "8px" }}>
                   <button
                     style={getSubTabStyle(matchesTab === "planned")}
-                    onClick={() => setMatchesTab("planned")}
+                    onClick={() => {
+                      setMatchesTab("planned");
+                      void ensureClubMatchDataLoaded(currentClub.id);
+                    }}
                   >
                     PLÁNOVANÉ
                   </button>
 
                   <button
                     style={getSubTabStyle(matchesTab === "played")}
-                    onClick={() => setMatchesTab("played")}
+                    onClick={() => {
+                      setMatchesTab("played");
+                      void ensureClubMatchDataLoaded(currentClub.id);
+                    }}
                   >
                     ODEHRANÉ
                   </button>
                 </div>
               )}
 
-              {matchesTab === "planned" && (
-                <MatchesScreen
-                  key={plannedMatchesRenderKey}
-                  clubId={currentClub.id}
-                  clubName={currentClub.name}
-                  hasBTeam={currentClub.has_b_team}
-                  userId={session.user.id}
-                  primaryColor={currentClub.primary_color}
-                  plannedMatches={plannedMatches}
-                  finishedMatchIds={finishedMatchIds}
-                  openMatchId={openMatchId}
-                  onOpenMatchHandled={() => setOpenMatchId(null)}
-                  onLiveModeChange={setIsLiveMatch}
-                  onAddMatch={async (newMatch) => {
-                    if (!session) {
-                      return {
-                        success: false,
-                        errorMessage: "Chybí přihlášený uživatel.",
-                      };
-                    }
+              {matchesLoading && !matchesLoaded ? (
+                renderMatchesLoadingCard()
+              ) : (
+                <>
+                  {matchesTab === "planned" && (
+                    <MatchesScreen
+                      key={plannedMatchesRenderKey}
+                      clubId={currentClub.id}
+                      clubName={currentClub.name}
+                      hasBTeam={currentClub.has_b_team}
+                      userId={session.user.id}
+                      primaryColor={currentClub.primary_color}
+                      plannedMatches={plannedMatches}
+                      finishedMatchIds={finishedMatchIds}
+                      openMatchId={openMatchId}
+                      onOpenMatchHandled={() => setOpenMatchId(null)}
+                      onLiveModeChange={setIsLiveMatch}
+                      onAddMatch={async (newMatch) => {
+                        if (!session) {
+                          return {
+                            success: false,
+                            errorMessage: "Chybí přihlášený uživatel.",
+                          };
+                        }
 
-                    const result = await createPlannedMatch({
-                      clubId: currentClub.id,
-                      createdBy: session.user.id,
-                      match: newMatch,
-                    });
+                        const result = await createPlannedMatch({
+                          clubId: currentClub.id,
+                          createdBy: session.user.id,
+                          match: newMatch,
+                        });
 
-                    if (!result.match) {
-                      setAppError(result.errorMessage ?? "Nepodařilo se uložit zápas.");
-                      return {
-                        success: false,
-                        errorMessage:
-                          result.errorMessage ?? "Nepodařilo se uložit zápas.",
-                      };
-                    }
+                        if (!result.match) {
+                          setAppError(result.errorMessage ?? "Nepodařilo se uložit zápas.");
+                          return {
+                            success: false,
+                            errorMessage:
+                              result.errorMessage ?? "Nepodařilo se uložit zápas.",
+                          };
+                        }
 
-                    await loadClubMatchData(currentClub.id);
-                    setAppError("");
+                        await loadClubMatchData(currentClub.id);
+                        setAppError("");
 
-                    return {
-                      success: true,
-                    };
-                  }}
-                  onDeleteMatch={async (matchId) => {
-                    const result = await deletePlannedMatch(matchId);
+                        return {
+                          success: true,
+                        };
+                      }}
+                      onDeleteMatch={async (matchId) => {
+                        const result = await deletePlannedMatch(matchId);
 
-                    if (!result.success) {
-                      setAppError(result.errorMessage ?? "Nepodařilo se smazat zápas.");
-                      return {
-                        success: false,
-                        errorMessage:
-                          result.errorMessage ?? "Nepodařilo se smazat zápas.",
-                      };
-                    }
+                        if (!result.success) {
+                          setAppError(result.errorMessage ?? "Nepodařilo se smazat zápas.");
+                          return {
+                            success: false,
+                            errorMessage:
+                              result.errorMessage ?? "Nepodařilo se smazat zápas.",
+                          };
+                        }
 
-                    setPlannedMatches((prev) =>
-                      prev.filter((match) => match.id !== matchId)
-                    );
-                    setAppError("");
+                        setPlannedMatches((prev) =>
+                          prev.filter((match) => match.id !== matchId)
+                        );
+                        setAppError("");
 
-                    return {
-                      success: true,
-                    };
-                  }}
-                  onMatchFinished={async (finishedMatch) => {
-                    if (!session) {
-                      return {
-                        success: false,
-                        errorMessage: "Chybí přihlášený uživatel.",
-                      };
-                    }
+                        return {
+                          success: true,
+                        };
+                      }}
+                      onMatchFinished={async (finishedMatch) => {
+                        if (!session) {
+                          return {
+                            success: false,
+                            errorMessage: "Chybí přihlášený uživatel.",
+                          };
+                        }
 
-                    const matchWithTime: FinishedMatch = {
-                      ...finishedMatch,
-                      finished_at: new Date().toISOString(),
-                    };
+                        const matchWithTime: FinishedMatch = {
+                          ...finishedMatch,
+                          finished_at: new Date().toISOString(),
+                        };
 
-                    const result = await saveFinishedMatch({
-                      clubId: currentClub.id,
-                      createdBy: session.user.id,
-                      finishedMatch: matchWithTime,
-                    });
+                        const result = await saveFinishedMatch({
+                          clubId: currentClub.id,
+                          createdBy: session.user.id,
+                          finishedMatch: matchWithTime,
+                        });
 
-                    if (!result.finishedMatch) {
-                      setAppError(
-                        result.errorMessage ?? "Nepodařilo se uložit odehraný zápas."
-                      );
-                      return {
-                        success: false,
-                        errorMessage:
-                          result.errorMessage ??
-                          "Nepodařilo se uložit odehraný zápas.",
-                      };
-                    }
+                        if (!result.finishedMatch) {
+                          setAppError(
+                            result.errorMessage ?? "Nepodařilo se uložit odehraný zápas."
+                          );
+                          return {
+                            success: false,
+                            errorMessage:
+                              result.errorMessage ??
+                              "Nepodařilo se uložit odehraný zápas.",
+                          };
+                        }
 
-                    setFinishedMatches((prev) => [
-                      result.finishedMatch as FinishedMatch,
-                      ...prev,
-                    ]);
-                    setPlannedMatches((prev) =>
-                      prev.filter((match) => match.id !== finishedMatch.id)
-                    );
-                    setScreen("matches");
-                    setMatchesTab("played");
-                    setIsLiveMatch(false);
-                    setAppError("");
+                        setFinishedMatches((prev) => [
+                          result.finishedMatch as FinishedMatch,
+                          ...prev,
+                        ]);
+                        setPlannedMatches((prev) =>
+                          prev.filter((match) => match.id !== finishedMatch.id)
+                        );
+                        setScreen("matches");
+                        setMatchesTab("played");
+                        setIsLiveMatch(false);
+                        setMatchesLoaded(true);
+                        setAppError("");
 
-                    return {
-                      success: true,
-                    };
-                  }}
-                  isAdmin={isCurrentUserAdmin}
-                />
-              )}
+                        return {
+                          success: true,
+                        };
+                      }}
+                      isAdmin={isCurrentUserAdmin}
+                    />
+                  )}
 
-              {matchesTab === "played" && !isLiveMatch && (
-                <PlayedMatchesScreen
-                  finishedMatches={finishedMatches}
-                  onSelectMatch={(matchId) => setSelectedPlayedMatchId(matchId)}
-                  onDeleteMatch={async (matchId) => {
-                    const result = await deleteFinishedMatch(matchId);
+                  {matchesTab === "played" && !isLiveMatch && (
+                    <PlayedMatchesScreen
+                      finishedMatches={finishedMatches}
+                      onSelectMatch={(matchId) => setSelectedPlayedMatchId(matchId)}
+                      onDeleteMatch={async (matchId) => {
+                        const result = await deleteFinishedMatch(matchId);
 
-                    if (!result.success) {
-                      setAppError(result.errorMessage ?? "Nepodařilo se smazat zápas.");
-                      return {
-                        success: false,
-                        errorMessage:
-                          result.errorMessage ?? "Nepodařilo se smazat zápas.",
-                      };
-                    }
+                        if (!result.success) {
+                          setAppError(result.errorMessage ?? "Nepodařilo se smazat zápas.");
+                          return {
+                            success: false,
+                            errorMessage:
+                              result.errorMessage ?? "Nepodařilo se smazat zápas.",
+                          };
+                        }
 
-                    setFinishedMatches((prev) =>
-                      prev.filter((match) => match.id !== matchId)
-                    );
+                        setFinishedMatches((prev) =>
+                          prev.filter((match) => match.id !== matchId)
+                        );
 
-                    if (selectedPlayedMatchId === matchId) {
-                      setSelectedPlayedMatchId(null);
-                    }
+                        if (selectedPlayedMatchId === matchId) {
+                          setSelectedPlayedMatchId(null);
+                        }
 
-                    setAppError("");
+                        setAppError("");
 
-                    return {
-                      success: true,
-                    };
-                  }}
-                  primaryColor={currentClub.primary_color}
-                />
+                        return {
+                          success: true,
+                        };
+                      }}
+                      primaryColor={currentClub.primary_color}
+                    />
+                  )}
+                </>
               )}
             </div>
           )}
@@ -1452,11 +1510,17 @@ export default function Home() {
           )}
 
           {screen === "stats" && selectedPlayedMatchId === null && !isLiveMatch && (
-            <StatsScreen
-              clubId={currentClub.id}
-              finishedMatches={finishedMatches}
-              primaryColor={currentClub.primary_color}
-            />
+            <>
+              {matchesLoading && !matchesLoaded ? (
+                renderMatchesLoadingCard()
+              ) : (
+                <StatsScreen
+                  clubId={currentClub.id}
+                  finishedMatches={finishedMatches}
+                  primaryColor={currentClub.primary_color}
+                />
+              )}
+            </>
           )}
 
           {screen === "discipline" && selectedPlayedMatchId === null && !isLiveMatch && (
