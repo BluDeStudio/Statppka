@@ -33,7 +33,7 @@ import {
   getPlannedMatchesByClubId,
   saveFinishedMatch,
 } from "@/lib/matches";
-import type { Player } from "@/lib/players";
+import { getPlayersByClubId, type Player } from "@/lib/players";
 
 type Screen =
   | "home"
@@ -155,6 +155,98 @@ function getContrastTextColor(hexColor?: string | null) {
   return brightness > 145 ? "#111111" : "#ffffff";
 }
 
+function normalizeDateToIso(value?: string | null) {
+  if (!value) return "";
+
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  if (/^\d{4}-\d{2}-\d{2}[T\s]/.test(trimmed)) return trimmed.slice(0, 10);
+
+  if (/^\d{2}\.\d{2}\.\d{4}/.test(trimmed)) {
+    const [datePart] = trimmed.split(" ");
+    const [day, month, year] = datePart.split(".");
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getAge(birthDate?: string | null, atDate = new Date()) {
+  if (!birthDate) return null;
+
+  const normalized = normalizeDateToIso(birthDate);
+  if (!normalized) return null;
+
+  const birth = new Date(`${normalized}T00:00:00`);
+  if (Number.isNaN(birth.getTime())) return null;
+
+  let age = atDate.getFullYear() - birth.getFullYear();
+  const monthDiff = atDate.getMonth() - birth.getMonth();
+
+  if (monthDiff < 0 || (monthDiff === 0 && atDate.getDate() < birth.getDate())) {
+    age--;
+  }
+
+  return age;
+}
+
+function getNextBirthdayDate(birthDate?: string | null) {
+  if (!birthDate) return null;
+
+  const normalized = normalizeDateToIso(birthDate);
+  if (!normalized) return null;
+
+  const [, month, day] = normalized.split("-");
+  const today = new Date();
+  const thisYear = today.getFullYear();
+
+  let next = new Date(`${thisYear}-${month}-${day}T00:00:00`);
+  const todayStart = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  );
+
+  if (Number.isNaN(next.getTime())) return null;
+
+  if (next.getTime() < todayStart.getTime()) {
+    next = new Date(`${thisYear + 1}-${month}-${day}T00:00:00`);
+  }
+
+  return next;
+}
+
+function formatDisplayDate(date: Date) {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${day}.${month}.`;
+}
+
+function isSameMonthPreviousMonth(dateValue: string) {
+  const normalized = normalizeDateToIso(dateValue);
+  if (!normalized) return false;
+
+  const matchDate = new Date(`${normalized}T00:00:00`);
+  if (Number.isNaN(matchDate.getTime())) return false;
+
+  const now = new Date();
+  const previousMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+  return (
+    matchDate.getFullYear() === previousMonthDate.getFullYear() &&
+    matchDate.getMonth() === previousMonthDate.getMonth()
+  );
+}
+
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("home");
   const [teamTab, setTeamTab] = useState<TeamTab>("overview");
@@ -166,6 +258,10 @@ export default function Home() {
   const [plannedMatches, setPlannedMatches] = useState<PlannedMatch[]>([]);
   const [matchesLoaded, setMatchesLoaded] = useState(false);
   const [matchesLoading, setMatchesLoading] = useState(false);
+
+  const [overviewPlayers, setOverviewPlayers] = useState<Player[]>([]);
+  const [overviewPlayersLoaded, setOverviewPlayersLoaded] = useState(false);
+  const [overviewPlayersLoading, setOverviewPlayersLoading] = useState(false);
 
   const [session, setSession] = useState<Session | null>(null);
   const [bootLoading, setBootLoading] = useState(true);
@@ -231,6 +327,21 @@ export default function Home() {
     },
     [loadClubMatchData, matchesLoaded, matchesLoading]
   );
+
+  const loadOverviewPlayers = useCallback(async (clubId: string) => {
+    if (overviewPlayersLoading) return;
+
+    try {
+      setOverviewPlayersLoading(true);
+      const loadedPlayers = await getPlayersByClubId(clubId);
+      setOverviewPlayers(loadedPlayers);
+      setOverviewPlayersLoaded(true);
+    } catch (error) {
+      console.error("Nepodařilo se načíst hráče pro přehled:", error);
+    } finally {
+      setOverviewPlayersLoading(false);
+    }
+  }, [overviewPlayersLoading]);
 
   const loadLinkedPlayerState = useCallback(
     async (clubId: string, userId: string) => {
@@ -301,6 +412,8 @@ export default function Home() {
           setPlannedMatches([]);
           setFinishedMatches([]);
           setMatchesLoaded(false);
+          setOverviewPlayers([]);
+          setOverviewPlayersLoaded(false);
           setLinkedPlayer(null);
           setAvailablePlayersToLink([]);
           setPlayerLinkMessage("");
@@ -320,6 +433,8 @@ export default function Home() {
           setPlannedMatches([]);
           setFinishedMatches([]);
           setMatchesLoaded(false);
+          setOverviewPlayers([]);
+          setOverviewPlayersLoaded(false);
           setLinkedPlayer(null);
           setAvailablePlayersToLink([]);
           setPlayerLinkMessage("");
@@ -335,6 +450,8 @@ export default function Home() {
           setPlannedMatches([]);
           setFinishedMatches([]);
           setMatchesLoaded(false);
+          setOverviewPlayers([]);
+          setOverviewPlayersLoaded(false);
           setLinkedPlayer(null);
           setAvailablePlayersToLink([]);
           setPlayerLinkMessage("");
@@ -348,6 +465,8 @@ export default function Home() {
         setPlannedMatches([]);
         setFinishedMatches([]);
         setMatchesLoaded(false);
+        setOverviewPlayers([]);
+        setOverviewPlayersLoaded(false);
         setLinkedPlayer(null);
         setAvailablePlayersToLink([]);
         setPlayerLinkMessage("");
@@ -435,6 +554,124 @@ export default function Home() {
     }
   }, [session, currentClub, loadClubMatchData]);
 
+  useEffect(() => {
+    if (!currentClub) return;
+    if (screen !== "team" || teamTab !== "overview") return;
+
+    void loadOverviewPlayers(currentClub.id);
+    void ensureClubMatchDataLoaded(currentClub.id);
+  }, [
+    currentClub,
+    screen,
+    teamTab,
+    overviewPlayersLoaded,
+    loadOverviewPlayers,
+    ensureClubMatchDataLoaded,
+  ]);
+
+  const todaysBirthdayPlayers = useMemo(() => {
+    const today = new Date();
+
+    return overviewPlayers
+      .filter((player) => {
+        const nextBirthday = getNextBirthdayDate(player.birth_date);
+        if (!nextBirthday) return false;
+
+        return (
+          nextBirthday.getDate() === today.getDate() &&
+          nextBirthday.getMonth() === today.getMonth()
+        );
+      })
+      .map((player) => ({
+        player,
+        age: getAge(player.birth_date),
+      }));
+  }, [overviewPlayers]);
+
+  const nextBirthdayPlayer = useMemo(() => {
+    const today = new Date();
+
+    const sorted = overviewPlayers
+      .map((player) => {
+        const nextBirthday = getNextBirthdayDate(player.birth_date);
+        if (!nextBirthday) return null;
+
+        const age = getAge(player.birth_date, nextBirthday);
+        const diffDays = Math.ceil(
+          (nextBirthday.getTime() -
+            new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) /
+            (1000 * 60 * 60 * 24)
+        );
+
+        return {
+          player,
+          nextBirthday,
+          age,
+          diffDays,
+        };
+      })
+      .filter(Boolean) as {
+      player: Player;
+      nextBirthday: Date;
+      age: number | null;
+      diffDays: number;
+    }[];
+
+    return sorted.sort((a, b) => a.diffDays - b.diffDays)[0] ?? null;
+  }, [overviewPlayers]);
+
+  const playerOfPreviousMonth = useMemo(() => {
+    const pointsByNumber = new Map<
+      number,
+      {
+        points: number;
+        goals: number;
+        assists: number;
+        matches: number;
+      }
+    >();
+
+    finishedMatches
+      .filter((match) => isSameMonthPreviousMonth(match.date))
+      .forEach((match) => {
+        match.playerStats.forEach((stat) => {
+          if (!pointsByNumber.has(stat.playerNumber)) {
+            pointsByNumber.set(stat.playerNumber, {
+              points: 0,
+              goals: 0,
+              assists: 0,
+              matches: 0,
+            });
+          }
+
+          const current = pointsByNumber.get(stat.playerNumber)!;
+          current.goals += stat.goals;
+          current.assists += stat.assists;
+          current.points += stat.goals + stat.assists;
+          current.matches += 1;
+        });
+      });
+
+    const sorted = Array.from(pointsByNumber.entries())
+      .map(([playerNumber, stats]) => {
+        const player = overviewPlayers.find((item) => item.number === playerNumber);
+
+        return {
+          playerNumber,
+          name: player?.name ?? `#${playerNumber}`,
+          ...stats,
+        };
+      })
+      .sort((a, b) => {
+        if (b.points !== a.points) return b.points - a.points;
+        if (b.goals !== a.goals) return b.goals - a.goals;
+        if (b.assists !== a.assists) return b.assists - a.assists;
+        return a.name.localeCompare(b.name, "cs");
+      });
+
+    return sorted[0] ?? null;
+  }, [finishedMatches, overviewPlayers]);
+
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
@@ -451,6 +688,8 @@ export default function Home() {
       setPlannedMatches([]);
       setFinishedMatches([]);
       setMatchesLoaded(false);
+      setOverviewPlayers([]);
+      setOverviewPlayersLoaded(false);
       setLinkedPlayer(null);
       setAvailablePlayersToLink([]);
       setPlayerLinkMessage("");
@@ -668,6 +907,13 @@ export default function Home() {
     </div>
   );
 
+  const overviewInfoCardStyle: React.CSSProperties = {
+    padding: "14px 16px",
+    borderRadius: "16px",
+    background: "rgba(255,255,255,0.04)",
+    border: `1px solid ${dynamicTheme.cardBorder}`,
+  };
+
   if (bootLoading) {
     return (
       <main style={{ ...styles.page, background: dynamicTheme.pageBackground }}>
@@ -808,6 +1054,8 @@ export default function Home() {
               setPlannedMatches([]);
               setFinishedMatches([]);
               setMatchesLoaded(false);
+              setOverviewPlayers([]);
+              setOverviewPlayersLoaded(false);
               await loadLinkedPlayerState(club.id, session.user.id);
             }}
           />
@@ -1124,6 +1372,7 @@ export default function Home() {
             <button
               style={menuButtonStyle}
               onClick={() => {
+                setOverviewPlayersLoaded(false);
                 setScreen("team");
                 setTeamTab("overview");
               }}
@@ -1190,7 +1439,10 @@ export default function Home() {
               <div style={{ display: "flex", gap: "8px" }}>
                 <button
                   style={getSubTabStyle(teamTab === "overview")}
-                  onClick={() => setTeamTab("overview")}
+                  onClick={() => {
+                    setOverviewPlayersLoaded(false);
+                    setTeamTab("overview");
+                  }}
                 >
                   PŘEHLED
                 </button>
@@ -1231,14 +1483,7 @@ export default function Home() {
                   }}
                 >
                   <div style={{ display: "grid", gap: "14px" }}>
-                    <div
-                      style={{
-                        padding: "16px",
-                        borderRadius: "16px",
-                        background: "rgba(255,255,255,0.04)",
-                        border: `1px solid ${dynamicTheme.cardBorder}`,
-                      }}
-                    >
+                    <div style={overviewInfoCardStyle}>
                       <div
                         style={{
                           fontSize: "14px",
@@ -1250,6 +1495,141 @@ export default function Home() {
                           ? "Sdílej pozvánkový odkaz s hráči a členy týmu, aby se mohli připojit do stejného klubu."
                           : "Jako člen týmu můžeš prohlížet týmové informace. Pozvánky a nastavení týmu spravuje admin."}
                       </div>
+                    </div>
+
+                    <div style={overviewInfoCardStyle}>
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          color: "#b8b8b8",
+                          fontWeight: "bold",
+                          marginBottom: "8px",
+                        }}
+                      >
+                        🎂 Dnes slaví
+                      </div>
+
+                      {overviewPlayersLoading ? (
+                        <div style={{ color: "#b8b8b8", fontSize: "14px" }}>
+                          Načítám narozeniny...
+                        </div>
+                      ) : todaysBirthdayPlayers.length > 0 ? (
+                        <div style={{ display: "grid", gap: "6px" }}>
+                          {todaysBirthdayPlayers.map(({ player, age }) => (
+                            <div
+                              key={player.id}
+                              style={{
+                                color: "#ffffff",
+                                fontWeight: "bold",
+                                fontSize: "15px",
+                              }}
+                            >
+                              {player.name}
+                              {age !== null ? ` • ${age} let` : ""}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ color: "#b8b8b8", fontSize: "14px" }}>
+                          Dnes nikdo neslaví.
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={overviewInfoCardStyle}>
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          color: "#b8b8b8",
+                          fontWeight: "bold",
+                          marginBottom: "8px",
+                        }}
+                      >
+                        📅 Nejbližší oslavenec
+                      </div>
+
+                      {overviewPlayersLoading ? (
+                        <div style={{ color: "#b8b8b8", fontSize: "14px" }}>
+                          Načítám...
+                        </div>
+                      ) : nextBirthdayPlayer ? (
+                        <div>
+                          <div
+                            style={{
+                              color: "#ffffff",
+                              fontWeight: "bold",
+                              fontSize: "15px",
+                            }}
+                          >
+                            {nextBirthdayPlayer.player.name}
+                            {nextBirthdayPlayer.age !== null
+                              ? ` • ${nextBirthdayPlayer.age} let`
+                              : ""}
+                          </div>
+                          <div
+                            style={{
+                              color: "#b8b8b8",
+                              fontSize: "13px",
+                              marginTop: "4px",
+                            }}
+                          >
+                            {formatDisplayDate(nextBirthdayPlayer.nextBirthday)}
+                            {nextBirthdayPlayer.diffDays === 0
+                              ? " • dnes"
+                              : ` • za ${nextBirthdayPlayer.diffDays} dní`}
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ color: "#b8b8b8", fontSize: "14px" }}>
+                          Zatím nejsou vyplněná data narození.
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={overviewInfoCardStyle}>
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          color: "#b8b8b8",
+                          fontWeight: "bold",
+                          marginBottom: "8px",
+                        }}
+                      >
+                        ⭐ Hráč měsíce
+                      </div>
+
+                      {matchesLoading && !matchesLoaded ? (
+                        <div style={{ color: "#b8b8b8", fontSize: "14px" }}>
+                          Načítám zápasy...
+                        </div>
+                      ) : playerOfPreviousMonth ? (
+                        <div>
+                          <div
+                            style={{
+                              color: "#ffffff",
+                              fontWeight: "bold",
+                              fontSize: "15px",
+                            }}
+                          >
+                            {playerOfPreviousMonth.name}
+                          </div>
+                          <div
+                            style={{
+                              color: "#b8b8b8",
+                              fontSize: "13px",
+                              marginTop: "4px",
+                            }}
+                          >
+                            {playerOfPreviousMonth.points} bodů • G{" "}
+                            {playerOfPreviousMonth.goals} / A{" "}
+                            {playerOfPreviousMonth.assists}
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ color: "#b8b8b8", fontSize: "14px" }}>
+                          Za minulý měsíc zatím nejsou data.
+                        </div>
+                      )}
                     </div>
 
                     {isCurrentUserAdmin && (
