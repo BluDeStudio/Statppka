@@ -10,8 +10,6 @@ import {
 } from "@/lib/players";
 import {
   getTrainingsByClubId,
-  getTrainingAttendance,
-  getTrainingPresence,
   type TrainingAttendanceRow,
   type TrainingRow,
   type TrainingPresenceRow,
@@ -65,13 +63,9 @@ function normalizeDateToIso(value?: string | null) {
   if (!trimmed) return "";
 
   const isoDateTimeMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
-  if (isoDateTimeMatch) {
-    return isoDateTimeMatch[1];
-  }
+  if (isoDateTimeMatch) return isoDateTimeMatch[1];
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    return trimmed;
-  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
 
   const dotMatch = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+.*)?$/);
   if (dotMatch) {
@@ -125,9 +119,7 @@ function isDateInsidePeriod(dateValue: string, period: Period | null) {
   const normalizedStart = normalizeDateToIso(period.start_date);
   const normalizedEnd = normalizeDateToIso(period.end_date);
 
-  if (!normalizedDate || !normalizedStart || !normalizedEnd) {
-    return false;
-  }
+  if (!normalizedDate || !normalizedStart || !normalizedEnd) return false;
 
   return normalizedDate >= normalizedStart && normalizedDate <= normalizedEnd;
 }
@@ -152,6 +144,20 @@ function formatFineNote(note?: string | null) {
   }
 
   return note;
+}
+
+function groupRowsByTrainingId<T extends { training_id: string }>(rows: T[]) {
+  const map: Record<string, T[]> = {};
+
+  rows.forEach((row) => {
+    if (!map[row.training_id]) {
+      map[row.training_id] = [];
+    }
+
+    map[row.training_id].push(row);
+  });
+
+  return map;
 }
 
 export default function DisciplineScreen({
@@ -186,6 +192,8 @@ export default function DisciplineScreen({
   const [fineTemplates, setFineTemplates] = useState<FineTemplateRow[]>([]);
 
   const [loading, setLoading] = useState(true);
+  const [finesLoading, setFinesLoading] = useState(false);
+  const [templatesLoaded, setTemplatesLoaded] = useState(false);
   const [periodSaving, setPeriodSaving] = useState(false);
   const [fineSaving, setFineSaving] = useState(false);
   const [templateSaving, setTemplateSaving] = useState(false);
@@ -219,11 +227,19 @@ export default function DisciplineScreen({
   const [editingTemplateIsActive, setEditingTemplateIsActive] = useState(true);
 
   const disciplinePlayers = useMemo<DisciplinePlayer[]>(() => {
-    if (players.length > 0) {
-      return players;
-    }
+    if (players.length > 0) return players;
     return clubMemberPlayers;
   }, [players, clubMemberPlayers]);
+
+  const disciplinePlayersById = useMemo(() => {
+    const map = new Map<string, DisciplinePlayer>();
+
+    disciplinePlayers.forEach((player) => {
+      map.set(player.id, player);
+    });
+
+    return map;
+  }, [disciplinePlayers]);
 
   const loadPeriodsState = useCallback(async () => {
     const [loadedPeriods, loadedActivePeriod] = await Promise.all([
@@ -262,27 +278,48 @@ export default function DisciplineScreen({
     return periods.find((period) => period.id === selectedPeriodId) ?? null;
   }, [periodFilterMode, activePeriod, periods, selectedPeriodId]);
 
+  const loadTemplatesIfNeeded = useCallback(async () => {
+    if (templatesLoaded) return;
+
+    const data = await ensureDefaultFineTemplates(clubId);
+    setFineTemplates(data);
+    setTemplatesLoaded(true);
+  }, [clubId, templatesLoaded]);
+
   const reloadTemplates = useCallback(async () => {
     const data = await getFineTemplatesByClubId(clubId);
     setFineTemplates(data);
+    setTemplatesLoaded(true);
   }, [clubId]);
 
   const reloadVisibleFines = useCallback(async () => {
+    setFinesLoading(true);
+
     if (periodFilterMode === "all") {
+      if (periods.length === 0) {
+        setFines([]);
+        setFinesLoading(false);
+        return;
+      }
+
       const finesByPeriods = await Promise.all(
         periods.map((period) => getFinesByPeriodId(period.id))
       );
+
       setFines(finesByPeriods.flat());
+      setFinesLoading(false);
       return;
     }
 
     if (!effectivePeriod) {
       setFines([]);
+      setFinesLoading(false);
       return;
     }
 
     const data = await getFinesByPeriodId(effectivePeriod.id);
     setFines(data);
+    setFinesLoading(false);
   }, [effectivePeriod, periodFilterMode, periods]);
 
   useEffect(() => {
@@ -296,7 +333,6 @@ export default function DisciplineScreen({
         playersData,
         clubMemberPlayersData,
         trainingsData,
-        templatesData,
         {
           data: { user },
         },
@@ -304,7 +340,6 @@ export default function DisciplineScreen({
         getPlayersByClubId(clubId),
         getClubMemberPlayersByClubId(clubId),
         getTrainingsByClubId(clubId),
-        ensureDefaultFineTemplates(clubId),
         supabase.auth.getUser(),
       ]);
 
@@ -313,26 +348,52 @@ export default function DisciplineScreen({
       setPlayers(playersData);
       setClubMemberPlayers(clubMemberPlayersData);
       setTrainings(trainingsData);
-      setFineTemplates(templatesData);
       setCurrentUserId(user?.id ?? null);
 
-      const nextPresenceMap: Record<string, TrainingPresenceRow[]> = {};
-      const nextAttendanceMap: Record<string, TrainingAttendanceRow[]> = {};
+      const trainingIds = trainingsData.map((training) => training.id);
 
-      for (const training of trainingsData) {
-        const [presenceRows, attendanceRows] = await Promise.all([
-          getTrainingPresence(training.id),
-          getTrainingAttendance(training.id),
+      if (trainingIds.length > 0) {
+        const [presenceResponse, attendanceResponse] = await Promise.all([
+          supabase
+            .from("training_presence")
+            .select("*")
+            .in("training_id", trainingIds),
+          supabase
+            .from("training_attendance")
+            .select("*")
+            .in("training_id", trainingIds),
         ]);
 
-        nextPresenceMap[training.id] = presenceRows;
-        nextAttendanceMap[training.id] = attendanceRows;
+        if (!active) return;
+
+        if (presenceResponse.error) {
+          console.error(
+            "Nepodařilo se hromadně načíst reálnou docházku:",
+            presenceResponse.error
+          );
+        }
+
+        if (attendanceResponse.error) {
+          console.error(
+            "Nepodařilo se hromadně načíst hlasování tréninků:",
+            attendanceResponse.error
+          );
+        }
+
+        setPresenceMap(
+          groupRowsByTrainingId(
+            (presenceResponse.data as TrainingPresenceRow[]) ?? []
+          )
+        );
+        setAttendanceMap(
+          groupRowsByTrainingId(
+            (attendanceResponse.data as TrainingAttendanceRow[]) ?? []
+          )
+        );
+      } else {
+        setPresenceMap({});
+        setAttendanceMap({});
       }
-
-      if (!active) return;
-
-      setPresenceMap(nextPresenceMap);
-      setAttendanceMap(nextAttendanceMap);
 
       await loadPeriodsState();
 
@@ -348,37 +409,25 @@ export default function DisciplineScreen({
   }, [clubId, loadPeriodsState]);
 
   useEffect(() => {
-    let active = true;
+    if (mainTab !== "fines") return;
 
-    const loadVisibleFinesEffect = async () => {
-      if (periodFilterMode === "all") {
-        const finesByPeriods = await Promise.all(
-          periods.map((period) => getFinesByPeriodId(period.id))
-        );
+    void reloadVisibleFines();
 
-        if (!active) return;
-        setFines(finesByPeriods.flat());
-        return;
-      }
+    if (isAdmin) {
+      void loadTemplatesIfNeeded();
+    }
+  }, [mainTab, isAdmin, loadTemplatesIfNeeded, reloadVisibleFines]);
 
-      if (!effectivePeriod) {
-        if (!active) return;
-        setFines([]);
-        return;
-      }
+  useEffect(() => {
+    if (mainTab !== "fines") return;
+    void reloadVisibleFines();
+  }, [effectivePeriod, periodFilterMode, periods, mainTab, reloadVisibleFines]);
 
-      const loadedFines = await getFinesByPeriodId(effectivePeriod.id);
-
-      if (!active) return;
-      setFines(loadedFines);
-    };
-
-    void loadVisibleFinesEffect();
-
-    return () => {
-      active = false;
-    };
-  }, [effectivePeriod, periodFilterMode, periods]);
+  useEffect(() => {
+    if (mainTab === "fines" && fineTab === "templates" && isAdmin) {
+      void loadTemplatesIfNeeded();
+    }
+  }, [mainTab, fineTab, isAdmin, loadTemplatesIfNeeded]);
 
   const filteredOlderTrainings = useMemo(() => {
     return trainings.filter(
@@ -436,8 +485,7 @@ export default function DisciplineScreen({
       .map((item) => ({
         ...item,
         playerName:
-          disciplinePlayers.find((player) => player.id === item.player_id)
-            ?.name ?? "Neznámý hráč",
+          disciplinePlayersById.get(item.player_id)?.name ?? "Neznámý hráč",
       }))
       .sort((a, b) => {
         if (b.unpaid_amount !== a.unpaid_amount) {
@@ -448,7 +496,7 @@ export default function DisciplineScreen({
         }
         return a.playerName.localeCompare(b.playerName, "cs");
       });
-  }, [disciplinePlayers, fines]);
+  }, [disciplinePlayersById, fines]);
 
   const finesByPlayer = useMemo(() => {
     const map = new Map<string, FineRow[]>();
@@ -1249,9 +1297,12 @@ export default function DisciplineScreen({
                   <button
                     type="button"
                     onClick={() => {
+                      void loadTemplatesIfNeeded();
+
                       if (showFineForm) {
                         resetFineForm();
                       }
+
                       setShowFineForm((prev) => !prev);
                     }}
                     style={{
@@ -1386,7 +1437,9 @@ export default function DisciplineScreen({
               <div style={styles.card}>
                 <h2 style={styles.screenTitle}>Přehled hráčů a pokut</h2>
 
-                {!activePeriod && periodFilterMode !== "all" ? (
+                {finesLoading ? (
+                  <div style={{ color: "#b8b8b8" }}>Načítám pokuty...</div>
+                ) : !activePeriod && periodFilterMode !== "all" ? (
                   <div style={{ color: "#b8b8b8" }}>
                     Nejprve vytvoř aktivní období.
                   </div>
