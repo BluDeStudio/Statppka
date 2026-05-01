@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import PlayersScreen from "@/components/PlayersScreen";
 import MatchesScreen from "@/components/MatchesScreen";
@@ -170,6 +170,12 @@ function normalizeDateToIso(value?: string | null) {
     return `${year}-${month}-${day}`;
   }
 
+  if (/^\d{2}\/\d{2}\/\d{4}/.test(trimmed)) {
+    const [datePart] = trimmed.split(" ");
+    const [day, month, year] = datePart.split("/");
+    return `${year}-${month}-${day}`;
+  }
+
   const parsed = new Date(trimmed);
   if (Number.isNaN(parsed.getTime())) return "";
 
@@ -207,25 +213,19 @@ function getNextBirthdayDate(birthDate?: string | null) {
 
   const [, month, day] = normalized.split("-");
   const today = new Date();
-  const thisYear = today.getFullYear();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
-  let next = new Date(`${thisYear}-${month}-${day}T00:00:00`);
-  const todayStart = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate()
-  );
-
+  let next = new Date(`${today.getFullYear()}-${month}-${day}T00:00:00`);
   if (Number.isNaN(next.getTime())) return null;
 
   if (next.getTime() < todayStart.getTime()) {
-    next = new Date(`${thisYear + 1}-${month}-${day}T00:00:00`);
+    next = new Date(`${today.getFullYear() + 1}-${month}-${day}T00:00:00`);
   }
 
   return next;
 }
 
-function formatDisplayDate(date: Date) {
+function formatBirthdayDate(date: Date) {
   const day = String(date.getDate()).padStart(2, "0");
   const month = String(date.getMonth() + 1).padStart(2, "0");
   return `${day}.${month}.`;
@@ -239,11 +239,11 @@ function isSameMonthPreviousMonth(dateValue: string) {
   if (Number.isNaN(matchDate.getTime())) return false;
 
   const now = new Date();
-  const previousMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
   return (
-    matchDate.getFullYear() === previousMonthDate.getFullYear() &&
-    matchDate.getMonth() === previousMonthDate.getMonth()
+    matchDate.getFullYear() === previousMonth.getFullYear() &&
+    matchDate.getMonth() === previousMonth.getMonth()
   );
 }
 
@@ -259,9 +259,14 @@ export default function Home() {
   const [matchesLoaded, setMatchesLoaded] = useState(false);
   const [matchesLoading, setMatchesLoading] = useState(false);
 
+  const matchesLoadedRef = useRef(false);
+  const matchesLoadingRef = useRef(false);
+
   const [overviewPlayers, setOverviewPlayers] = useState<Player[]>([]);
   const [overviewPlayersLoaded, setOverviewPlayersLoaded] = useState(false);
   const [overviewPlayersLoading, setOverviewPlayersLoading] = useState(false);
+
+  const overviewPlayersLoadingRef = useRef(false);
 
   const [session, setSession] = useState<Session | null>(null);
   const [bootLoading, setBootLoading] = useState(true);
@@ -300,8 +305,13 @@ export default function Home() {
       .join("|");
   }, [plannedMatches]);
 
-  const loadClubMatchData = useCallback(async (clubId: string) => {
+  const loadClubMatchData = useCallback(async (clubId: string, force = false) => {
+    if (!force && (matchesLoadedRef.current || matchesLoadingRef.current)) {
+      return;
+    }
+
     try {
+      matchesLoadingRef.current = true;
       setMatchesLoading(true);
 
       const [planned, finished] = await Promise.all([
@@ -311,37 +321,44 @@ export default function Home() {
 
       setPlannedMatches(planned);
       setFinishedMatches(finished);
+
+      matchesLoadedRef.current = true;
       setMatchesLoaded(true);
+      setAppError("");
     } catch (error) {
       console.error("Nepodařilo se načíst zápasy:", error);
       setAppError("Nepodařilo se načíst zápasy.");
     } finally {
+      matchesLoadingRef.current = false;
       setMatchesLoading(false);
     }
   }, []);
 
   const ensureClubMatchDataLoaded = useCallback(
     async (clubId: string) => {
-      if (matchesLoaded || matchesLoading) return;
-      await loadClubMatchData(clubId);
+      await loadClubMatchData(clubId, false);
     },
-    [loadClubMatchData, matchesLoaded, matchesLoading]
+    [loadClubMatchData]
   );
 
-  const loadOverviewPlayers = useCallback(async (clubId: string) => {
-    if (overviewPlayersLoading) return;
+  const loadOverviewPlayers = useCallback(async (clubId: string, force = false) => {
+    if (!force && overviewPlayersLoadingRef.current) return;
 
     try {
+      overviewPlayersLoadingRef.current = true;
       setOverviewPlayersLoading(true);
+
       const loadedPlayers = await getPlayersByClubId(clubId);
+
       setOverviewPlayers(loadedPlayers);
       setOverviewPlayersLoaded(true);
     } catch (error) {
       console.error("Nepodařilo se načíst hráče pro přehled:", error);
     } finally {
+      overviewPlayersLoadingRef.current = false;
       setOverviewPlayersLoading(false);
     }
-  }, [overviewPlayersLoading]);
+  }, []);
 
   const loadLinkedPlayerState = useCallback(
     async (clubId: string, userId: string) => {
@@ -399,6 +416,18 @@ export default function Home() {
     []
   );
 
+  const resetLoadedClubData = () => {
+    setPlannedMatches([]);
+    setFinishedMatches([]);
+    setMatchesLoaded(false);
+    matchesLoadedRef.current = false;
+    matchesLoadingRef.current = false;
+
+    setOverviewPlayers([]);
+    setOverviewPlayersLoaded(false);
+    overviewPlayersLoadingRef.current = false;
+  };
+
   const loadAppState = useCallback(
     async (currentSession: Session | null) => {
       try {
@@ -409,11 +438,7 @@ export default function Home() {
           setUserProfile(null);
           setCurrentClub(null);
           setCurrentMembership(null);
-          setPlannedMatches([]);
-          setFinishedMatches([]);
-          setMatchesLoaded(false);
-          setOverviewPlayers([]);
-          setOverviewPlayersLoaded(false);
+          resetLoadedClubData();
           setLinkedPlayer(null);
           setAvailablePlayersToLink([]);
           setPlayerLinkMessage("");
@@ -430,11 +455,7 @@ export default function Home() {
 
         if (!membership) {
           setCurrentClub(null);
-          setPlannedMatches([]);
-          setFinishedMatches([]);
-          setMatchesLoaded(false);
-          setOverviewPlayers([]);
-          setOverviewPlayersLoaded(false);
+          resetLoadedClubData();
           setLinkedPlayer(null);
           setAvailablePlayersToLink([]);
           setPlayerLinkMessage("");
@@ -447,11 +468,7 @@ export default function Home() {
         if (club) {
           await loadLinkedPlayerState(club.id, currentSession.user.id);
         } else {
-          setPlannedMatches([]);
-          setFinishedMatches([]);
-          setMatchesLoaded(false);
-          setOverviewPlayers([]);
-          setOverviewPlayersLoaded(false);
+          resetLoadedClubData();
           setLinkedPlayer(null);
           setAvailablePlayersToLink([]);
           setPlayerLinkMessage("");
@@ -462,11 +479,7 @@ export default function Home() {
         setUserProfile(null);
         setCurrentClub(null);
         setCurrentMembership(null);
-        setPlannedMatches([]);
-        setFinishedMatches([]);
-        setMatchesLoaded(false);
-        setOverviewPlayers([]);
-        setOverviewPlayersLoaded(false);
+        resetLoadedClubData();
         setLinkedPlayer(null);
         setAvailablePlayersToLink([]);
         setPlayerLinkMessage("");
@@ -550,7 +563,7 @@ export default function Home() {
       setOpenTrainingId(null);
       setSelectedPlayedMatchId(null);
       setIsLiveMatch(false);
-      void loadClubMatchData(currentClub.id);
+      void loadClubMatchData(currentClub.id, true);
     }
   }, [session, currentClub, loadClubMatchData]);
 
@@ -558,13 +571,12 @@ export default function Home() {
     if (!currentClub) return;
     if (screen !== "team" || teamTab !== "overview") return;
 
-    void loadOverviewPlayers(currentClub.id);
+    void loadOverviewPlayers(currentClub.id, false);
     void ensureClubMatchDataLoaded(currentClub.id);
   }, [
     currentClub,
     screen,
     teamTab,
-    overviewPlayersLoaded,
     loadOverviewPlayers,
     ensureClubMatchDataLoaded,
   ]);
@@ -590,6 +602,7 @@ export default function Home() {
 
   const nextBirthdayPlayer = useMemo(() => {
     const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
     const sorted = overviewPlayers
       .map((player) => {
@@ -598,9 +611,7 @@ export default function Home() {
 
         const age = getAge(player.birth_date, nextBirthday);
         const diffDays = Math.ceil(
-          (nextBirthday.getTime() -
-            new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) /
-            (1000 * 60 * 60 * 24)
+          (nextBirthday.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24)
         );
 
         return {
@@ -685,11 +696,7 @@ export default function Home() {
       setCurrentMembership(null);
       setSelectedPlayedMatchId(null);
       setIsLiveMatch(false);
-      setPlannedMatches([]);
-      setFinishedMatches([]);
-      setMatchesLoaded(false);
-      setOverviewPlayers([]);
-      setOverviewPlayersLoaded(false);
+      resetLoadedClubData();
       setLinkedPlayer(null);
       setAvailablePlayersToLink([]);
       setPlayerLinkMessage("");
@@ -1051,11 +1058,7 @@ export default function Home() {
               setCurrentClub(club);
               setCurrentMembership(membership);
               setAppError("");
-              setPlannedMatches([]);
-              setFinishedMatches([]);
-              setMatchesLoaded(false);
-              setOverviewPlayers([]);
-              setOverviewPlayersLoaded(false);
+              resetLoadedClubData();
               await loadLinkedPlayerState(club.id, session.user.id);
             }}
           />
@@ -1372,9 +1375,10 @@ export default function Home() {
             <button
               style={menuButtonStyle}
               onClick={() => {
-                setOverviewPlayersLoaded(false);
                 setScreen("team");
                 setTeamTab("overview");
+                void loadOverviewPlayers(currentClub.id, true);
+                void ensureClubMatchDataLoaded(currentClub.id);
               }}
             >
               TÝM
@@ -1440,8 +1444,9 @@ export default function Home() {
                 <button
                   style={getSubTabStyle(teamTab === "overview")}
                   onClick={() => {
-                    setOverviewPlayersLoaded(false);
                     setTeamTab("overview");
+                    void loadOverviewPlayers(currentClub.id, true);
+                    void ensureClubMatchDataLoaded(currentClub.id);
                   }}
                 >
                   PŘEHLED
@@ -1573,7 +1578,7 @@ export default function Home() {
                               marginTop: "4px",
                             }}
                           >
-                            {formatDisplayDate(nextBirthdayPlayer.nextBirthday)}
+                            {formatBirthdayDate(nextBirthdayPlayer.nextBirthday)}
                             {nextBirthdayPlayer.diffDays === 0
                               ? " • dnes"
                               : ` • za ${nextBirthdayPlayer.diffDays} dní`}
@@ -1753,7 +1758,7 @@ export default function Home() {
                           };
                         }
 
-                        await loadClubMatchData(currentClub.id);
+                        await loadClubMatchData(currentClub.id, true);
                         setAppError("");
 
                         return {
@@ -1822,6 +1827,7 @@ export default function Home() {
                         setScreen("matches");
                         setMatchesTab("played");
                         setIsLiveMatch(false);
+                        matchesLoadedRef.current = true;
                         setMatchesLoaded(true);
                         setAppError("");
 
