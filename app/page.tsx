@@ -1491,20 +1491,6 @@ export default function Home() {
                     <div style={overviewInfoCardStyle}>
                       <div
                         style={{
-                          fontSize: "14px",
-                          color: "#d9d9d9",
-                          lineHeight: 1.5,
-                        }}
-                      >
-                        {isCurrentUserAdmin
-                          ? "Sdílej pozvánkový odkaz s hráči a členy týmu, aby se mohli připojit do stejného klubu."
-                          : "Jako člen týmu můžeš prohlížet týmové informace. Pozvánky a nastavení týmu spravuje admin."}
-                      </div>
-                    </div>
-
-                    <div style={overviewInfoCardStyle}>
-                      <div
-                        style={{
                           fontSize: "13px",
                           color: "#b8b8b8",
                           fontWeight: "bold",

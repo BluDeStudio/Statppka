@@ -69,7 +69,7 @@ export default function PlayersScreen({
   const [memberRoles, setMemberRoles] = useState<Record<string, "admin" | "member">>({});
 
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
-  const [showForm, setShowForm] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
 
   const [name, setName] = useState("");
   const [number, setNumber] = useState("");
@@ -147,17 +147,19 @@ export default function PlayersScreen({
   const handleOpenAddForm = () => {
     if (!isAdmin) return;
 
-    if (editingPlayer) {
-      return;
-    }
-
+    setEditingPlayer(null);
     setMessage("");
 
-    setShowForm((prev) => {
+    setShowAddForm((prev) => {
       const next = !prev;
 
       if (!next) {
         resetForm();
+      } else {
+        setName("");
+        setNumber("");
+        setPosition(defaultPositions[2]);
+        setBirthDate("");
       }
 
       return next;
@@ -208,7 +210,7 @@ export default function PlayersScreen({
         [...prev, result.player as Player].sort((a, b) => a.number - b.number)
       );
       resetForm();
-      setShowForm(false);
+      setShowAddForm(false);
       setMessage("Hráč byl přidán.");
     } else {
       setMessage(result.errorMessage ?? "Nepodařilo se přidat hráče.");
@@ -218,20 +220,19 @@ export default function PlayersScreen({
   };
 
   const startEditingPlayer = (player: Player) => {
-    const isMe =
-      currentUserId !== null && player.profile_id === currentUserId;
+    const isMe = currentUserId !== null && player.profile_id === currentUserId;
 
     if (!isAdmin && !isMe) {
       setMessage("Můžeš upravit jen svůj profil.");
       return;
     }
 
+    setShowAddForm(false);
     setEditingPlayer(player);
     setName(player.name);
     setNumber(String(player.number));
     setPosition(player.position);
     setBirthDate(player.birth_date ?? "");
-    setShowForm(true);
     setMessage("");
   };
 
@@ -293,7 +294,7 @@ export default function PlayersScreen({
           .sort((a, b) => a.number - b.number)
       );
       resetForm();
-      setShowForm(false);
+      setShowAddForm(false);
       setMessage("Hráč byl upraven.");
     } else {
       setMessage(result.errorMessage ?? "Nepodařilo se upravit hráče.");
@@ -304,7 +305,7 @@ export default function PlayersScreen({
 
   const handleCancelForm = () => {
     resetForm();
-    setShowForm(false);
+    setShowAddForm(false);
     setMessage("");
   };
 
@@ -361,11 +362,130 @@ export default function PlayersScreen({
     setSaving(false);
   };
 
+  const renderPlayerForm = (mode: "add" | "edit") => (
+    <div
+      style={{
+        display: "grid",
+        gap: "10px",
+        marginTop: mode === "edit" ? "12px" : 0,
+        padding: mode === "edit" ? "12px" : 0,
+        borderRadius: mode === "edit" ? "12px" : 0,
+        background: mode === "edit" ? "rgba(255,255,255,0.03)" : "transparent",
+        border:
+          mode === "edit"
+            ? "1px solid rgba(255,255,255,0.06)"
+            : "none",
+      }}
+    >
+      <input
+        type="text"
+        placeholder="Jméno hráče"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        style={styles.input}
+      />
+
+      <input
+        type="number"
+        placeholder="Číslo"
+        value={number}
+        onChange={(e) => setNumber(e.target.value)}
+        style={styles.input}
+      />
+
+      <select
+        value={position}
+        onChange={(e) => setPosition(e.target.value)}
+        style={{
+          ...styles.input,
+          appearance: "none",
+          cursor: "pointer",
+        }}
+      >
+        {defaultPositions.map((item) => (
+          <option
+            key={item}
+            value={item}
+            style={{ background: "#111111", color: "white" }}
+          >
+            {item}
+          </option>
+        ))}
+      </select>
+
+      <input
+        type="date"
+        value={birthDate}
+        onChange={(e) => setBirthDate(e.target.value)}
+        style={styles.input}
+      />
+
+      <div
+        style={{
+          padding: "10px 12px",
+          borderRadius: "12px",
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          color: "#cfcfcf",
+          fontSize: "12px",
+          lineHeight: 1.45,
+        }}
+      >
+        Datum narození slouží pouze pro účely této aplikace – pro zobrazení
+        narozenin a automatickou aktualizaci věku hráče. Vyplněním data narození
+        souhlasíš s jeho použitím v rámci týmové aplikace MyTeamHub.
+      </div>
+
+      {mode === "edit" ? (
+        <>
+          <button
+            type="button"
+            style={{
+              ...styles.primaryButton,
+              marginTop: 0,
+              background: primaryColor,
+              opacity: saving ? 0.7 : 1,
+            }}
+            onClick={handleUpdatePlayer}
+            disabled={saving}
+          >
+            {saving ? "Ukládám..." : "Uložit změny"}
+          </button>
+
+          <button
+            type="button"
+            style={{
+              ...styles.primaryButton,
+              marginTop: 0,
+              background: "rgba(255,255,255,0.12)",
+            }}
+            onClick={handleCancelForm}
+            disabled={saving}
+          >
+            Zrušit úpravu
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          style={{
+            ...styles.primaryButton,
+            marginTop: 0,
+            background: primaryColor,
+            opacity: saving ? 0.7 : 1,
+          }}
+          onClick={handleAddPlayer}
+          disabled={saving}
+        >
+          {saving ? "Ukládám..." : "Přidat hráče"}
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div>
-      <h2 style={styles.screenTitle}>
-        {editingPlayer ? "Upravit hráče" : "Soupiska"}
-      </h2>
+      <h2 style={styles.screenTitle}>Soupiska</h2>
 
       <div style={styles.card}>
         <div
@@ -388,136 +508,25 @@ export default function PlayersScreen({
           </div>
         </div>
 
-        {!editingPlayer && isAdmin && (
+        {isAdmin && (
           <button
             type="button"
             style={{
               ...styles.primaryButton,
               marginTop: 0,
-              marginBottom: showForm ? "12px" : "16px",
+              marginBottom: showAddForm ? "12px" : "16px",
               background: primaryColor,
               opacity: saving ? 0.7 : 1,
             }}
             onClick={handleOpenAddForm}
             disabled={saving}
           >
-            {showForm ? "Zavřít formulář" : "Přidat hráče"}
+            {showAddForm ? "Zavřít formulář" : "Přidat hráče"}
           </button>
         )}
 
-        {showForm && (
-          <div
-            style={{
-              display: "grid",
-              gap: "10px",
-              marginBottom: "16px",
-            }}
-          >
-            <input
-              type="text"
-              placeholder="Jméno hráče"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={styles.input}
-            />
-
-            <input
-              type="number"
-              placeholder="Číslo"
-              value={number}
-              onChange={(e) => setNumber(e.target.value)}
-              style={styles.input}
-            />
-
-            <select
-              value={position}
-              onChange={(e) => setPosition(e.target.value)}
-              style={{
-                ...styles.input,
-                appearance: "none",
-                cursor: "pointer",
-              }}
-            >
-              {defaultPositions.map((item) => (
-                <option
-                  key={item}
-                  value={item}
-                  style={{ background: "#111111", color: "white" }}
-                >
-                  {item}
-                </option>
-              ))}
-            </select>
-
-            <input
-              type="date"
-              value={birthDate}
-              onChange={(e) => setBirthDate(e.target.value)}
-              style={styles.input}
-            />
-
-            <div
-              style={{
-                padding: "10px 12px",
-                borderRadius: "12px",
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                color: "#cfcfcf",
-                fontSize: "12px",
-                lineHeight: 1.45,
-              }}
-            >
-              Datum narození slouží pouze pro účely této aplikace – pro zobrazení
-              narozenin a automatickou aktualizaci věku hráče. Vyplněním data
-              narození souhlasíš s jeho použitím v rámci týmové aplikace
-              MyTeamHub.
-            </div>
-
-            {editingPlayer ? (
-              <>
-                <button
-                  type="button"
-                  style={{
-                    ...styles.primaryButton,
-                    marginTop: 0,
-                    background: primaryColor,
-                    opacity: saving ? 0.7 : 1,
-                  }}
-                  onClick={handleUpdatePlayer}
-                  disabled={saving}
-                >
-                  {saving ? "Ukládám..." : "Uložit změny"}
-                </button>
-
-                <button
-                  type="button"
-                  style={{
-                    ...styles.primaryButton,
-                    marginTop: 0,
-                    background: "rgba(255,255,255,0.12)",
-                  }}
-                  onClick={handleCancelForm}
-                  disabled={saving}
-                >
-                  Zrušit úpravu
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                style={{
-                  ...styles.primaryButton,
-                  marginTop: 0,
-                  background: primaryColor,
-                  opacity: saving ? 0.7 : 1,
-                }}
-                onClick={handleAddPlayer}
-                disabled={saving}
-              >
-                {saving ? "Ukládám..." : "Přidat hráče"}
-              </button>
-            )}
-          </div>
+        {showAddForm && (
+          <div style={{ marginBottom: "16px" }}>{renderPlayerForm("add")}</div>
         )}
 
         {message && (
@@ -575,72 +584,80 @@ export default function PlayersScreen({
                 ? memberRoles[player.profile_id] ?? "member"
                 : "member";
               const isPlayerAdmin = playerRole === "admin";
+              const isEditingThisPlayer = editingPlayer?.id === player.id;
 
               return (
                 <div
                   key={player.id}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "12px",
+                    display: "grid",
+                    gap: isEditingThisPlayer ? "10px" : "0px",
                     background: isMe
                       ? "rgba(61, 214, 140, 0.10)"
                       : "rgba(255,255,255,0.04)",
                     borderRadius: "14px",
                     padding: "10px 12px",
-                    border: isMe
-                      ? "1px solid rgba(61, 214, 140, 0.30)"
-                      : "1px solid rgba(255,255,255,0.05)",
+                    border: isEditingThisPlayer
+                      ? `1px solid ${primaryColor}`
+                      : isMe
+                        ? "1px solid rgba(61, 214, 140, 0.30)"
+                        : "1px solid rgba(255,255,255,0.05)",
                   }}
                 >
                   <div
                     style={{
-                      minWidth: "42px",
-                      height: "42px",
-                      borderRadius: "10px",
-                      background: primaryColor,
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: "bold",
-                      color: "white",
+                      gap: "12px",
                     }}
                   >
-                    {player.number}
-                  </div>
-
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: "bold" }}>{player.name}</div>
-
-                    <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
-                      {player.position}
-                      {age !== null ? ` • ${age} let` : ""}
+                    <div
+                      style={{
+                        minWidth: "42px",
+                        height: "42px",
+                        borderRadius: "10px",
+                        background: primaryColor,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: "bold",
+                        color: "white",
+                      }}
+                    >
+                      {player.number}
                     </div>
 
-                    {hasBirthdayToday && (
-                      <div
-                        style={{
-                          fontSize: "11px",
-                          color: "#ffd54f",
-                          marginTop: "2px",
-                          fontWeight: "bold",
-                        }}
-                      >
-                        🎂 Dnes má narozeniny!
-                      </div>
-                    )}
-                  </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: "bold" }}>{player.name}</div>
 
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: "6px",
-                      justifyItems: "end",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {isMe ? (
-                      <>
+                      <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
+                        {player.position}
+                        {age !== null ? ` • ${age} let` : ""}
+                      </div>
+
+                      {hasBirthdayToday && (
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            color: "#ffd54f",
+                            marginTop: "2px",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          🎂 Dnes má narozeniny!
+                        </div>
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: "6px",
+                        justifyItems: "end",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {isMe && (
                         <div
                           style={{
                             padding: "5px 9px",
@@ -654,104 +671,97 @@ export default function PlayersScreen({
                         >
                           JÁ
                         </div>
+                      )}
 
+                      {(isMe || isAdmin) && (
                         <button
                           type="button"
                           style={{
                             border: "none",
                             borderRadius: "8px",
                             padding: "6px 10px",
-                            background: primaryColor,
+                            background: isEditingThisPlayer
+                              ? "rgba(255,255,255,0.12)"
+                              : primaryColor,
                             color: "white",
                             cursor: "pointer",
                             fontWeight: "bold",
                             fontSize: "11px",
                           }}
-                          onClick={() => startEditingPlayer(player)}
+                          onClick={() =>
+                            isEditingThisPlayer
+                              ? handleCancelForm()
+                              : startEditingPlayer(player)
+                          }
                         >
-                          UPRAVIT
+                          {isEditingThisPlayer ? "ZAVŘÍT" : "UPRAVIT"}
                         </button>
-                      </>
-                    ) : isAdmin ? (
-                      <button
-                        type="button"
-                        style={{
-                          border: "none",
-                          borderRadius: "8px",
-                          padding: "6px 10px",
-                          background: primaryColor,
-                          color: "white",
-                          cursor: "pointer",
-                          fontWeight: "bold",
-                          fontSize: "11px",
-                        }}
-                        onClick={() => startEditingPlayer(player)}
-                      >
-                        UPRAVIT
-                      </button>
-                    ) : null}
+                      )}
 
-                    {isLinked && (
+                      {isLinked && (
+                        <div
+                          style={{
+                            padding: "5px 9px",
+                            borderRadius: "999px",
+                            fontSize: "11px",
+                            fontWeight: "bold",
+                            background: isPlayerAdmin
+                              ? "rgba(241, 196, 15, 0.16)"
+                              : "rgba(255,255,255,0.10)",
+                            color: isPlayerAdmin ? "#ffd86b" : "#ffffff",
+                            border: isPlayerAdmin
+                              ? "1px solid rgba(241, 196, 15, 0.24)"
+                              : "1px solid rgba(255,255,255,0.12)",
+                          }}
+                        >
+                          {isPlayerAdmin ? "ADMIN" : "ČLEN"}
+                        </div>
+                      )}
+
                       <div
                         style={{
                           padding: "5px 9px",
                           borderRadius: "999px",
                           fontSize: "11px",
                           fontWeight: "bold",
-                          background: isPlayerAdmin
-                            ? "rgba(241, 196, 15, 0.16)"
-                            : "rgba(255,255,255,0.10)",
-                          color: isPlayerAdmin ? "#ffd86b" : "#ffffff",
-                          border: isPlayerAdmin
-                            ? "1px solid rgba(241, 196, 15, 0.24)"
-                            : "1px solid rgba(255,255,255,0.12)",
+                          background: isLinked
+                            ? "rgba(255,255,255,0.10)"
+                            : "rgba(255,255,255,0.05)",
+                          color: isLinked ? "#ffffff" : "#b8b8b8",
+                          border: isLinked
+                            ? "1px solid rgba(255,255,255,0.12)"
+                            : "1px solid rgba(255,255,255,0.08)",
                         }}
                       >
-                        {isPlayerAdmin ? "ADMIN" : "ČLEN"}
+                        {isLinked ? "PROPOJENÝ" : "VOLNÝ"}
                       </div>
-                    )}
 
-                    <div
-                      style={{
-                        padding: "5px 9px",
-                        borderRadius: "999px",
-                        fontSize: "11px",
-                        fontWeight: "bold",
-                        background: isLinked
-                          ? "rgba(255,255,255,0.10)"
-                          : "rgba(255,255,255,0.05)",
-                        color: isLinked ? "#ffffff" : "#b8b8b8",
-                        border: isLinked
-                          ? "1px solid rgba(255,255,255,0.12)"
-                          : "1px solid rgba(255,255,255,0.08)",
-                      }}
-                    >
-                      {isLinked ? "PROPOJENÝ" : "VOLNÝ"}
+                      {isAdmin && isLinked && !isMe && (
+                        <button
+                          type="button"
+                          style={{
+                            border: "none",
+                            borderRadius: "8px",
+                            padding: "6px 10px",
+                            background: isPlayerAdmin
+                              ? "rgba(198,40,40,0.95)"
+                              : "rgba(241,196,15,0.95)",
+                            color: isPlayerAdmin ? "white" : "#111111",
+                            cursor: saving ? "default" : "pointer",
+                            fontWeight: "bold",
+                            fontSize: "11px",
+                            opacity: saving ? 0.7 : 1,
+                          }}
+                          onClick={() => void handleToggleAdmin(player)}
+                          disabled={saving}
+                        >
+                          {isPlayerAdmin ? "ODEBRAT ADMIN" : "UDĚLAT ADMINA"}
+                        </button>
+                      )}
                     </div>
-
-                    {isAdmin && isLinked && !isMe && (
-                      <button
-                        type="button"
-                        style={{
-                          border: "none",
-                          borderRadius: "8px",
-                          padding: "6px 10px",
-                          background: isPlayerAdmin
-                            ? "rgba(198,40,40,0.95)"
-                            : "rgba(241,196,15,0.95)",
-                          color: isPlayerAdmin ? "white" : "#111111",
-                          cursor: saving ? "default" : "pointer",
-                          fontWeight: "bold",
-                          fontSize: "11px",
-                          opacity: saving ? 0.7 : 1,
-                        }}
-                        onClick={() => void handleToggleAdmin(player)}
-                        disabled={saving}
-                      >
-                        {isPlayerAdmin ? "ODEBRAT ADMIN" : "UDĚLAT ADMINA"}
-                      </button>
-                    )}
                   </div>
+
+                  {isEditingThisPlayer && renderPlayerForm("edit")}
                 </div>
               );
             })}
