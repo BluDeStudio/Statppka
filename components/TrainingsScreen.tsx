@@ -7,7 +7,9 @@ import {
   createTraining,
   deleteTraining,
   getTrainingAttendance,
+  getTrainingAttendanceByTrainingIds,
   getTrainingPresence,
+  getTrainingPresenceByTrainingIds,
   getTrainingsByClubId,
   saveTrainingPresence,
   setTrainingAttendance,
@@ -216,18 +218,14 @@ export default function TrainingsScreen({
 
       if (!active) return;
 
-      const nextAttendanceMap: Record<string, TrainingAttendanceRow[]> = {};
-      const nextPresenceMap: Record<string, TrainingPresenceRow[]> = {};
+      const trainingIds = (loadedTrainings ?? []).map((training) => training.id);
 
-      for (const training of loadedTrainings ?? []) {
-        const [attendanceRows, presenceRows] = await Promise.all([
-          getTrainingAttendance(training.id),
-          getTrainingPresence(training.id),
-        ]);
+      const [nextAttendanceMap, nextPresenceMap] = await Promise.all([
+        getTrainingAttendanceByTrainingIds(trainingIds),
+        getTrainingPresenceByTrainingIds(trainingIds),
+      ]);
 
-        nextAttendanceMap[training.id] = attendanceRows ?? [];
-        nextPresenceMap[training.id] = presenceRows ?? [];
-      }
+      if (!active) return;
 
       const currentLinkedPlayer =
         loadedPlayers.find(

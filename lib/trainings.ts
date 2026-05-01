@@ -76,6 +76,48 @@ function normalizeTrainingRow(row: TrainingRow): TrainingRow {
   };
 }
 
+function buildAttendanceMap(
+  trainingIds: string[],
+  rows: TrainingAttendanceRow[]
+): Record<string, TrainingAttendanceRow[]> {
+  const map: Record<string, TrainingAttendanceRow[]> = {};
+
+  for (const trainingId of trainingIds) {
+    map[trainingId] = [];
+  }
+
+  for (const row of rows) {
+    if (!map[row.training_id]) {
+      map[row.training_id] = [];
+    }
+
+    map[row.training_id].push(row);
+  }
+
+  return map;
+}
+
+function buildPresenceMap(
+  trainingIds: string[],
+  rows: TrainingPresenceRow[]
+): Record<string, TrainingPresenceRow[]> {
+  const map: Record<string, TrainingPresenceRow[]> = {};
+
+  for (const trainingId of trainingIds) {
+    map[trainingId] = [];
+  }
+
+  for (const row of rows) {
+    if (!map[row.training_id]) {
+      map[row.training_id] = [];
+    }
+
+    map[row.training_id].push(row);
+  }
+
+  return map;
+}
+
 export async function getTrainingsByClubId(clubId: string): Promise<TrainingRow[]> {
   const { data, error } = await supabase
     .from("trainings")
@@ -252,6 +294,24 @@ export async function getTrainingAttendance(
   return (data as TrainingAttendanceRow[]) ?? [];
 }
 
+export async function getTrainingAttendanceByTrainingIds(
+  trainingIds: string[]
+): Promise<Record<string, TrainingAttendanceRow[]>> {
+  if (trainingIds.length === 0) return {};
+
+  const { data, error } = await supabase
+    .from("training_attendance")
+    .select("*")
+    .in("training_id", trainingIds);
+
+  if (error) {
+    console.error("Nepodařilo se načíst docházku tréninků:", error);
+    return buildAttendanceMap(trainingIds, []);
+  }
+
+  return buildAttendanceMap(trainingIds, (data as TrainingAttendanceRow[]) ?? []);
+}
+
 export async function getTrainingPresence(
   trainingId: string
 ): Promise<TrainingPresenceRow[]> {
@@ -266,6 +326,24 @@ export async function getTrainingPresence(
   }
 
   return (data as TrainingPresenceRow[]) ?? [];
+}
+
+export async function getTrainingPresenceByTrainingIds(
+  trainingIds: string[]
+): Promise<Record<string, TrainingPresenceRow[]>> {
+  if (trainingIds.length === 0) return {};
+
+  const { data, error } = await supabase
+    .from("training_presence")
+    .select("*")
+    .in("training_id", trainingIds);
+
+  if (error) {
+    console.error("Nepodařilo se načíst reálnou účast tréninků:", error);
+    return buildPresenceMap(trainingIds, []);
+  }
+
+  return buildPresenceMap(trainingIds, (data as TrainingPresenceRow[]) ?? []);
 }
 
 export async function saveTrainingPresence({
