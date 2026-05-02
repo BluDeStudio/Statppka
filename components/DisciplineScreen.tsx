@@ -957,39 +957,174 @@ export default function DisciplineScreen({
 
   const sortButton = (active: boolean): React.CSSProperties => ({
     flex: 1,
-    border: "none",
+    border: active
+      ? `1px solid ${primaryColor}66`
+      : "1px solid rgba(255,255,255,0.08)",
     borderRadius: "999px",
     padding: "10px 12px",
     background: active ? `${primaryColor}22` : "rgba(255,255,255,0.06)",
-    borderColor: active ? `${primaryColor}66` : "rgba(255,255,255,0.08)",
     color: active ? primaryColor : "#ffffff",
     fontWeight: 900,
     cursor: "pointer",
   });
 
+  const modernMainTabButton = (
+    tab: MainTab,
+    title: string,
+    subtitle: string,
+    icon: string
+  ): React.CSSProperties => {
+    const active = mainTab === tab;
+
+    return {
+      position: "relative",
+      overflow: "hidden",
+      border: "1px solid rgba(255,255,255,0.09)",
+      borderRadius: "22px",
+      padding: "14px 12px 14px 18px",
+      minHeight: "82px",
+      background: active
+        ? "linear-gradient(135deg, rgba(255,255,255,0.095), rgba(255,255,255,0.035))"
+        : "linear-gradient(135deg, rgba(255,255,255,0.055), rgba(255,255,255,0.02))",
+      color: "white",
+      cursor: "pointer",
+      textAlign: "left",
+      boxShadow: active
+        ? `0 14px 30px ${primaryColor}22`
+        : "0 12px 28px rgba(0,0,0,0.24)",
+    };
+  };
+
   return (
     <div style={{ display: "grid", gap: "14px" }}>
-      <div
-        style={{
-          ...glassCardStyle,
-          padding: "8px",
-        }}
-      >
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button
-            style={tabButton(mainTab === "attendance")}
-            onClick={() => setMainTab("attendance")}
-          >
-            DOCHÁZKA
-          </button>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+        <button
+          type="button"
+          onClick={() => setMainTab("attendance")}
+          style={modernMainTabButton("attendance", "DOCHÁZKA", "účast hráčů", "👤")}
+        >
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: "7px",
+              background:
+                mainTab === "attendance"
+                  ? primaryColor
+                  : "rgba(255,255,255,0.10)",
+            }}
+          />
 
-          <button
-            style={tabButton(mainTab === "fines")}
-            onClick={() => setMainTab("fines")}
-          >
-            POKUTY
-          </button>
-        </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div
+              style={{
+                width: "38px",
+                height: "38px",
+                borderRadius: "14px",
+                background:
+                  mainTab === "attendance"
+                    ? `${primaryColor}22`
+                    : "rgba(255,255,255,0.06)",
+                color: mainTab === "attendance" ? primaryColor : "#b8b8b8",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "20px",
+                flexShrink: 0,
+              }}
+            >
+              👤
+            </div>
+
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontWeight: 950,
+                  fontSize: "14px",
+                  letterSpacing: "0.4px",
+                  color: mainTab === "attendance" ? "#ffffff" : "#d7d7d7",
+                }}
+              >
+                DOCHÁZKA
+              </div>
+              <div
+                style={{
+                  marginTop: "3px",
+                  fontSize: "11px",
+                  color: "#9b9b9b",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                účast hráčů
+              </div>
+            </div>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMainTab("fines")}
+          style={modernMainTabButton("fines", "POKUTY", "platby a tresty", "💳")}
+        >
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: "7px",
+              background:
+                mainTab === "fines" ? primaryColor : "rgba(255,255,255,0.10)",
+            }}
+          />
+
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div
+              style={{
+                width: "38px",
+                height: "38px",
+                borderRadius: "14px",
+                background:
+                  mainTab === "fines"
+                    ? `${primaryColor}22`
+                    : "rgba(255,255,255,0.06)",
+                color: mainTab === "fines" ? primaryColor : "#b8b8b8",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "20px",
+                flexShrink: 0,
+              }}
+            >
+              💳
+            </div>
+
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontWeight: 950,
+                  fontSize: "14px",
+                  letterSpacing: "0.4px",
+                  color: mainTab === "fines" ? "#ffffff" : "#d7d7d7",
+                }}
+              >
+                POKUTY
+              </div>
+              <div
+                style={{
+                  marginTop: "3px",
+                  fontSize: "11px",
+                  color: "#9b9b9b",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                platby a tresty
+              </div>
+            </div>
+          </div>
+        </button>
       </div>
 
       <div
