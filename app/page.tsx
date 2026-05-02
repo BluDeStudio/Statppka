@@ -2,6 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
+import {
+  FaCalendarAlt,
+  FaChartBar,
+  FaChevronRight,
+  FaClipboardList,
+  FaFutbol,
+  FaUsers,
+} from "react-icons/fa";
+import { IoTimeOutline } from "react-icons/io5";
+import { GiTrafficCone } from "react-icons/gi";
 import PlayersScreen from "@/components/PlayersScreen";
 import MatchesScreen from "@/components/MatchesScreen";
 import PlayedMatchDetailScreen from "@/components/PlayedMatchDetailScreen";
@@ -34,6 +44,7 @@ import {
   saveFinishedMatch,
 } from "@/lib/matches";
 import { getPlayersByClubId, type Player } from "@/lib/players";
+import { getTrainingsByClubId, type TrainingRow } from "@/lib/trainings";
 
 type Screen =
   | "home"
@@ -106,6 +117,28 @@ export type PlannedMatch = {
   second_half_elapsed_seconds?: number;
   goalkeeper_player_id?: string | null;
 };
+
+type UpcomingEvent =
+  | {
+      type: "match";
+      id: string;
+      title: string;
+      subtitle: string;
+      date: string;
+      time?: string | null;
+      location?: string | null;
+      timestamp: number;
+    }
+  | {
+      type: "training";
+      id: string;
+      title: string;
+      subtitle: string;
+      date: string;
+      time?: string | null;
+      location?: string | null;
+      timestamp: number;
+    };
 
 function clearSupabaseStorage() {
   if (typeof window === "undefined") return;
@@ -184,6 +217,31 @@ function normalizeDateToIso(value?: string | null) {
   const day = String(parsed.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function normalizeTimeValue(value?: string | null) {
+  if (!value) return "";
+  return value.slice(0, 5);
+}
+
+function getEventTimestamp(dateValue?: string | null, timeValue?: string | null) {
+  const isoDate = normalizeDateToIso(dateValue);
+  if (!isoDate) return null;
+
+  const time = normalizeTimeValue(timeValue) || "23:59";
+  const parsed = new Date(`${isoDate}T${time}:00`);
+
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  return parsed.getTime();
+}
+
+function formatDateForCard(dateValue?: string | null) {
+  const isoDate = normalizeDateToIso(dateValue);
+  if (!isoDate) return "";
+
+  const [, month, day] = isoDate.split("-");
+  return `${day}. ${Number(month)}.`;
 }
 
 function getAge(birthDate?: string | null, atDate = new Date()) {
@@ -265,8 +323,11 @@ export default function Home() {
   const [overviewPlayers, setOverviewPlayers] = useState<Player[]>([]);
   const [overviewPlayersLoaded, setOverviewPlayersLoaded] = useState(false);
   const [overviewPlayersLoading, setOverviewPlayersLoading] = useState(false);
-
   const overviewPlayersLoadingRef = useRef(false);
+
+  const [homeTrainings, setHomeTrainings] = useState<TrainingRow[]>([]);
+  const [homeTrainingsLoaded, setHomeTrainingsLoaded] = useState(false);
+  const homeTrainingsLoadingRef = useRef(false);
 
   const [session, setSession] = useState<Session | null>(null);
   const [bootLoading, setBootLoading] = useState(true);
@@ -340,6 +401,21 @@ export default function Home() {
     },
     [loadClubMatchData]
   );
+
+  const loadHomeTrainings = useCallback(async (clubId: string, force = false) => {
+    if (!force && (homeTrainingsLoaded || homeTrainingsLoadingRef.current)) return;
+
+    try {
+      homeTrainingsLoadingRef.current = true;
+      const trainings = await getTrainingsByClubId(clubId);
+      setHomeTrainings(trainings);
+      setHomeTrainingsLoaded(true);
+    } catch (error) {
+      console.error("Nepodařilo se načíst tréninky pro hlavní kartu:", error);
+    } finally {
+      homeTrainingsLoadingRef.current = false;
+    }
+  }, [homeTrainingsLoaded]);
 
   const loadOverviewPlayers = useCallback(async (clubId: string, force = false) => {
     if (!force && overviewPlayersLoadingRef.current) return;
@@ -426,6 +502,10 @@ export default function Home() {
     setOverviewPlayers([]);
     setOverviewPlayersLoaded(false);
     overviewPlayersLoadingRef.current = false;
+
+    setHomeTrainings([]);
+    setHomeTrainingsLoaded(false);
+    homeTrainingsLoadingRef.current = false;
   };
 
   const loadAppState = useCallback(
@@ -569,6 +649,14 @@ export default function Home() {
 
   useEffect(() => {
     if (!currentClub) return;
+    if (screen !== "home") return;
+
+    void ensureClubMatchDataLoaded(currentClub.id);
+    void loadHomeTrainings(currentClub.id, false);
+  }, [currentClub, screen, ensureClubMatchDataLoaded, loadHomeTrainings]);
+
+  useEffect(() => {
+    if (!currentClub) return;
     if (screen !== "team" || teamTab !== "overview") return;
 
     void loadOverviewPlayers(currentClub.id, false);
@@ -682,6 +770,46 @@ export default function Home() {
 
     return sorted[0] ?? null;
   }, [finishedMatches, overviewPlayers]);
+
+  const upcomingEvent = useMemo<UpcomingEvent | null>(() => {
+    const now = Date.now();
+    const events: UpcomingEvent[] = [];
+
+    plannedMatches.forEach((match) => {
+      const timestamp = getEventTimestamp(match.date, match.time);
+      if (!timestamp || timestamp < now) return;
+
+      events.push({
+        type: "match",
+        id: match.id,
+        title: "Nejbližší zápas",
+        subtitle: `${match.homeTeam} vs. ${match.awayTeam}`,
+        date: match.date,
+        time: match.time ?? null,
+        location: match.location ?? null,
+        timestamp,
+      });
+    });
+
+    homeTrainings.forEach((training) => {
+      const time = training.start_time ?? training.time ?? null;
+      const timestamp = getEventTimestamp(training.date, time);
+      if (!timestamp || timestamp < now) return;
+
+      events.push({
+        type: "training",
+        id: training.id,
+        title: "Nejbližší trénink",
+        subtitle: training.location ? training.location : "Trénink",
+        date: training.date,
+        time,
+        location: training.location ?? null,
+        timestamp,
+      });
+    });
+
+    return events.sort((a, b) => a.timestamp - b.timestamp)[0] ?? null;
+  }, [plannedMatches, homeTrainings]);
 
   const handleLogout = async () => {
     try {
@@ -799,10 +927,10 @@ export default function Home() {
       primary,
       secondary,
       primaryText,
-      pageBackground: `linear-gradient(180deg, ${secondary} 0%, #111111 55%, ${secondary} 100%)`,
-      phoneBackground: "rgba(255,255,255,0.03)",
-      cardBackground: "rgba(255,255,255,0.04)",
-      cardBorder: "rgba(255,255,255,0.06)",
+      pageBackground: `radial-gradient(circle at top left, ${primary}24 0%, transparent 34%), linear-gradient(180deg, ${secondary} 0%, #050505 52%, ${secondary} 100%)`,
+      phoneBackground: "rgba(5, 5, 5, 0.76)",
+      cardBackground: "linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.035))",
+      cardBorder: "rgba(255,255,255,0.10)",
       buttonBackground: primary,
       buttonText: primaryText,
       accentSoft: `${primary}22`,
@@ -815,38 +943,30 @@ export default function Home() {
     background: dynamicTheme.buttonBackground,
     color: dynamicTheme.buttonText,
     border: "none",
-    boxShadow: "0 10px 24px rgba(0,0,0,0.25)",
-  };
-
-  const menuButtonStyle: React.CSSProperties = {
-    ...styles.primaryButton,
-    marginTop: 0,
-    background: dynamicTheme.buttonBackground,
-    color: dynamicTheme.buttonText,
-    border: "none",
-    boxShadow: "0 10px 24px rgba(0,0,0,0.22)",
+    boxShadow: `0 14px 32px ${dynamicTheme.primary}30`,
   };
 
   const logoutButtonStyle: React.CSSProperties = {
-    border: "none",
-    borderRadius: "10px",
+    border: "1px solid rgba(255,255,255,0.10)",
+    borderRadius: "14px",
     padding: "10px 12px",
-    background: "rgba(255,255,255,0.1)",
+    background: "rgba(255,255,255,0.08)",
     color: "white",
     cursor: "pointer",
     fontWeight: "bold",
+    backdropFilter: "blur(12px)",
   };
 
   const backButtonStyle: React.CSSProperties = {
-    border: "none",
-    borderRadius: "10px",
+    border: "1px solid rgba(255,255,255,0.10)",
+    borderRadius: "14px",
     padding: "10px 12px",
     background: dynamicTheme.accentSoft,
     color: "#ffffff",
     cursor: "pointer",
     fontWeight: "bold",
     whiteSpace: "nowrap",
-    boxShadow: "0 6px 18px rgba(0,0,0,0.18)",
+    boxShadow: "0 8px 22px rgba(0,0,0,0.22)",
   };
 
   const sectionHeaderCardStyle: React.CSSProperties = {
@@ -873,12 +993,12 @@ export default function Home() {
   };
 
   const iconLogoStyle: React.CSSProperties = {
-    width: "72px",
-    height: "72px",
+    width: "74px",
+    height: "74px",
     borderRadius: "0",
     objectFit: "contain",
     display: "block",
-    boxShadow: "none",
+    boxShadow: `0 0 32px ${dynamicTheme.primary}30`,
     border: "none",
     background: "transparent",
     padding: 0,
@@ -886,18 +1006,25 @@ export default function Home() {
 
   const subTabBaseStyle: React.CSSProperties = {
     flex: 1,
-    border: "none",
-    borderRadius: "10px",
-    padding: "10px 12px",
-    background: "rgba(255,255,255,0.08)",
+    minWidth: 0,
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: "14px",
+    padding: "10px 8px",
+    background: "rgba(255,255,255,0.07)",
     color: "white",
     fontWeight: "bold",
     cursor: "pointer",
+    fontSize: "13px",
+    textAlign: "center",
+    whiteSpace: "nowrap",
+    boxShadow: "0 8px 22px rgba(0,0,0,0.18)",
   };
 
   const getSubTabStyle = (active: boolean): React.CSSProperties => ({
     ...subTabBaseStyle,
-    background: active ? dynamicTheme.primary : "rgba(255,255,255,0.08)",
+    background: active
+      ? `linear-gradient(135deg, ${dynamicTheme.primary}, ${dynamicTheme.primary}dd)`
+      : "rgba(255,255,255,0.07)",
     color: active ? dynamicTheme.primaryText : "white",
   });
 
@@ -916,10 +1043,116 @@ export default function Home() {
 
   const overviewInfoCardStyle: React.CSSProperties = {
     padding: "14px 16px",
-    borderRadius: "16px",
-    background: "rgba(255,255,255,0.04)",
+    borderRadius: "18px",
+    background: dynamicTheme.cardBackground,
     border: `1px solid ${dynamicTheme.cardBorder}`,
+    boxShadow: "0 12px 28px rgba(0,0,0,0.24)",
   };
+
+  const menuCardStyle: React.CSSProperties = {
+    width: "100%",
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+    gap: "14px",
+    padding: "14px 14px 14px 18px",
+    borderRadius: "18px",
+    border: "1px solid rgba(255,255,255,0.08)",
+    background:
+      "linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.035))",
+    color: "white",
+    cursor: "pointer",
+    overflow: "hidden",
+    textAlign: "left",
+    boxShadow: "0 14px 32px rgba(0,0,0,0.30)",
+    backdropFilter: "blur(16px)",
+  };
+
+  const menuIconWrapStyle: React.CSSProperties = {
+    width: "56px",
+    height: "56px",
+    borderRadius: "18px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: `${dynamicTheme.primary}1f`,
+    color: dynamicTheme.primary,
+    fontSize: "30px",
+    flexShrink: 0,
+  };
+
+  const menuStripeStyle: React.CSSProperties = {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: "7px",
+    background: dynamicTheme.primary,
+  };
+
+  const renderMenuButton = ({
+    label,
+    subtitle,
+    icon,
+    onClick,
+    stripeColor,
+  }: {
+    label: string;
+    subtitle: string;
+    icon: React.ReactNode;
+    onClick: () => void;
+    stripeColor?: string;
+  }) => (
+    <button type="button" style={menuCardStyle} onClick={onClick}>
+      <div
+        style={{
+          ...menuStripeStyle,
+          background: stripeColor ?? dynamicTheme.primary,
+        }}
+      />
+
+      <div
+        style={{
+          ...menuIconWrapStyle,
+          color: stripeColor ?? dynamicTheme.primary,
+          background: `${stripeColor ?? dynamicTheme.primary}20`,
+        }}
+      >
+        {icon}
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: "18px",
+            fontWeight: 900,
+            letterSpacing: "0.4px",
+            color: "#ffffff",
+          }}
+        >
+          {label}
+        </div>
+        <div
+          style={{
+            marginTop: "4px",
+            fontSize: "13px",
+            color: "rgba(255,255,255,0.58)",
+            lineHeight: 1.3,
+          }}
+        >
+          {subtitle}
+        </div>
+      </div>
+
+      <FaChevronRight
+        style={{
+          color: "rgba(255,255,255,0.54)",
+          fontSize: "18px",
+          flexShrink: 0,
+        }}
+      />
+    </button>
+  );
 
   if (bootLoading) {
     return (
@@ -1263,7 +1496,7 @@ export default function Home() {
             alignItems: "flex-start",
             justifyContent: "space-between",
             gap: "16px",
-            marginBottom: "20px",
+            marginBottom: "22px",
           }}
         >
           <div
@@ -1287,30 +1520,39 @@ export default function Home() {
                   margin: 0,
                   lineHeight: 1.1,
                   wordBreak: "break-word",
+                  fontSize: "24px",
                 }}
               >
                 {currentDisplayName}
               </h1>
-              <p style={{ color: teamTheme.mutedText, marginTop: "8px" }}>
-                {session.user.email}
-              </p>
               {linkedPlayer ? (
                 <>
                   <p
                     style={{
-                      color: teamTheme.mutedText,
-                      marginTop: "4px",
-                      fontSize: "12px",
+                      color: "rgba(255,255,255,0.62)",
+                      marginTop: "6px",
+                      fontSize: "13px",
                     }}
                   >
-                    Přihlášený hráč: {linkedPlayer.name}
+                    Přihlášený hráč
                   </p>
 
                   <p
                     style={{
-                      color: isCurrentUserAdmin ? "#ffd86b" : teamTheme.mutedText,
+                      color: "#ffffff",
+                      marginTop: "3px",
+                      fontSize: "16px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {linkedPlayer.name}
+                  </p>
+
+                  <p
+                    style={{
+                      color: isCurrentUserAdmin ? dynamicTheme.primary : teamTheme.mutedText,
                       marginTop: "4px",
-                      fontSize: "12px",
+                      fontSize: "13px",
                       fontWeight: "bold",
                     }}
                   >
@@ -1321,7 +1563,7 @@ export default function Home() {
                 <p
                   style={{
                     color: "#ffd98a",
-                    marginTop: "4px",
+                    marginTop: "6px",
                     fontSize: "12px",
                     fontWeight: "bold",
                   }}
@@ -1371,52 +1613,202 @@ export default function Home() {
         )}
 
         {isMainMenuVisible && (
-          <div style={{ display: "grid", gap: "10px" }}>
-            <button
-              style={menuButtonStyle}
-              onClick={() => {
-                setScreen("team");
-                setTeamTab("overview");
-                void loadOverviewPlayers(currentClub.id, true);
-                void ensureClubMatchDataLoaded(currentClub.id);
+          <>
+            <div
+              style={{
+                position: "relative",
+                borderRadius: "20px",
+                padding: "18px 16px",
+                marginBottom: "20px",
+                background:
+                  "linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.035))",
+                border: "1px solid rgba(255,255,255,0.10)",
+                overflow: "hidden",
+                boxShadow: "0 16px 36px rgba(0,0,0,0.34)",
               }}
             >
-              TÝM
-            </button>
+              <div
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: "7px",
+                  background: dynamicTheme.primary,
+                }}
+              />
 
-            <button
-              style={menuButtonStyle}
-              onClick={() => {
-                setScreen("matches");
-                setMatchesTab("planned");
-                void ensureClubMatchDataLoaded(currentClub.id);
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "14px",
+                  alignItems: "center",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "7px",
+                      padding: "5px 9px",
+                      borderRadius: "999px",
+                      background: `${dynamicTheme.primary}22`,
+                      color: dynamicTheme.primary,
+                      fontWeight: "bold",
+                      fontSize: "12px",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: "7px",
+                        height: "7px",
+                        borderRadius: "999px",
+                        background: dynamicTheme.primary,
+                        display: "inline-block",
+                      }}
+                    />
+                    NEJBLIŽŠÍ UDÁLOST
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: "18px",
+                      fontWeight: 900,
+                      color: "#ffffff",
+                      marginBottom: "5px",
+                    }}
+                  >
+                    {upcomingEvent ? upcomingEvent.title : "Žádná událost"}
+                  </div>
+
+                  <div
+                    style={{
+                      color: "rgba(255,255,255,0.58)",
+                      fontSize: "14px",
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    {upcomingEvent
+                      ? upcomingEvent.subtitle
+                      : "Zatím není naplánovaný zápas ani trénink."}
+                  </div>
+                </div>
+
+                {upcomingEvent && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: "8px",
+                      minWidth: "104px",
+                      paddingLeft: "14px",
+                      borderLeft: "1px solid rgba(255,255,255,0.12)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        color: "#ffffff",
+                        fontSize: "14px",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      <FaCalendarAlt style={{ color: dynamicTheme.primary }} />
+                      {formatDateForCard(upcomingEvent.date)}
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        color: "#ffffff",
+                        fontSize: "14px",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      <IoTimeOutline style={{ color: dynamicTheme.primary, fontSize: "18px" }} />
+                      {normalizeTimeValue(upcomingEvent.time) || "--:--"}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div
+              style={{
+                color: "rgba(255,255,255,0.48)",
+                fontSize: "13px",
+                fontWeight: "bold",
+                letterSpacing: "0.7px",
+                marginBottom: "10px",
+                paddingLeft: "4px",
               }}
             >
-              ZÁPASY
-            </button>
+              HLAVNÍ MENU
+            </div>
 
-            <button style={menuButtonStyle} onClick={() => setScreen("trainings")}>
-              TRÉNINKY
-            </button>
+            <div style={{ display: "grid", gap: "10px" }}>
+              {renderMenuButton({
+                label: "TÝM",
+                subtitle: "Hráči, soupiska a role",
+                icon: <FaUsers />,
+                onClick: () => {
+                  setScreen("team");
+                  setTeamTab("overview");
+                  void loadOverviewPlayers(currentClub.id, true);
+                  void ensureClubMatchDataLoaded(currentClub.id);
+                },
+              })}
 
-            <button style={menuButtonStyle} onClick={() => setScreen("polls")}>
-              ANKETY
-            </button>
+              {renderMenuButton({
+                label: "ZÁPASY",
+                subtitle: "Rozpisy, výsledky a sestavy",
+                icon: <FaFutbol />,
+                onClick: () => {
+                  setScreen("matches");
+                  setMatchesTab("planned");
+                  void ensureClubMatchDataLoaded(currentClub.id);
+                },
+              })}
 
-            <button
-              style={menuButtonStyle}
-              onClick={() => {
-                setScreen("stats");
-                void ensureClubMatchDataLoaded(currentClub.id);
-              }}
-            >
-              STATISTIKY
-            </button>
+              {renderMenuButton({
+                label: "TRÉNINKY",
+                subtitle: "Plány tréninků a účast",
+                icon: <GiTrafficCone />,
+                onClick: () => setScreen("trainings"),
+              })}
 
-            <button style={menuButtonStyle} onClick={() => setScreen("discipline")}>
-              DISCIPLÍNA
-            </button>
-          </div>
+              {renderMenuButton({
+                label: "ANKETY",
+                subtitle: "Hlasování a průzkumy",
+                icon: <FaClipboardList />,
+                onClick: () => setScreen("polls"),
+              })}
+
+              {renderMenuButton({
+                label: "STATISTIKY",
+                subtitle: "Výkony a týmové statistiky",
+                icon: <FaChartBar />,
+                onClick: () => {
+                  setScreen("stats");
+                  void ensureClubMatchDataLoaded(currentClub.id);
+                },
+              })}
+
+              {renderMenuButton({
+                label: "DISCIPLÍNA",
+                subtitle: "Pokuty, docházka a tresty",
+                icon: <FaFutbol />,
+                stripeColor: "#f1c40f",
+                onClick: () => setScreen("discipline"),
+              })}
+            </div>
+          </>
         )}
 
         {!isMainMenuVisible && !isLiveMatch && selectedPlayedMatchId === null && (
@@ -1441,42 +1833,42 @@ export default function Home() {
           {screen === "team" && selectedPlayedMatchId === null && !isLiveMatch && (
             <div style={{ display: "grid", gap: "12px" }}>
               <div style={{ display: "flex", gap: "6px" }}>
-  <button
-    style={getSubTabStyle(teamTab === "overview")}
-    onClick={() => {
-      setTeamTab("overview");
-      void loadOverviewPlayers(currentClub.id, true);
-      void ensureClubMatchDataLoaded(currentClub.id);
-    }}
-  >
-    INFO
-  </button>
+                <button
+                  style={getSubTabStyle(teamTab === "overview")}
+                  onClick={() => {
+                    setTeamTab("overview");
+                    void loadOverviewPlayers(currentClub.id, true);
+                    void ensureClubMatchDataLoaded(currentClub.id);
+                  }}
+                >
+                  INFO
+                </button>
 
-  <button
-    style={getSubTabStyle(teamTab === "players")}
-    onClick={() => setTeamTab("players")}
-  >
-    HRÁČI
-  </button>
+                <button
+                  style={getSubTabStyle(teamTab === "players")}
+                  onClick={() => setTeamTab("players")}
+                >
+                  HRÁČI
+                </button>
 
-  {isCurrentUserAdmin && (
-    <button
-      style={getSubTabStyle(teamTab === "periods")}
-      onClick={() => setTeamTab("periods")}
-    >
-      OBDOBÍ
-    </button>
-  )}
+                {isCurrentUserAdmin && (
+                  <button
+                    style={getSubTabStyle(teamTab === "periods")}
+                    onClick={() => setTeamTab("periods")}
+                  >
+                    OBDOBÍ
+                  </button>
+                )}
 
-  {isCurrentUserAdmin && (
-    <button
-      style={getSubTabStyle(teamTab === "edit")}
-      onClick={() => setTeamTab("edit")}
-    >
-      EDIT
-    </button>
-  )}
-</div>
+                {isCurrentUserAdmin && (
+                  <button
+                    style={getSubTabStyle(teamTab === "edit")}
+                    onClick={() => setTeamTab("edit")}
+                  >
+                    EDIT
+                  </button>
+                )}
+              </div>
 
               {teamTab === "overview" && (
                 <div
