@@ -162,7 +162,7 @@ function groupRowsByTrainingId<T extends { training_id: string }>(rows: T[]) {
 
 export default function DisciplineScreen({
   clubId,
-  primaryColor = "#888",
+  primaryColor = "#22c55e",
   isAdmin,
 }: Props) {
   const [mainTab, setMainTab] = useState<MainTab>("attendance");
@@ -187,6 +187,8 @@ export default function DisciplineScreen({
   const [selectedPeriodId, setSelectedPeriodId] = useState("");
   const [periodFilterMode, setPeriodFilterMode] =
     useState<PeriodFilterMode>("active");
+  const [periodPanelOpen, setPeriodPanelOpen] = useState(false);
+  const [createPeriodOpen, setCreatePeriodOpen] = useState(false);
 
   const [fines, setFines] = useState<FineRow[]>([]);
   const [fineTemplates, setFineTemplates] = useState<FineTemplateRow[]>([]);
@@ -478,6 +480,16 @@ export default function DisciplineScreen({
     return sorted;
   }, [attendanceSort, attendanceStats]);
 
+  const attendanceAverage = useMemo(() => {
+    if (attendanceStats.length === 0) return 0;
+    const total = attendanceStats.reduce((sum, row) => sum + row.percentage, 0);
+    return Math.round(total / attendanceStats.length);
+  }, [attendanceStats]);
+
+  const activeAttendancePlayersCount = useMemo(() => {
+    return attendanceStats.filter((row) => row.attended > 0).length;
+  }, [attendanceStats]);
+
   const fineSummary = useMemo(() => {
     const summary = buildFineSummaryByPlayer(fines);
 
@@ -591,6 +603,7 @@ export default function DisciplineScreen({
 
     await loadPeriodsState();
     resetPeriodForm();
+    setCreatePeriodOpen(false);
     setMessage("Období bylo vytvořeno.");
     setPeriodSaving(false);
   };
@@ -899,245 +912,69 @@ export default function DisciplineScreen({
     setMessage("Týmová pokuta byla smazána.");
   };
 
+  const getPercentageColor = (value: number) => {
+    if (value >= 70) return primaryColor;
+    if (value >= 50) return "#f1c40f";
+    return "#ff4d4d";
+  };
+
+  const glassCardStyle: React.CSSProperties = {
+    borderRadius: "22px",
+    background:
+      "linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.025))",
+    border: "1px solid rgba(255,255,255,0.09)",
+    boxShadow: "0 16px 36px rgba(0,0,0,0.30)",
+    backdropFilter: "blur(14px)",
+  };
+
   const tabButton = (active: boolean): React.CSSProperties => ({
     flex: 1,
     border: "none",
-    borderRadius: "10px",
-    padding: "10px",
-    background: active ? primaryColor : "rgba(255,255,255,0.08)",
-    color: "white",
-    fontWeight: "bold",
+    borderRadius: "14px",
+    padding: "12px 10px",
+    background: active
+      ? `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`
+      : "rgba(255,255,255,0.06)",
+    color: active ? "#071107" : "#ffffff",
+    fontWeight: 900,
     cursor: "pointer",
+    boxShadow: active ? `0 10px 24px ${primaryColor}33` : "none",
   });
 
   const subTabButton = (active: boolean): React.CSSProperties => ({
     flex: 1,
     border: "none",
-    borderRadius: "10px",
-    padding: "10px",
-    background: active ? primaryColor : "rgba(255,255,255,0.08)",
-    color: "white",
-    fontWeight: "bold",
+    borderRadius: "14px",
+    padding: "12px 10px",
+    background: active
+      ? `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`
+      : "rgba(255,255,255,0.06)",
+    color: active ? "#071107" : "#ffffff",
+    fontWeight: 900,
     cursor: "pointer",
+    boxShadow: active ? `0 10px 24px ${primaryColor}33` : "none",
   });
 
   const sortButton = (active: boolean): React.CSSProperties => ({
     flex: 1,
     border: "none",
-    borderRadius: "10px",
+    borderRadius: "999px",
     padding: "10px 12px",
-    background: active ? primaryColor : "rgba(255,255,255,0.08)",
-    color: "white",
-    fontWeight: "bold",
+    background: active ? `${primaryColor}22` : "rgba(255,255,255,0.06)",
+    borderColor: active ? `${primaryColor}66` : "rgba(255,255,255,0.08)",
+    color: active ? primaryColor : "#ffffff",
+    fontWeight: 900,
     cursor: "pointer",
   });
 
   return (
-    <div style={{ display: "grid", gap: "12px" }}>
-      {isAdmin &&
-        (!activePeriod ? (
-          <div style={styles.card}>
-            <h2 style={styles.screenTitle}>Vytvořit období</h2>
-
-            <div
-              style={{
-                color: "#cfcfcf",
-                fontSize: "13px",
-                lineHeight: 1.5,
-                marginBottom: "12px",
-              }}
-            >
-              Nejdřív je potřeba založit aktivní období. Může to být rok nebo
-              sezóna.
-            </div>
-
-            <div style={{ display: "grid", gap: "10px" }}>
-              <input
-                type="text"
-                placeholder="Název období (např. 2026 nebo 2025/2026)"
-                value={periodName}
-                onChange={(e) => setPeriodName(e.target.value)}
-                style={styles.input}
-              />
-
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  type="button"
-                  style={tabButton(periodType === "year")}
-                  onClick={() => setPeriodType("year")}
-                >
-                  ROK
-                </button>
-
-                <button
-                  type="button"
-                  style={tabButton(periodType === "season")}
-                  onClick={() => setPeriodType("season")}
-                >
-                  SEZÓNA
-                </button>
-              </div>
-
-              <input
-                type="date"
-                value={periodStartDate}
-                onChange={(e) => setPeriodStartDate(e.target.value)}
-                style={styles.input}
-              />
-
-              <input
-                type="date"
-                value={periodEndDate}
-                onChange={(e) => setPeriodEndDate(e.target.value)}
-                style={styles.input}
-              />
-
-              <button
-                type="button"
-                onClick={handleCreatePeriod}
-                disabled={periodSaving}
-                style={{
-                  ...styles.primaryButton,
-                  marginTop: 0,
-                  background: primaryColor,
-                  border: "none",
-                  opacity: periodSaving ? 0.7 : 1,
-                }}
-              >
-                {periodSaving ? "Vytvářím..." : "Vytvořit období"}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div style={styles.card}>
-            <div style={{ display: "grid", gap: "10px" }}>
-              <div
-                style={{
-                  padding: "12px 14px",
-                  borderRadius: "12px",
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                }}
-              >
-                <div
-                  style={{
-                    fontWeight: "bold",
-                    fontSize: "15px",
-                    marginBottom: "6px",
-                  }}
-                >
-                  Aktivní období: {activePeriod.name}
-                </div>
-
-                <div
-                  style={{
-                    color: "#cfcfcf",
-                    fontSize: "13px",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {formatPeriodType(activePeriod.type)} •{" "}
-                  {activePeriod.start_date} až {activePeriod.end_date}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleClosePeriod}
-                disabled={periodSaving}
-                style={{
-                  ...styles.primaryButton,
-                  marginTop: 0,
-                  background: "rgba(198,40,40,0.95)",
-                  border: "none",
-                  opacity: periodSaving ? 0.7 : 1,
-                }}
-              >
-                {periodSaving ? "Uzavírám..." : "Uzavřít období"}
-              </button>
-            </div>
-          </div>
-        ))}
-
-      <div style={styles.card}>
-        <h2 style={styles.screenTitle}>Filtr období</h2>
-
-        <div style={{ display: "grid", gap: "8px", marginTop: "12px" }}>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button
-              type="button"
-              onClick={() => setPeriodFilterMode("active")}
-              style={tabButton(periodFilterMode === "active")}
-            >
-              Aktivní období
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setPeriodFilterMode("all")}
-              style={tabButton(periodFilterMode === "all")}
-            >
-              Vše
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              setPeriodFilterMode("custom");
-              if (!selectedPeriodId && periods.length > 0) {
-                setSelectedPeriodId(periods[0].id);
-              }
-            }}
-            style={tabButton(periodFilterMode === "custom")}
-          >
-            Vybrat konkrétní období
-          </button>
-
-          {periodFilterMode === "custom" && (
-            <select
-              value={selectedPeriodId}
-              onChange={(e) => setSelectedPeriodId(e.target.value)}
-              style={{
-                ...styles.input,
-                appearance: "none",
-                cursor: "pointer",
-                marginBottom: 0,
-              }}
-            >
-              <option value="" style={{ background: "#111111", color: "white" }}>
-                Vyber období
-              </option>
-
-              {periods.map((period) => (
-                <option
-                  key={period.id}
-                  value={period.id}
-                  style={{ background: "#111111", color: "white" }}
-                >
-                  {period.name}
-                  {period.is_active ? " (aktivní)" : ""}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-      </div>
-
-      {message && (
-        <div
-          style={{
-            ...styles.card,
-            padding: "12px 14px",
-            color: "#d9d9d9",
-            fontSize: "14px",
-          }}
-        >
-          {message}
-        </div>
-      )}
-
-      <div style={styles.card}>
+    <div style={{ display: "grid", gap: "14px" }}>
+      <div
+        style={{
+          ...glassCardStyle,
+          padding: "8px",
+        }}
+      >
         <div style={{ display: "flex", gap: "8px" }}>
           <button
             style={tabButton(mainTab === "attendance")}
@@ -1155,122 +992,470 @@ export default function DisciplineScreen({
         </div>
       </div>
 
-      {mainTab === "attendance" && (
-        <div style={styles.card}>
-          <h2 style={styles.screenTitle}>Docházka na tréninky</h2>
-
-          <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
-            <button
-              style={sortButton(attendanceSort === "highest")}
-              onClick={() => setAttendanceSort("highest")}
+      <div
+        style={{
+          ...glassCardStyle,
+          overflow: "hidden",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setPeriodPanelOpen((prev) => !prev)}
+          style={{
+            width: "100%",
+            border: "none",
+            background: "transparent",
+            color: "white",
+            padding: "16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            cursor: "pointer",
+            textAlign: "left",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div
+              style={{
+                width: "44px",
+                height: "44px",
+                borderRadius: "14px",
+                background: `${primaryColor}22`,
+                color: primaryColor,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "21px",
+              }}
             >
-              NEJVYŠŠÍ ÚČAST
-            </button>
+              📅
+            </div>
 
-            <button
-              style={sortButton(attendanceSort === "lowest")}
-              onClick={() => setAttendanceSort("lowest")}
-            >
-              NEJNIŽŠÍ ÚČAST
-            </button>
+            <div>
+              <div
+                style={{
+                  color: "#9b9b9b",
+                  fontSize: "12px",
+                  fontWeight: 900,
+                  letterSpacing: "0.8px",
+                  textTransform: "uppercase",
+                }}
+              >
+                Období
+              </div>
+
+              <div style={{ fontSize: "18px", fontWeight: 950, marginTop: "3px" }}>
+                {periodFilterMode === "all"
+                  ? "Všechna období"
+                  : effectivePeriod?.name ?? "Bez aktivního období"}
+              </div>
+
+              {effectivePeriod && (
+                <div style={{ color: "#b8b8b8", fontSize: "12px", marginTop: "3px" }}>
+                  {formatPeriodType(effectivePeriod.type)} • {effectivePeriod.start_date} až{" "}
+                  {effectivePeriod.end_date}
+                </div>
+              )}
+            </div>
           </div>
 
           <div
             style={{
-              marginBottom: "12px",
-              padding: "12px 14px",
-              borderRadius: "12px",
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.06)",
-              color: "#cfcfcf",
-              fontSize: "13px",
-              lineHeight: 1.5,
+              fontSize: "24px",
+              color: "#b8b8b8",
+              transform: periodPanelOpen ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 0.2s ease",
             }}
           >
-            Do docházky se počítají všechny starší tréninky v právě zvoleném
-            období. Jakmile u staršího tréninku potvrdíš účast, zapíše se hráčům
-            do docházky.
+            ⌄
+          </div>
+        </button>
+
+        {periodPanelOpen && (
+          <div
+            style={{
+              display: "grid",
+              gap: "10px",
+              padding: "0 16px 16px",
+              borderTop: "1px solid rgba(255,255,255,0.06)",
+            }}
+          >
+            <div style={{ display: "flex", gap: "8px", marginTop: "14px" }}>
+              <button
+                type="button"
+                onClick={() => setPeriodFilterMode("active")}
+                style={tabButton(periodFilterMode === "active")}
+              >
+                Aktivní
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPeriodFilterMode("all")}
+                style={tabButton(periodFilterMode === "all")}
+              >
+                Vše
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setPeriodFilterMode("custom");
+                if (!selectedPeriodId && periods.length > 0) {
+                  setSelectedPeriodId(periods[0].id);
+                }
+              }}
+              style={tabButton(periodFilterMode === "custom")}
+            >
+              Vybrat období
+            </button>
+
+            {periodFilterMode === "custom" && (
+              <select
+                value={selectedPeriodId}
+                onChange={(e) => setSelectedPeriodId(e.target.value)}
+                style={{
+                  ...styles.input,
+                  appearance: "none",
+                  cursor: "pointer",
+                  marginBottom: 0,
+                }}
+              >
+                <option value="" style={{ background: "#111111", color: "white" }}>
+                  Vyber období
+                </option>
+
+                {periods.map((period) => (
+                  <option
+                    key={period.id}
+                    value={period.id}
+                    style={{ background: "#111111", color: "white" }}
+                  >
+                    {period.name}
+                    {period.is_active ? " (aktivní)" : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setCreatePeriodOpen((prev) => !prev)}
+                style={{
+                  ...styles.primaryButton,
+                  marginTop: 0,
+                  background: "rgba(255,255,255,0.10)",
+                  color: "#ffffff",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  boxShadow: "none",
+                }}
+              >
+                {createPeriodOpen ? "Zavřít vytvoření období" : "Vytvořit nové období"}
+              </button>
+            )}
+
+            {isAdmin && activePeriod && (
+              <button
+                type="button"
+                onClick={handleClosePeriod}
+                disabled={periodSaving}
+                style={{
+                  ...styles.primaryButton,
+                  marginTop: 0,
+                  background: "rgba(198,40,40,0.95)",
+                  border: "none",
+                  opacity: periodSaving ? 0.7 : 1,
+                }}
+              >
+                {periodSaving ? "Uzavírám..." : "Uzavřít aktivní období"}
+              </button>
+            )}
+
+            {isAdmin && createPeriodOpen && (
+              <div
+                style={{
+                  display: "grid",
+                  gap: "10px",
+                  paddingTop: "4px",
+                }}
+              >
+                <input
+                  type="text"
+                  placeholder="Název období"
+                  value={periodName}
+                  onChange={(e) => setPeriodName(e.target.value)}
+                  style={styles.input}
+                />
+
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    type="button"
+                    style={tabButton(periodType === "year")}
+                    onClick={() => setPeriodType("year")}
+                  >
+                    ROK
+                  </button>
+
+                  <button
+                    type="button"
+                    style={tabButton(periodType === "season")}
+                    onClick={() => setPeriodType("season")}
+                  >
+                    SEZÓNA
+                  </button>
+                </div>
+
+                <input
+                  type="date"
+                  value={periodStartDate}
+                  onChange={(e) => setPeriodStartDate(e.target.value)}
+                  style={styles.input}
+                />
+
+                <input
+                  type="date"
+                  value={periodEndDate}
+                  onChange={(e) => setPeriodEndDate(e.target.value)}
+                  style={styles.input}
+                />
+
+                <button
+                  type="button"
+                  onClick={handleCreatePeriod}
+                  disabled={periodSaving}
+                  style={{
+                    ...styles.primaryButton,
+                    marginTop: 0,
+                    background: primaryColor,
+                    border: "none",
+                    opacity: periodSaving ? 0.7 : 1,
+                  }}
+                >
+                  {periodSaving ? "Vytvářím..." : "Vytvořit období"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {message && (
+        <div
+          style={{
+            ...glassCardStyle,
+            padding: "12px 14px",
+            color: "#d9d9d9",
+            fontSize: "14px",
+          }}
+        >
+          {message}
+        </div>
+      )}
+
+      {mainTab === "attendance" && (
+        <>
+          <div
+            style={{
+              ...glassCardStyle,
+              padding: "16px",
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: "10px",
+            }}
+          >
+            <div>
+              <div style={{ color: "#9b9b9b", fontSize: "11px", fontWeight: 900 }}>
+                PRŮMĚR
+              </div>
+              <div
+                style={{
+                  color: getPercentageColor(attendanceAverage),
+                  fontWeight: 950,
+                  fontSize: "24px",
+                  marginTop: "6px",
+                }}
+              >
+                {attendanceAverage} %
+              </div>
+            </div>
+
+            <div
+              style={{
+                borderLeft: "1px solid rgba(255,255,255,0.08)",
+                paddingLeft: "10px",
+              }}
+            >
+              <div style={{ color: "#9b9b9b", fontSize: "11px", fontWeight: 900 }}>
+                TRÉNINKY
+              </div>
+              <div style={{ color: "#ffffff", fontWeight: 950, fontSize: "24px", marginTop: "6px" }}>
+                {filteredOlderTrainings.length}
+              </div>
+            </div>
+
+            <div
+              style={{
+                borderLeft: "1px solid rgba(255,255,255,0.08)",
+                paddingLeft: "10px",
+              }}
+            >
+              <div style={{ color: "#9b9b9b", fontSize: "11px", fontWeight: 900 }}>
+                HRÁČI
+              </div>
+              <div style={{ color: "#ffffff", fontWeight: 950, fontSize: "24px", marginTop: "6px" }}>
+                {activeAttendancePlayersCount}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
+            <div
+              style={{
+                fontSize: "13px",
+                color: "#b8b8b8",
+                fontWeight: 900,
+                letterSpacing: "0.8px",
+                textTransform: "uppercase",
+              }}
+            >
+              Pořadí hráčů
+            </div>
+
+            <div style={{ display: "flex", gap: "8px", flex: 1 }}>
+              <button
+                style={sortButton(attendanceSort === "highest")}
+                onClick={() => setAttendanceSort("highest")}
+              >
+                Nejvyšší
+              </button>
+
+              <button
+                style={sortButton(attendanceSort === "lowest")}
+                onClick={() => setAttendanceSort("lowest")}
+              >
+                Nejnižší
+              </button>
+            </div>
           </div>
 
           {loading ? (
             <div style={{ color: "#b8b8b8" }}>Načítám docházku...</div>
           ) : filteredOlderTrainings.length === 0 ? (
-            <div style={{ color: "#b8b8b8" }}>
-              Zatím nejsou žádné starší tréninky v tomto filtru období.
+            <div
+              style={{
+                ...glassCardStyle,
+                padding: "16px",
+                color: "#b8b8b8",
+              }}
+            >
+              Zatím nejsou žádné starší tréninky v tomto období.
             </div>
           ) : (
             <div style={{ display: "grid", gap: "10px" }}>
-              {sortedAttendanceStats.map((row, index) => (
-                <div
-                  key={row.player.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "12px",
-                    padding: "12px",
-                    borderRadius: "12px",
-                    background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(255,255,255,0.05)",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <div
-                      style={{
-                        minWidth: "40px",
-                        height: "40px",
-                        borderRadius: "10px",
-                        background: primaryColor,
-                        color: "white",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: "bold",
-                      }}
-                    >
-                      {index + 1}
-                    </div>
+              {sortedAttendanceStats.map((row, index) => {
+                const percentageColor = getPercentageColor(row.percentage);
 
-                    <div>
-                      <div style={{ fontWeight: "bold" }}>{row.player.name}</div>
-                      <div
-                        style={{
-                          fontSize: "13px",
-                          color: "#b8b8b8",
-                          marginTop: "4px",
-                        }}
-                      >
-                        {row.attended} / {row.total} tréninků
-                      </div>
-                    </div>
-                  </div>
-
+                return (
                   <div
+                    key={row.player.id}
                     style={{
-                      minWidth: "62px",
-                      textAlign: "right",
-                      fontWeight: "bold",
-                      fontSize: "18px",
-                      color:
-                        row.percentage >= 70
-                          ? "#2ecc71"
-                          : row.percentage >= 40
-                          ? "#f1c40f"
-                          : "#e74c3c",
+                      ...glassCardStyle,
+                      padding: "12px",
+                      display: "grid",
+                      gap: "10px",
                     }}
                   >
-                    {row.percentage} %
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                        <div
+                          style={{
+                            minWidth: "44px",
+                            height: "44px",
+                            borderRadius: "13px",
+                            background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`,
+                            color: "#071107",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontWeight: 950,
+                            fontSize: "16px",
+                          }}
+                        >
+                          {index + 1}
+                        </div>
+
+                        <div>
+                          <div style={{ fontWeight: 950, fontSize: "16px" }}>
+                            {row.player.name}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "13px",
+                              color: "#b8b8b8",
+                              marginTop: "4px",
+                            }}
+                          >
+                            {row.attended} / {row.total} tréninků
+                          </div>
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          minWidth: "64px",
+                          textAlign: "right",
+                          fontWeight: 950,
+                          fontSize: "20px",
+                          color: percentageColor,
+                        }}
+                      >
+                        {row.percentage} %
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        height: "7px",
+                        borderRadius: "999px",
+                        background: "rgba(255,255,255,0.08)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${Math.min(100, Math.max(0, row.percentage))}%`,
+                          height: "100%",
+                          borderRadius: "999px",
+                          background: percentageColor,
+                        }}
+                      />
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
-        </div>
+        </>
       )}
 
       {mainTab === "fines" && (
         <div style={{ display: "grid", gap: "12px" }}>
-          <div style={styles.card}>
+          <div
+            style={{
+              ...glassCardStyle,
+              padding: "8px",
+            }}
+          >
             <div style={{ display: "flex", gap: "8px" }}>
               <button
                 style={subTabButton(fineTab === "awarded")}
@@ -1284,7 +1469,7 @@ export default function DisciplineScreen({
                   style={subTabButton(fineTab === "templates")}
                   onClick={() => setFineTab("templates")}
                 >
-                  TÝMOVÉ POKUTY
+                  TÝMOVÉ
                 </button>
               )}
             </div>
@@ -1292,8 +1477,55 @@ export default function DisciplineScreen({
 
           {fineTab === "awarded" && (
             <>
+              <div
+                style={{
+                  ...glassCardStyle,
+                  padding: "16px",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr",
+                  gap: "10px",
+                }}
+              >
+                <div>
+                  <div style={{ color: "#9b9b9b", fontSize: "11px", fontWeight: 900 }}>
+                    CELKEM
+                  </div>
+                  <div style={{ color: "#ffffff", fontWeight: 950, fontSize: "18px", marginTop: "6px" }}>
+                    {formatMoney(totalFineAmount)}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    borderLeft: "1px solid rgba(255,255,255,0.08)",
+                    paddingLeft: "10px",
+                  }}
+                >
+                  <div style={{ color: "#9b9b9b", fontSize: "11px", fontWeight: 900 }}>
+                    ZAPLACENO
+                  </div>
+                  <div style={{ color: "#9af0b6", fontWeight: 950, fontSize: "18px", marginTop: "6px" }}>
+                    {formatMoney(paidFineAmount)}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    borderLeft: "1px solid rgba(255,255,255,0.08)",
+                    paddingLeft: "10px",
+                  }}
+                >
+                  <div style={{ color: "#9b9b9b", fontSize: "11px", fontWeight: 900 }}>
+                    DLUH
+                  </div>
+                  <div style={{ color: "#ffb0a8", fontWeight: 950, fontSize: "18px", marginTop: "6px" }}>
+                    {formatMoney(unpaidFineAmount)}
+                  </div>
+                </div>
+              </div>
+
               {isAdmin && (
-                <div style={styles.card}>
+                <div style={{ ...glassCardStyle, padding: "14px" }}>
                   <button
                     type="button"
                     onClick={() => {
@@ -1317,10 +1549,6 @@ export default function DisciplineScreen({
 
                   {showFineForm && (
                     <div style={{ display: "grid", gap: "10px", marginTop: "16px" }}>
-                      <h2 style={{ ...styles.screenTitle, marginTop: 0 }}>
-                        Přidat pokutu
-                      </h2>
-
                       {!activePeriod ? (
                         <div style={{ color: "#b8b8b8" }}>
                           Nejprve vytvoř aktivní období.
@@ -1434,358 +1662,284 @@ export default function DisciplineScreen({
                 </div>
               )}
 
-              <div style={styles.card}>
-                <h2 style={styles.screenTitle}>Přehled hráčů a pokut</h2>
+              {finesLoading ? (
+                <div style={{ color: "#b8b8b8" }}>Načítám pokuty...</div>
+              ) : !activePeriod && periodFilterMode !== "all" ? (
+                <div style={{ ...glassCardStyle, padding: "16px", color: "#b8b8b8" }}>
+                  Nejprve vytvoř aktivní období.
+                </div>
+              ) : fineSummary.length === 0 ? (
+                <div style={{ ...glassCardStyle, padding: "16px", color: "#b8b8b8" }}>
+                  Zatím žádné pokuty v tomto období.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: "10px" }}>
+                  {fineSummary.map((item, index) => {
+                    const playerFines = (finesByPlayer.get(item.player_id) ?? [])
+                      .slice()
+                      .sort((a, b) => {
+                        const dateCompare = normalizeDateToIso(
+                          b.fine_date
+                        ).localeCompare(normalizeDateToIso(a.fine_date));
+                        if (dateCompare !== 0) return dateCompare;
+                        return (b.created_at ?? "").localeCompare(
+                          a.created_at ?? ""
+                        );
+                      });
 
-                {finesLoading ? (
-                  <div style={{ color: "#b8b8b8" }}>Načítám pokuty...</div>
-                ) : !activePeriod && periodFilterMode !== "all" ? (
-                  <div style={{ color: "#b8b8b8" }}>
-                    Nejprve vytvoř aktivní období.
-                  </div>
-                ) : (
-                  <div style={{ display: "grid", gap: "10px" }}>
-                    <div
-                      style={{
-                        display: "grid",
-                        gap: "8px",
-                        padding: "12px 14px",
-                        borderRadius: "12px",
-                        background: "rgba(255,255,255,0.04)",
-                        border: "1px solid rgba(255,255,255,0.06)",
-                      }}
-                    >
-                      <div>
-                        Celkem pokut: <strong>{fines.length}</strong>
-                      </div>
-                      <div>
-                        Celkem: <strong>{formatMoney(totalFineAmount)}</strong>
-                      </div>
-                      <div>
-                        Zaplaceno: <strong>{formatMoney(paidFineAmount)}</strong>
-                      </div>
-                      <div>
-                        Nezaplaceno: <strong>{formatMoney(unpaidFineAmount)}</strong>
-                      </div>
-                    </div>
+                    const isExpanded = expandedPlayerId === item.player_id;
 
-                    {fineSummary.length === 0 ? (
-                      <div style={{ color: "#b8b8b8" }}>
-                        Zatím žádné pokuty v tomto filtru období.
-                      </div>
-                    ) : (
-                      <div style={{ display: "grid", gap: "10px" }}>
-                        {fineSummary.map((item, index) => {
-                          const playerFines = (
-                            finesByPlayer.get(item.player_id) ?? []
-                          )
-                            .slice()
-                            .sort((a, b) => {
-                              const dateCompare = normalizeDateToIso(
-                                b.fine_date
-                              ).localeCompare(normalizeDateToIso(a.fine_date));
-                              if (dateCompare !== 0) return dateCompare;
-                              return (b.created_at ?? "").localeCompare(
-                                a.created_at ?? ""
-                              );
-                            });
-
-                          const isExpanded = expandedPlayerId === item.player_id;
-
-                          return (
+                    return (
+                      <div
+                        key={item.player_id}
+                        style={{
+                          ...glassCardStyle,
+                          padding: "12px",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedPlayerId((prev) =>
+                              prev === item.player_id ? null : item.player_id
+                            )
+                          }
+                          style={{
+                            width: "100%",
+                            background: "transparent",
+                            border: "none",
+                            padding: 0,
+                            color: "white",
+                            cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: "12px",
+                            }}
+                          >
                             <div
-                              key={item.player_id}
                               style={{
-                                padding: "12px",
-                                borderRadius: "12px",
-                                background: "rgba(255,255,255,0.04)",
-                                border: "1px solid rgba(255,255,255,0.05)",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "12px",
                               }}
                             >
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setExpandedPlayerId((prev) =>
-                                    prev === item.player_id ? null : item.player_id
-                                  )
-                                }
+                              <div
                                 style={{
-                                  width: "100%",
-                                  background: "transparent",
-                                  border: "none",
-                                  padding: 0,
-                                  color: "white",
-                                  cursor: "pointer",
-                                  textAlign: "left",
+                                  minWidth: "44px",
+                                  height: "44px",
+                                  borderRadius: "13px",
+                                  background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`,
+                                  color: "#071107",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  fontWeight: 950,
                                 }}
                               >
+                                {index + 1}
+                              </div>
+
+                              <div>
+                                <div style={{ fontWeight: 950, fontSize: "16px" }}>
+                                  {item.playerName}
+                                </div>
                                 <div
                                   style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "space-between",
-                                    gap: "12px",
+                                    fontSize: "13px",
+                                    color: "#b8b8b8",
+                                    marginTop: "4px",
+                                  }}
+                                >
+                                  Pokut: {item.fines_count}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div style={{ textAlign: "right" }}>
+                              <div
+                                style={{
+                                  fontSize: "16px",
+                                  fontWeight: 950,
+                                  color: "#ffffff",
+                                }}
+                              >
+                                {formatMoney(item.total_amount)}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: "12px",
+                                  color: item.unpaid_amount > 0 ? "#ffb0a8" : "#9af0b6",
+                                  marginTop: "4px",
+                                  fontWeight: 900,
+                                }}
+                              >
+                                Dluh: {formatMoney(item.unpaid_amount)}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+
+                        {isExpanded && (
+                          <div
+                            style={{
+                              display: "grid",
+                              gap: "8px",
+                              marginTop: "12px",
+                              paddingTop: "12px",
+                              borderTop: "1px solid rgba(255,255,255,0.06)",
+                            }}
+                          >
+                            {playerFines.length === 0 ? (
+                              <div style={{ color: "#b8b8b8", fontSize: "13px" }}>
+                                Žádné pokuty.
+                              </div>
+                            ) : (
+                              playerFines.map((fine) => (
+                                <div
+                                  key={fine.id}
+                                  style={{
+                                    padding: "10px 12px",
+                                    borderRadius: "14px",
+                                    background: "rgba(255,255,255,0.04)",
+                                    border: "1px solid rgba(255,255,255,0.05)",
                                   }}
                                 >
                                   <div
                                     style={{
                                       display: "flex",
-                                      alignItems: "center",
-                                      gap: "12px",
+                                      justifyContent: "space-between",
+                                      gap: "10px",
+                                      alignItems: "flex-start",
                                     }}
                                   >
-                                    <div
-                                      style={{
-                                        minWidth: "40px",
-                                        height: "40px",
-                                        borderRadius: "10px",
-                                        background: primaryColor,
-                                        color: "white",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        fontWeight: "bold",
-                                      }}
-                                    >
-                                      {index + 1}
-                                    </div>
-
-                                    <div>
-                                      <div style={{ fontWeight: "bold" }}>
-                                        {item.playerName}
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontWeight: 900, fontSize: "14px" }}>
+                                        {fine.reason}
                                       </div>
                                       <div
                                         style={{
-                                          fontSize: "13px",
+                                          fontSize: "12px",
                                           color: "#b8b8b8",
                                           marginTop: "4px",
                                         }}
                                       >
-                                        Pokut: {item.fines_count}
+                                        {fine.fine_date}
                                       </div>
-                                    </div>
-                                  </div>
-
-                                  <div style={{ textAlign: "right" }}>
-                                    <div
-                                      style={{
-                                        fontSize: "15px",
-                                        fontWeight: "bold",
-                                        color: "#ffffff",
-                                      }}
-                                    >
-                                      {formatMoney(item.total_amount)}
-                                    </div>
-                                    <div
-                                      style={{
-                                        fontSize: "12px",
-                                        color: "#9af0b6",
-                                        marginTop: "4px",
-                                      }}
-                                    >
-                                      Zaplaceno: {formatMoney(item.paid_amount)}
-                                    </div>
-                                    <div
-                                      style={{
-                                        fontSize: "12px",
-                                        color: "#ffb0a8",
-                                        marginTop: "2px",
-                                      }}
-                                    >
-                                      Nezaplaceno: {formatMoney(item.unpaid_amount)}
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div
-                                  style={{
-                                    marginTop: "8px",
-                                    fontSize: "12px",
-                                    color: "#b8b8b8",
-                                    fontWeight: "bold",
-                                  }}
-                                >
-                                  {isExpanded ? "Skrýt detail" : "Zobrazit detail"}
-                                </div>
-                              </button>
-
-                              {isExpanded && (
-                                <div
-                                  style={{
-                                    display: "grid",
-                                    gap: "8px",
-                                    marginTop: "12px",
-                                  }}
-                                >
-                                  {playerFines.length === 0 ? (
-                                    <div
-                                      style={{
-                                        color: "#b8b8b8",
-                                        fontSize: "13px",
-                                      }}
-                                    >
-                                      Žádné pokuty.
-                                    </div>
-                                  ) : (
-                                    playerFines.map((fine) => (
-                                      <div
-                                        key={fine.id}
-                                        style={{
-                                          padding: "10px 12px",
-                                          borderRadius: "10px",
-                                          background: "rgba(255,255,255,0.03)",
-                                          border:
-                                            "1px solid rgba(255,255,255,0.04)",
-                                        }}
-                                      >
+                                      {fine.note && (
                                         <div
                                           style={{
-                                            display: "flex",
-                                            justifyContent: "space-between",
-                                            gap: "10px",
-                                            alignItems: "flex-start",
+                                            fontSize: "12px",
+                                            color: "#cfcfcf",
+                                            marginTop: "6px",
+                                            lineHeight: 1.45,
                                           }}
                                         >
-                                          <div style={{ flex: 1 }}>
-                                            <div
-                                              style={{
-                                                fontWeight: "bold",
-                                                fontSize: "14px",
-                                              }}
-                                            >
-                                              {fine.reason}
-                                            </div>
-                                            <div
-                                              style={{
-                                                fontSize: "12px",
-                                                color: "#b8b8b8",
-                                                marginTop: "4px",
-                                              }}
-                                            >
-                                              {fine.fine_date}
-                                            </div>
-                                            {fine.note && (
-                                              <div
-                                                style={{
-                                                  fontSize: "12px",
-                                                  color: "#cfcfcf",
-                                                  marginTop: "6px",
-                                                  lineHeight: 1.45,
-                                                }}
-                                              >
-                                                {formatFineNote(fine.note)}
-                                              </div>
-                                            )}
-                                          </div>
-
-                                          <div style={{ textAlign: "right" }}>
-                                            <div
-                                              style={{
-                                                fontWeight: "bold",
-                                                fontSize: "15px",
-                                                color: fine.is_paid
-                                                  ? "#9af0b6"
-                                                  : "#ffb0a8",
-                                              }}
-                                            >
-                                              {formatMoney(fine.amount)}
-                                            </div>
-                                            <div
-                                              style={{
-                                                fontSize: "11px",
-                                                marginTop: "4px",
-                                                color: fine.is_paid
-                                                  ? "#9af0b6"
-                                                  : "#ffb0a8",
-                                                fontWeight: "bold",
-                                              }}
-                                            >
-                                              {fine.is_paid
-                                                ? "ZAPLACENO"
-                                                : "NEZAPLACENO"}
-                                            </div>
-                                          </div>
+                                          {formatFineNote(fine.note)}
                                         </div>
+                                      )}
+                                    </div>
 
-                                        {isAdmin && (
-                                          <div
-                                            style={{
-                                              display: "grid",
-                                              gap: "8px",
-                                              marginTop: "10px",
-                                            }}
-                                          >
-                                            {!fine.is_paid && (
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  void handleToggleFinePaid(fine)
-                                                }
-                                                style={{
-                                                  width: "100%",
-                                                  border: "none",
-                                                  borderRadius: "10px",
-                                                  padding: "10px 12px",
-                                                  background: primaryColor,
-                                                  color: "white",
-                                                  fontWeight: "bold",
-                                                  cursor: "pointer",
-                                                }}
-                                              >
-                                                Označit jako zaplacené
-                                              </button>
-                                            )}
-
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                void handleDeleteFine(fine)
-                                              }
-                                              disabled={deletingFineId === fine.id}
-                                              style={{
-                                                width: "100%",
-                                                border: "none",
-                                                borderRadius: "10px",
-                                                padding: "10px 12px",
-                                                background: "rgba(198,40,40,0.95)",
-                                                color: "white",
-                                                fontWeight: "bold",
-                                                cursor:
-                                                  deletingFineId === fine.id
-                                                    ? "default"
-                                                    : "pointer",
-                                                opacity:
-                                                  deletingFineId === fine.id
-                                                    ? 0.7
-                                                    : 1,
-                                              }}
-                                            >
-                                              {deletingFineId === fine.id
-                                                ? "Mažu..."
-                                                : "Smazat pokutu"}
-                                            </button>
-                                          </div>
-                                        )}
+                                    <div style={{ textAlign: "right" }}>
+                                      <div
+                                        style={{
+                                          fontWeight: 950,
+                                          fontSize: "15px",
+                                          color: fine.is_paid ? "#9af0b6" : "#ffb0a8",
+                                        }}
+                                      >
+                                        {formatMoney(fine.amount)}
                                       </div>
-                                    ))
+                                      <div
+                                        style={{
+                                          fontSize: "11px",
+                                          marginTop: "4px",
+                                          color: fine.is_paid ? "#9af0b6" : "#ffb0a8",
+                                          fontWeight: 900,
+                                        }}
+                                      >
+                                        {fine.is_paid ? "ZAPLACENO" : "NEZAPLACENO"}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {isAdmin && (
+                                    <div
+                                      style={{
+                                        display: "grid",
+                                        gap: "8px",
+                                        marginTop: "10px",
+                                      }}
+                                    >
+                                      {!fine.is_paid && (
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleToggleFinePaid(fine)}
+                                          style={{
+                                            width: "100%",
+                                            border: "none",
+                                            borderRadius: "12px",
+                                            padding: "10px 12px",
+                                            background: primaryColor,
+                                            color: "#071107",
+                                            fontWeight: 950,
+                                            cursor: "pointer",
+                                          }}
+                                        >
+                                          Označit jako zaplacené
+                                        </button>
+                                      )}
+
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleDeleteFine(fine)}
+                                        disabled={deletingFineId === fine.id}
+                                        style={{
+                                          width: "100%",
+                                          border: "none",
+                                          borderRadius: "12px",
+                                          padding: "10px 12px",
+                                          background: "rgba(198,40,40,0.95)",
+                                          color: "white",
+                                          fontWeight: 950,
+                                          cursor:
+                                            deletingFineId === fine.id
+                                              ? "default"
+                                              : "pointer",
+                                          opacity:
+                                            deletingFineId === fine.id ? 0.7 : 1,
+                                        }}
+                                      >
+                                        {deletingFineId === fine.id
+                                          ? "Mažu..."
+                                          : "Smazat pokutu"}
+                                      </button>
+                                    </div>
                                   )}
                                 </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                              ))
+                            )}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </>
           )}
 
           {isAdmin && fineTab === "templates" && (
             <>
-              <div style={styles.card}>
-                <h2 style={styles.screenTitle}>Přidat týmovou pokutu</h2>
+              <div style={{ ...glassCardStyle, padding: "16px" }}>
+                <h2 style={{ ...styles.screenTitle, marginTop: 0 }}>
+                  Přidat týmovou pokutu
+                </h2>
 
                 <div style={{ display: "grid", gap: "10px" }}>
                   <input
@@ -1821,191 +1975,173 @@ export default function DisciplineScreen({
                 </div>
               </div>
 
-              <div style={styles.card}>
-                <h2 style={styles.screenTitle}>Seznam týmových pokut</h2>
-
+              <div style={{ display: "grid", gap: "10px" }}>
                 {fineTemplates.length === 0 ? (
-                  <div style={{ color: "#b8b8b8" }}>
+                  <div style={{ ...glassCardStyle, padding: "16px", color: "#b8b8b8" }}>
                     Zatím žádné týmové pokuty.
                   </div>
                 ) : (
-                  <div style={{ display: "grid", gap: "10px" }}>
-                    {fineTemplates.map((template) => {
-                      const isEditing = editingTemplateId === template.id;
+                  fineTemplates.map((template) => {
+                    const isEditing = editingTemplateId === template.id;
 
-                      return (
+                    return (
+                      <div key={template.id} style={{ ...glassCardStyle, padding: "12px" }}>
                         <div
-                          key={template.id}
                           style={{
-                            padding: "12px",
-                            borderRadius: "12px",
-                            background: "rgba(255,255,255,0.04)",
-                            border: "1px solid rgba(255,255,255,0.05)",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: "12px",
+                            alignItems: "center",
                           }}
                         >
+                          <div>
+                            <div style={{ fontWeight: 950 }}>{template.name}</div>
+                            <div
+                              style={{
+                                marginTop: "6px",
+                                fontSize: "13px",
+                                color: "#b8b8b8",
+                              }}
+                            >
+                              Výchozí částka: {template.default_amount} Kč
+                            </div>
+                          </div>
+
                           <div
                             style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              gap: "12px",
-                              alignItems: "center",
+                              padding: "6px 10px",
+                              borderRadius: "999px",
+                              background: template.is_active
+                                ? `${primaryColor}22`
+                                : "rgba(255,255,255,0.10)",
+                              color: template.is_active ? primaryColor : "#b8b8b8",
+                              fontWeight: 950,
+                              fontSize: "12px",
+                              whiteSpace: "nowrap",
                             }}
                           >
-                            <div>
-                              <div style={{ fontWeight: "bold" }}>
-                                {template.name}
-                              </div>
-                              <div
-                                style={{
-                                  marginTop: "6px",
-                                  fontSize: "13px",
-                                  color: "#b8b8b8",
-                                }}
-                              >
-                                Výchozí částka: {template.default_amount} Kč
-                              </div>
-                            </div>
-
-                            <div
-                              style={{
-                                padding: "6px 10px",
-                                borderRadius: "999px",
-                                background: template.is_active
-                                  ? "rgba(46, 204, 113, 0.16)"
-                                  : "rgba(255,255,255,0.10)",
-                                color: template.is_active
-                                  ? "#9af0b6"
-                                  : "#b8b8b8",
-                                fontWeight: "bold",
-                                fontSize: "12px",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {template.is_active ? "AKTIVNÍ" : "NEAKTIVNÍ"}
-                            </div>
+                            {template.is_active ? "AKTIVNÍ" : "NEAKTIVNÍ"}
                           </div>
-
-                          <div
-                            style={{ display: "flex", gap: "8px", marginTop: "12px" }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => handleStartEditTemplate(template)}
-                              style={{
-                                flex: 1,
-                                border: "none",
-                                borderRadius: "10px",
-                                padding: "10px 12px",
-                                background: primaryColor,
-                                color: "white",
-                                fontWeight: "bold",
-                                cursor: "pointer",
-                              }}
-                            >
-                              {isEditing ? "Zavřít úpravu" : "Upravit"}
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => void handleDeleteTemplate(template.id)}
-                              style={{
-                                flex: 1,
-                                border: "none",
-                                borderRadius: "10px",
-                                padding: "10px 12px",
-                                background: "rgba(198,40,40,0.95)",
-                                color: "white",
-                                fontWeight: "bold",
-                                cursor: "pointer",
-                              }}
-                            >
-                              Smazat
-                            </button>
-                          </div>
-
-                          {isEditing && (
-                            <div
-                              style={{
-                                display: "grid",
-                                gap: "10px",
-                                marginTop: "12px",
-                                paddingTop: "12px",
-                                borderTop: "1px solid rgba(255,255,255,0.06)",
-                              }}
-                            >
-                              <input
-                                type="text"
-                                placeholder="Název pokuty"
-                                value={editingTemplateName}
-                                onChange={(e) =>
-                                  setEditingTemplateName(e.target.value)
-                                }
-                                style={styles.input}
-                              />
-
-                              <input
-                                type="number"
-                                placeholder="Výchozí částka"
-                                value={editingTemplateAmount}
-                                onChange={(e) =>
-                                  setEditingTemplateAmount(e.target.value)
-                                }
-                                style={styles.input}
-                              />
-
-                              <label
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "10px",
-                                  color: "#d9d9d9",
-                                  fontSize: "14px",
-                                }}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={editingTemplateIsActive}
-                                  onChange={(e) =>
-                                    setEditingTemplateIsActive(e.target.checked)
-                                  }
-                                />
-                                Aktivní předvolba
-                              </label>
-
-                              <button
-                                type="button"
-                                onClick={handleUpdateTemplate}
-                                disabled={templateSaving}
-                                style={{
-                                  ...styles.primaryButton,
-                                  marginTop: 0,
-                                  background: primaryColor,
-                                  border: "none",
-                                  opacity: templateSaving ? 0.7 : 1,
-                                }}
-                              >
-                                {templateSaving ? "Ukládám..." : "Uložit změny"}
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={resetInlineTemplateEdit}
-                                disabled={templateSaving}
-                                style={{
-                                  ...styles.primaryButton,
-                                  marginTop: 0,
-                                  background: "rgba(255,255,255,0.12)",
-                                  border: "none",
-                                }}
-                              >
-                                Zrušit úpravu
-                              </button>
-                            </div>
-                          )}
                         </div>
-                      );
-                    })}
-                  </div>
+
+                        <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditTemplate(template)}
+                            style={{
+                              flex: 1,
+                              border: "none",
+                              borderRadius: "12px",
+                              padding: "10px 12px",
+                              background: primaryColor,
+                              color: "#071107",
+                              fontWeight: 950,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {isEditing ? "Zavřít" : "Upravit"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteTemplate(template.id)}
+                            style={{
+                              flex: 1,
+                              border: "none",
+                              borderRadius: "12px",
+                              padding: "10px 12px",
+                              background: "rgba(198,40,40,0.95)",
+                              color: "white",
+                              fontWeight: 950,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Smazat
+                          </button>
+                        </div>
+
+                        {isEditing && (
+                          <div
+                            style={{
+                              display: "grid",
+                              gap: "10px",
+                              marginTop: "12px",
+                              paddingTop: "12px",
+                              borderTop: "1px solid rgba(255,255,255,0.06)",
+                            }}
+                          >
+                            <input
+                              type="text"
+                              placeholder="Název pokuty"
+                              value={editingTemplateName}
+                              onChange={(e) =>
+                                setEditingTemplateName(e.target.value)
+                              }
+                              style={styles.input}
+                            />
+
+                            <input
+                              type="number"
+                              placeholder="Výchozí částka"
+                              value={editingTemplateAmount}
+                              onChange={(e) =>
+                                setEditingTemplateAmount(e.target.value)
+                              }
+                              style={styles.input}
+                            />
+
+                            <label
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "10px",
+                                color: "#d9d9d9",
+                                fontSize: "14px",
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={editingTemplateIsActive}
+                                onChange={(e) =>
+                                  setEditingTemplateIsActive(e.target.checked)
+                                }
+                              />
+                              Aktivní předvolba
+                            </label>
+
+                            <button
+                              type="button"
+                              onClick={handleUpdateTemplate}
+                              disabled={templateSaving}
+                              style={{
+                                ...styles.primaryButton,
+                                marginTop: 0,
+                                background: primaryColor,
+                                border: "none",
+                                opacity: templateSaving ? 0.7 : 1,
+                              }}
+                            >
+                              {templateSaving ? "Ukládám..." : "Uložit změny"}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={resetInlineTemplateEdit}
+                              disabled={templateSaving}
+                              style={{
+                                ...styles.primaryButton,
+                                marginTop: 0,
+                                background: "rgba(255,255,255,0.12)",
+                                border: "none",
+                              }}
+                            >
+                              Zrušit úpravu
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </>
