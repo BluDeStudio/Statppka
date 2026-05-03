@@ -17,23 +17,52 @@ type SaveMatchLineupResult = {
   errorMessage?: string;
 };
 
-export async function getMatchLineupPlayerIds(matchId: string): Promise<string[]> {
+export async function getMatchLineupState(matchId: string): Promise<{
+  playerIds: string[];
+  goalkeeperPlayerId: string | null;
+}> {
   try {
-    const { data, error } = await supabase
-      .from("match_lineups")
-      .select("player_id")
-      .eq("planned_match_id", matchId);
+    const [{ data: lineupData, error: lineupError }, { data: matchData, error: matchError }] =
+      await Promise.all([
+        supabase
+          .from("match_lineups")
+          .select("player_id")
+          .eq("planned_match_id", matchId),
 
-    if (error) {
-      console.error("Chyba při načítání sestavy zápasu:", error);
-      return [];
+        supabase
+          .from("planned_matches")
+          .select("goalkeeper_player_id")
+          .eq("id", matchId)
+          .maybeSingle(),
+      ]);
+
+    if (lineupError) {
+      console.error("Chyba při načítání sestavy zápasu:", lineupError);
     }
 
-    return ((data ?? []) as MatchLineupRow[]).map((row) => row.player_id);
+    if (matchError) {
+      console.error("Chyba při načítání brankáře zápasu:", matchError);
+    }
+
+    return {
+      playerIds: ((lineupData ?? []) as MatchLineupRow[]).map(
+        (row) => row.player_id
+      ),
+      goalkeeperPlayerId:
+        (matchData?.goalkeeper_player_id as string | null) ?? null,
+    };
   } catch (error) {
-    console.error("Chyba v getMatchLineupPlayerIds:", error);
-    return [];
+    console.error("Chyba v getMatchLineupState:", error);
+    return {
+      playerIds: [],
+      goalkeeperPlayerId: null,
+    };
   }
+}
+
+export async function getMatchLineupPlayerIds(matchId: string): Promise<string[]> {
+  const state = await getMatchLineupState(matchId);
+  return state.playerIds;
 }
 
 export async function saveMatchLineup({
@@ -43,6 +72,11 @@ export async function saveMatchLineup({
 }: SaveMatchLineupParams): Promise<SaveMatchLineupResult> {
   try {
     const uniquePlayerIds = Array.from(new Set(playerIds));
+
+    const safeGoalkeeperPlayerId =
+      goalkeeperPlayerId && uniquePlayerIds.includes(goalkeeperPlayerId)
+        ? goalkeeperPlayerId
+        : null;
 
     const { error: deleteError } = await supabase
       .from("match_lineups")
@@ -82,14 +116,14 @@ export async function saveMatchLineup({
       .from("planned_matches")
       .update({
         status: "prepared",
-        goalkeeper_player_id: goalkeeperPlayerId,
+        goalkeeper_player_id: safeGoalkeeperPlayerId,
       })
       .eq("id", matchId)
       .select("*")
       .single();
 
     if (updateError || !updatedMatch) {
-      console.error("Chyba při přepnutí zápasu do prepared:", updateError, updatedMatch);
+      console.error("Chyba při přepnutí zápasu do prepared:", updateError);
       return {
         success: false,
         match: null,
@@ -104,6 +138,8 @@ export async function saveMatchLineup({
       match: {
         id: updatedMatch.id as string,
         date: updatedMatch.date as string,
+        time: (updatedMatch.time as string | null) ?? undefined,
+        location: (updatedMatch.location as string | null) ?? undefined,
         opponent: updatedMatch.opponent as string,
         team: updatedMatch.team as "A" | "B",
         homeTeam: updatedMatch.home_team as string,

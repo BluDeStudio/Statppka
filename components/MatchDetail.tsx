@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getPlayersByClubId, type Player } from "@/lib/players";
-import { getMatchLineupPlayerIds, saveMatchLineup } from "@/lib/matchLineups";
+import { getMatchLineupState, saveMatchLineup } from "@/lib/matchLineups";
 import { canEditLineup } from "@/lib/liveMatch";
 import { styles } from "@/styles/appStyles";
 import type { PlannedMatch } from "@/app/page";
@@ -31,7 +31,7 @@ export default function MatchDetail({
   matchTitle,
   team,
   date,
-  primaryColor = "#888888",
+  primaryColor = "#22c55e",
   initialStatus = "planned",
 }: MatchDetailProps) {
   const [players, setPlayers] = useState<Player[]>([]);
@@ -56,19 +56,21 @@ export default function MatchDetail({
 
       setPlayers(loadedPlayers);
 
-      const lineupPlayerIds = await getMatchLineupPlayerIds(matchId);
+      const lineupState = await getMatchLineupState(matchId);
 
       if (!active) return;
 
-      if (lineupPlayerIds.length > 0) {
-        const selectedNumbers = loadedPlayers
-          .filter((player) => lineupPlayerIds.includes(player.id))
-          .map((player) => player.number);
+      const selectedNumbers = loadedPlayers
+        .filter((player) => lineupState.playerIds.includes(player.id))
+        .map((player) => player.number);
 
-        setSelectedPlayers(selectedNumbers);
-      } else {
-        setSelectedPlayers([]);
-      }
+      setSelectedPlayers(selectedNumbers);
+
+      const savedGoalkeeper = loadedPlayers.find(
+        (player) => player.id === lineupState.goalkeeperPlayerId
+      );
+
+      setGoalkeeper(savedGoalkeeper?.number ?? null);
 
       setPlayersLoading(false);
     };
@@ -91,6 +93,35 @@ export default function MatchDetail({
     return players.find((player) => player.number === goalkeeper)?.id ?? null;
   }, [goalkeeper, players]);
 
+  const glassCardStyle: React.CSSProperties = {
+    borderRadius: "22px",
+    background:
+      "linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.025))",
+    border: "1px solid rgba(255,255,255,0.09)",
+    boxShadow: "0 16px 36px rgba(0,0,0,0.30)",
+    backdropFilter: "blur(14px)",
+  };
+
+  const primaryButtonStyle: React.CSSProperties = {
+    ...styles.primaryButton,
+    marginTop: 0,
+    background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`,
+    color: "#071107",
+    border: "none",
+    boxShadow: `0 12px 28px ${primaryColor}33`,
+    fontWeight: 950,
+  };
+
+  const softButtonStyle: React.CSSProperties = {
+    ...styles.primaryButton,
+    marginTop: 0,
+    background: "rgba(255,255,255,0.10)",
+    color: "#ffffff",
+    border: "1px solid rgba(255,255,255,0.10)",
+    boxShadow: "none",
+    fontWeight: 900,
+  };
+
   const togglePlayer = (number: number) => {
     if (!lineupEditable) return;
 
@@ -106,15 +137,25 @@ export default function MatchDetail({
       return;
     }
 
-    if (selectedPlayers.length >= 18) return;
+    if (selectedPlayers.length >= 18) {
+      setMessage("Do sestavy můžeš vybrat maximálně 18 hráčů.");
+      return;
+    }
 
     setSelectedPlayers((prev) => [...prev, number]);
+    setMessage("");
   };
 
   const setAsGoalkeeper = (number: number) => {
     if (!lineupEditable) return;
-    if (!selectedPlayers.includes(number)) return;
+
+    if (!selectedPlayers.includes(number)) {
+      setMessage("Nejdřív musí být hráč vybraný v sestavě.");
+      return;
+    }
+
     setGoalkeeper(number);
+    setMessage("");
   };
 
   const handleSave = async () => {
@@ -149,73 +190,201 @@ export default function MatchDetail({
   };
 
   return (
-    <div>
-      <h2 style={styles.screenTitle}>Sestava zápasu</h2>
-
-      <div style={styles.card}>
-        <div style={{ marginBottom: "10px" }}>
-          <div style={{ fontWeight: "bold", fontSize: "16px" }}>{matchTitle}</div>
-          <div style={{ fontSize: "13px", color: "#b8b8b8", marginTop: "4px" }}>
-            {date} — {team}-tým
-          </div>
-        </div>
-
+    <div style={{ display: "grid", gap: "14px" }}>
+      <div
+        style={{
+          ...glassCardStyle,
+          position: "relative",
+          overflow: "hidden",
+          padding: "16px",
+        }}
+      >
         <div
           style={{
-            marginBottom: "12px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "10px",
-            flexWrap: "wrap",
+            position: "absolute",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: "5px",
+            background: primaryColor,
+            boxShadow: `0 0 18px ${primaryColor}66`,
           }}
-        >
-          <div style={{ color: "#d4d4d4" }}>
-            Vybráno: <strong>{selectedPlayers.length}</strong> / 12
+        />
+
+        <div style={{ paddingLeft: "4px" }}>
+          <div
+            style={{
+              color: "#9b9b9b",
+              fontSize: "11px",
+              fontWeight: 950,
+              letterSpacing: "0.8px",
+              textTransform: "uppercase",
+              marginBottom: "8px",
+            }}
+          >
+            Sestava zápasu
           </div>
 
           <div
             style={{
-              padding: "6px 10px",
-              borderRadius: "999px",
-              fontSize: "12px",
-              fontWeight: "bold",
-              background:
-                initialStatus === "prepared"
-                  ? "rgba(61, 214, 140, 0.18)"
-                  : "rgba(255,255,255,0.08)",
-              color: initialStatus === "prepared" ? "#7dffbc" : "#dcdcdc",
-              border:
-                initialStatus === "prepared"
-                  ? "1px solid rgba(61, 214, 140, 0.35)"
-                  : "1px solid rgba(255,255,255,0.08)",
+              fontWeight: 950,
+              fontSize: "18px",
+              lineHeight: 1.25,
+              color: "#ffffff",
+              wordBreak: "break-word",
             }}
           >
-            {initialStatus === "prepared" ? "PŘIPRAVENÝ" : "PLÁNOVANÝ"}
+            {matchTitle}
+          </div>
+
+          <div
+            style={{
+              marginTop: "8px",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "8px",
+              color: "#b8b8b8",
+              fontSize: "13px",
+              fontWeight: 700,
+            }}
+          >
+            <span>📅 {date}</span>
+            <span>•</span>
+            <span>{team}-tým</span>
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          ...glassCardStyle,
+          padding: "14px",
+          display: "grid",
+          gap: "12px",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "10px",
+          }}
+        >
+          <div
+            style={{
+              padding: "12px",
+              borderRadius: "16px",
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.07)",
+            }}
+          >
+            <div
+              style={{
+                color: "#9b9b9b",
+                fontSize: "11px",
+                fontWeight: 950,
+                letterSpacing: "0.7px",
+                textTransform: "uppercase",
+              }}
+            >
+              Vybráno
+            </div>
+
+            <div
+              style={{
+                marginTop: "6px",
+                color: primaryColor,
+                fontSize: "24px",
+                fontWeight: 950,
+              }}
+            >
+              {selectedPlayers.length}
+            </div>
+          </div>
+
+          <div
+            style={{
+              padding: "12px",
+              borderRadius: "16px",
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.07)",
+            }}
+          >
+            <div
+              style={{
+                color: "#9b9b9b",
+                fontSize: "11px",
+                fontWeight: 950,
+                letterSpacing: "0.7px",
+                textTransform: "uppercase",
+              }}
+            >
+              Brankář
+            </div>
+
+            <div
+              style={{
+                marginTop: "6px",
+                color: goalkeeper ? "#ffd86b" : "#b8b8b8",
+                fontSize: "15px",
+                fontWeight: 950,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {goalkeeper
+                ? players.find((player) => player.number === goalkeeper)?.name ??
+                  "Vybraný"
+                : "Nevybrán"}
+            </div>
           </div>
         </div>
 
         {!lineupEditable && (
           <div
             style={{
-              marginBottom: "12px",
               padding: "12px",
-              borderRadius: "12px",
+              borderRadius: "16px",
               background: "rgba(255,120,120,0.08)",
               border: "1px solid rgba(255,120,120,0.22)",
               color: "#ffbdbd",
               fontSize: "14px",
+              lineHeight: 1.45,
             }}
           >
             Sestavu lze upravovat jen před začátkem zápasu.
           </div>
         )}
 
+        {message && (
+          <div
+            style={{
+              padding: "12px",
+              borderRadius: "16px",
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.07)",
+              color: "#d9d9d9",
+              fontSize: "14px",
+              lineHeight: 1.45,
+            }}
+          >
+            {message}
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
+          ...glassCardStyle,
+          padding: "14px",
+        }}
+      >
         {playersLoading ? (
           <div
             style={{
-              padding: "14px",
-              borderRadius: "12px",
+              padding: "16px",
+              borderRadius: "16px",
               background: "rgba(255,255,255,0.04)",
               border: "1px solid rgba(255,255,255,0.06)",
               color: "#b8b8b8",
@@ -227,8 +396,8 @@ export default function MatchDetail({
         ) : players.length === 0 ? (
           <div
             style={{
-              padding: "14px",
-              borderRadius: "12px",
+              padding: "16px",
+              borderRadius: "16px",
               background: "rgba(255,255,255,0.04)",
               border: "1px solid rgba(255,255,255,0.06)",
               color: "#b8b8b8",
@@ -240,11 +409,10 @@ export default function MatchDetail({
         ) : (
           <div
             style={{
-              maxHeight: "420px",
+              maxHeight: "460px",
               overflowY: "auto",
               display: "grid",
               gap: "10px",
-              marginTop: "10px",
               paddingRight: "4px",
             }}
           >
@@ -257,73 +425,128 @@ export default function MatchDetail({
                   key={player.id}
                   onClick={() => togglePlayer(player.number)}
                   style={{
-                    display: "flex",
+                    position: "relative",
+                    overflow: "hidden",
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto",
                     alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "12px",
-                    padding: "10px 12px",
-                    borderRadius: "12px",
+                    gap: "10px",
+                    padding: "11px 12px",
+                    borderRadius: "18px",
                     cursor: lineupEditable ? "pointer" : "default",
                     border: isGoalkeeper
-                      ? "2px solid #ffcc00"
+                      ? "1px solid rgba(255, 216, 107, 0.55)"
                       : isSelected
-                        ? `2px solid ${primaryColor}`
-                        : "1px solid rgba(255,255,255,0.1)",
+                      ? `1px solid ${primaryColor}66`
+                      : "1px solid rgba(255,255,255,0.08)",
                     background: isGoalkeeper
-                      ? "rgba(255,204,0,0.14)"
+                      ? "rgba(255,216,107,0.13)"
                       : isSelected
-                        ? "rgba(255,255,255,0.08)"
-                        : "rgba(255,255,255,0.04)",
+                      ? `${primaryColor}16`
+                      : "rgba(255,255,255,0.04)",
                     opacity: lineupEditable ? 1 : 0.82,
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  {(isSelected || isGoalkeeper) && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: "4px",
+                        background: isGoalkeeper ? "#ffd86b" : primaryColor,
+                        boxShadow: isGoalkeeper
+                          ? "0 0 16px rgba(255,216,107,0.55)"
+                          : `0 0 16px ${primaryColor}66`,
+                      }}
+                    />
+                  )}
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      minWidth: 0,
+                    }}
+                  >
                     <div
                       style={{
                         minWidth: "42px",
                         height: "42px",
-                        borderRadius: "10px",
-                        background: isGoalkeeper ? "#ffcc00" : primaryColor,
-                        color: isGoalkeeper ? "#111" : "white",
+                        borderRadius: "14px",
+                        background: isGoalkeeper
+                          ? "linear-gradient(135deg, #ffd86b, #f1c40f)"
+                          : isSelected
+                          ? `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`
+                          : "rgba(255,255,255,0.08)",
+                        color: isSelected || isGoalkeeper ? "#071107" : "#ffffff",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontWeight: "bold",
+                        fontWeight: 950,
+                        fontSize: "15px",
+                        flexShrink: 0,
                       }}
                     >
                       {player.number}
                     </div>
 
-                    <div>
-                      <div style={{ fontWeight: "bold" }}>{player.name}</div>
-                      <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontWeight: 950,
+                          color: "#ffffff",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {player.name}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          color: isGoalkeeper ? "#ffd86b" : "#b8b8b8",
+                          marginTop: "4px",
+                          fontWeight: isGoalkeeper ? 900 : 600,
+                        }}
+                      >
                         {isGoalkeeper
-                          ? "Brankář pro tento zápas"
-                          : `${player.position} · hráč do sestavy`}
+                          ? "BRANKÁŘ"
+                          : isSelected
+                          ? "V sestavě"
+                          : player.position}
                       </div>
                     </div>
                   </div>
 
                   {isSelected && (
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         setAsGoalkeeper(player.number);
                       }}
                       style={{
-                        padding: "7px 10px",
-                        borderRadius: "8px",
                         border: "none",
-                        fontSize: "12px",
-                        background: isGoalkeeper ? "#ffcc00" : "rgba(255,255,255,0.12)",
-                        color: isGoalkeeper ? "#111" : "white",
-                        fontWeight: "bold",
+                        borderRadius: "12px",
+                        padding: "8px 9px",
+                        fontSize: "11px",
+                        background: isGoalkeeper
+                          ? "linear-gradient(135deg, #ffd86b, #f1c40f)"
+                          : "rgba(255,255,255,0.10)",
+                        color: isGoalkeeper ? "#111111" : "#ffffff",
+                        fontWeight: 950,
                         cursor: lineupEditable ? "pointer" : "default",
                         opacity: lineupEditable ? 1 : 0.7,
+                        whiteSpace: "nowrap",
                       }}
                       disabled={!lineupEditable}
                     >
-                      {isGoalkeeper ? "BRANKÁŘ" : "Nastavit BR"}
+                      {isGoalkeeper ? "BR" : "Nastavit BR"}
                     </button>
                   )}
                 </div>
@@ -331,11 +554,20 @@ export default function MatchDetail({
             })}
           </div>
         )}
+      </div>
 
+      <div
+        style={{
+          ...glassCardStyle,
+          padding: "14px",
+          display: "grid",
+          gap: "10px",
+        }}
+      >
         <button
+          type="button"
           style={{
-            ...styles.primaryButton,
-            background: primaryColor,
+            ...primaryButtonStyle,
             opacity: savingLineup || !lineupEditable ? 0.7 : 1,
           }}
           onClick={() => void handleSave()}
@@ -346,20 +578,9 @@ export default function MatchDetail({
           {savingLineup ? "Ukládám sestavu..." : "Uložit sestavu"}
         </button>
 
-        <button
-          style={{
-            ...styles.primaryButton,
-            background: "rgba(255,255,255,0.12)",
-            marginTop: "10px",
-          }}
-          onClick={onBack}
-        >
+        <button type="button" style={softButtonStyle} onClick={onBack}>
           Zpět na zápasy
         </button>
-
-        {message && (
-          <p style={{ marginTop: "12px", color: "#d9d9d9" }}>{message}</p>
-        )}
       </div>
     </div>
   );
