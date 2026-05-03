@@ -31,6 +31,7 @@ type MatchesScreenProps = {
 };
 
 type AttendanceStatus = "yes" | "no";
+type MatchFilter = "ALL" | "A" | "B" | "READY";
 
 type Player = {
   id: string;
@@ -106,13 +107,9 @@ function normalizeDateToIso(value?: string | null) {
   if (!trimmed) return "";
 
   const isoDateTimeMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
-  if (isoDateTimeMatch) {
-    return isoDateTimeMatch[1];
-  }
+  if (isoDateTimeMatch) return isoDateTimeMatch[1];
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    return trimmed;
-  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
 
   const dotMatch = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+.*)?$/);
   if (dotMatch) {
@@ -143,9 +140,7 @@ function isDateInsidePeriod(dateValue: string, period: PeriodRow | null) {
   const normalizedStart = normalizeDateToIso(period.start_date);
   const normalizedEnd = normalizeDateToIso(period.end_date);
 
-  if (!normalizedDate || !normalizedStart || !normalizedEnd) {
-    return false;
-  }
+  if (!normalizedDate || !normalizedStart || !normalizedEnd) return false;
 
   return normalizedDate >= normalizedStart && normalizedDate <= normalizedEnd;
 }
@@ -155,7 +150,7 @@ export default function MatchesScreen({
   clubName,
   hasBTeam,
   userId,
-  primaryColor = "#888888",
+  primaryColor = "#22c55e",
   plannedMatches,
   finishedMatchIds,
   onLiveModeChange,
@@ -166,7 +161,7 @@ export default function MatchesScreen({
   openMatchId = null,
   onOpenMatchHandled,
 }: MatchesScreenProps) {
-  const [filter, setFilter] = useState<"ALL" | "A" | "B">("ALL");
+  const [filter, setFilter] = useState<MatchFilter>("ALL");
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [selectedMode, setSelectedMode] = useState<"detail" | "live" | null>(
     null
@@ -206,13 +201,8 @@ export default function MatchesScreen({
   }, [selectedMode, onLiveModeChange]);
 
   useEffect(() => {
-    if (!hasBTeam && filter === "B") {
-      setFilter("ALL");
-    }
-
-    if (!hasBTeam && newTeam === "B") {
-      setNewTeam("A");
-    }
+    if (!hasBTeam && filter === "B") setFilter("ALL");
+    if (!hasBTeam && newTeam === "B") setNewTeam("A");
   }, [hasBTeam, filter, newTeam]);
 
   useEffect(() => {
@@ -322,10 +312,19 @@ export default function MatchesScreen({
     }, 150);
   }, [openMatchId, availableMatches, onOpenMatchHandled]);
 
-  const filteredMatches =
-    filter === "ALL"
-      ? availableMatches
-      : availableMatches.filter((match) => match.team === filter);
+  const filteredMatches = useMemo(() => {
+    if (filter === "ALL") return availableMatches;
+    if (filter === "READY") {
+      return availableMatches.filter(
+        (match) =>
+          match.status === "prepared" ||
+          match.status === "live" ||
+          match.status === "halftime"
+      );
+    }
+
+    return availableMatches.filter((match) => match.team === filter);
+  }, [availableMatches, filter]);
 
   const selectedMatch =
     selectedMatchId !== null
@@ -335,30 +334,62 @@ export default function MatchesScreen({
   const teamLabelA = clubName.trim() || "Můj tým";
   const teamLabelB = `${teamLabelA} B`;
 
+  const modernCardStyle: React.CSSProperties = {
+    borderRadius: "22px",
+    background:
+      "linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.025))",
+    border: "1px solid rgba(255,255,255,0.09)",
+    boxShadow: "0 16px 36px rgba(0,0,0,0.30)",
+    backdropFilter: "blur(14px)",
+  };
+
   const primaryButtonStyle: React.CSSProperties = {
     ...styles.primaryButton,
-    background: primaryColor,
-    border: "none",
     marginTop: 0,
-  };
-
-  const inactiveButtonStyle: React.CSSProperties = {
+    background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`,
+    color: "#071107",
     border: "none",
-    borderRadius: "10px",
-    padding: "10px",
-    background: "rgba(255,255,255,0.1)",
-    color: "white",
-    fontWeight: "bold",
-    cursor: "pointer",
-    flex: 1,
+    boxShadow: `0 12px 28px ${primaryColor}33`,
+    fontWeight: 950,
   };
 
-  const getFilterButtonStyle = (
-    value: "ALL" | "A" | "B"
-  ): React.CSSProperties => ({
-    ...inactiveButtonStyle,
-    background: filter === value ? primaryColor : "rgba(255,255,255,0.1)",
+  const softButtonStyle: React.CSSProperties = {
+    border: "1px solid rgba(255,255,255,0.10)",
+    borderRadius: "14px",
+    padding: "10px 12px",
+    background: "rgba(255,255,255,0.07)",
+    color: "#ffffff",
+    fontWeight: 900,
+    cursor: "pointer",
+  };
+
+  const getFilterButtonStyle = (value: MatchFilter): React.CSSProperties => ({
+    border: "none",
+    borderRadius: "999px",
+    padding: "10px 13px",
+    background:
+      filter === value
+        ? `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`
+        : "rgba(255,255,255,0.08)",
+    color: filter === value ? "#071107" : "#ffffff",
+    fontWeight: 950,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    boxShadow: filter === value ? `0 10px 24px ${primaryColor}33` : "none",
   });
+
+  const getStatusStyle = (status?: PlannedMatch["status"]) => {
+    const isHot =
+      status === "prepared" || status === "live" || status === "halftime";
+
+    return {
+      background: isHot ? `${primaryColor}22` : "rgba(255,255,255,0.08)",
+      color: isHot ? primaryColor : "#d5d5d5",
+      border: isHot
+        ? `1px solid ${primaryColor}44`
+        : "1px solid rgba(255,255,255,0.10)",
+    };
+  };
 
   const getPlayerNameByUserId = (rowUserId: string) => {
     return (
@@ -548,9 +579,7 @@ export default function MatchesScreen({
         continue;
       }
 
-      if (existingFine) {
-        continue;
-      }
+      if (existingFine) continue;
 
       const { error: createFineError } = await supabase.from("fines").insert({
         club_id: clubId,
@@ -712,7 +741,7 @@ export default function MatchesScreen({
   if (selectedMatch !== null && selectedMode === "detail") {
     if (!isAdmin) {
       return (
-        <div style={styles.card}>
+        <div style={{ ...modernCardStyle, padding: "16px" }}>
           <div style={{ color: "#d9d9d9" }}>
             Správa zápasu je dostupná jen pro admina.
           </div>
@@ -724,10 +753,8 @@ export default function MatchesScreen({
               setSelectedMode(null);
             }}
             style={{
-              ...styles.primaryButton,
+              ...primaryButtonStyle,
               marginTop: "12px",
-              background: primaryColor,
-              border: "none",
             }}
           >
             Zpět
@@ -763,81 +790,198 @@ export default function MatchesScreen({
   }
 
   return (
-    <div>
-      <h2 style={styles.screenTitle}>Plánované zápasy</h2>
-
-      <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
-        <button onClick={() => setFilter("ALL")} style={getFilterButtonStyle("ALL")}>
-          Vše
-        </button>
-
-        <button onClick={() => setFilter("A")} style={getFilterButtonStyle("A")}>
-          A-tým
-        </button>
-
-        {hasBTeam && (
-          <button onClick={() => setFilter("B")} style={getFilterButtonStyle("B")}>
-            B-tým
+    <div style={{ display: "grid", gap: "14px" }}>
+      <div
+        style={{
+          ...modernCardStyle,
+          padding: "8px",
+        }}
+      >
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button
+            style={{
+              flex: 1,
+              border: "none",
+              borderRadius: "16px",
+              padding: "13px 10px",
+              background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`,
+              color: "#071107",
+              fontWeight: 950,
+              cursor: "pointer",
+              boxShadow: `0 10px 24px ${primaryColor}33`,
+            }}
+          >
+            📅 PLÁNOVANÉ
           </button>
-        )}
+
+          <button
+            style={{
+              flex: 1,
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: "16px",
+              padding: "13px 10px",
+              background: "rgba(255,255,255,0.06)",
+              color: "#ffffff",
+              fontWeight: 950,
+              cursor: "default",
+              opacity: 0.75,
+            }}
+            disabled
+          >
+            ◷ ODEHRANÉ
+          </button>
+        </div>
       </div>
 
-      <div style={styles.card}>
-        {filteredMatches.length === 0 ? (
-          <div style={{ color: "#b8b8b8" }}>
-            Žádné plánované zápasy pro tento filtr.
-          </div>
-        ) : (
-          <div style={{ display: "grid", gap: "10px" }}>
-            {filteredMatches.map((match) => {
-              const statusLabel = getMatchStatusLabel(match.status);
-              const canOpenLive =
-                match.status === "prepared" ||
-                match.status === "live" ||
-                match.status === "halftime";
+      <div
+        style={{
+          ...modernCardStyle,
+          padding: "14px",
+        }}
+      >
+        <div
+          style={{
+            color: "#9b9b9b",
+            fontSize: "12px",
+            fontWeight: 950,
+            letterSpacing: "0.8px",
+            textTransform: "uppercase",
+            marginBottom: "10px",
+          }}
+        >
+          Filtr
+        </div>
 
-              const myStatus = getMyAttendanceStatus(match.id);
-              const attendanceRows = getMatchAttendanceRows(match.id);
-              const summary = getMatchAttendanceSummary(match.id);
-              const isExpanded = expandedAttendanceMatchId === match.id;
-              const isSavingAttendance = savingAttendanceMatchId === match.id;
-              const isSavingFine = savingFineMatchId === match.id;
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            overflowX: "auto",
+            paddingBottom: "2px",
+          }}
+        >
+          <button onClick={() => setFilter("ALL")} style={getFilterButtonStyle("ALL")}>
+            Vše
+          </button>
 
-              const yesRows = attendanceRows
-                .filter((row) => row.status === "yes")
-                .sort((a, b) =>
-                  getPlayerNameByUserId(a.user_id).localeCompare(
-                    getPlayerNameByUserId(b.user_id),
-                    "cs"
-                  )
-                );
+          <button onClick={() => setFilter("A")} style={getFilterButtonStyle("A")}>
+            A-tým
+          </button>
 
-              const noRows = attendanceRows
-                .filter((row) => row.status === "no")
-                .sort((a, b) =>
-                  getPlayerNameByUserId(a.user_id).localeCompare(
-                    getPlayerNameByUserId(b.user_id),
-                    "cs"
-                  )
-                );
+          {hasBTeam && (
+            <button onClick={() => setFilter("B")} style={getFilterButtonStyle("B")}>
+              B-tým
+            </button>
+          )}
 
-              const votedUserIds = new Set(attendanceRows.map((row) => row.user_id));
-              const notVotedPlayers = players
-                .filter(
-                  (player) =>
-                    player.profile_id && !votedUserIds.has(player.profile_id)
+          <button
+            onClick={() => setFilter("READY")}
+            style={getFilterButtonStyle("READY")}
+          >
+            Připravené
+          </button>
+        </div>
+      </div>
+
+      {message && (
+        <div
+          style={{
+            ...modernCardStyle,
+            padding: "12px 14px",
+            color: "#d9d9d9",
+            fontSize: "14px",
+          }}
+        >
+          {message}
+        </div>
+      )}
+
+      {filteredMatches.length === 0 ? (
+        <div
+          style={{
+            ...modernCardStyle,
+            padding: "16px",
+            color: "#b8b8b8",
+          }}
+        >
+          Žádné plánované zápasy pro tento filtr.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: "12px" }}>
+          {filteredMatches.map((match) => {
+            const statusLabel = getMatchStatusLabel(match.status);
+            const canOpenLive =
+              match.status === "prepared" ||
+              match.status === "live" ||
+              match.status === "halftime";
+
+            const myStatus = getMyAttendanceStatus(match.id);
+            const attendanceRows = getMatchAttendanceRows(match.id);
+            const summary = getMatchAttendanceSummary(match.id);
+            const isExpanded = expandedAttendanceMatchId === match.id;
+            const isSavingAttendance = savingAttendanceMatchId === match.id;
+            const isSavingFine = savingFineMatchId === match.id;
+            const statusStyle = getStatusStyle(match.status);
+
+            const yesRows = attendanceRows
+              .filter((row) => row.status === "yes")
+              .sort((a, b) =>
+                getPlayerNameByUserId(a.user_id).localeCompare(
+                  getPlayerNameByUserId(b.user_id),
+                  "cs"
                 )
-                .sort((a, b) => a.name.localeCompare(b.name, "cs"));
+              );
 
-              return (
+            const noRows = attendanceRows
+              .filter((row) => row.status === "no")
+              .sort((a, b) =>
+                getPlayerNameByUserId(a.user_id).localeCompare(
+                  getPlayerNameByUserId(b.user_id),
+                  "cs"
+                )
+              );
+
+            const votedUserIds = new Set(attendanceRows.map((row) => row.user_id));
+            const notVotedPlayers = players
+              .filter(
+                (player) =>
+                  player.profile_id && !votedUserIds.has(player.profile_id)
+              )
+              .sort((a, b) => a.name.localeCompare(b.name, "cs"));
+
+            return (
+              <div
+                id={`match-${match.id}`}
+                key={match.id}
+                style={{
+                  ...modernCardStyle,
+                  position: "relative",
+                  overflow: "hidden",
+                  padding: "14px",
+                }}
+              >
                 <div
-                  id={`match-${match.id}`}
-                  key={match.id}
                   style={{
-                    background: "rgba(255,255,255,0.04)",
-                    borderRadius: "14px",
-                    padding: "12px",
-                    border: "1px solid rgba(255,255,255,0.05)",
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: "5px",
+                    background:
+                      match.status === "prepared" ||
+                      match.status === "live" ||
+                      match.status === "halftime"
+                        ? primaryColor
+                        : primaryColor,
+                    boxShadow: `0 0 18px ${primaryColor}66`,
+                  }}
+                />
+
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "12px",
+                    paddingLeft: "4px",
                   }}
                 >
                   <div
@@ -848,263 +992,246 @@ export default function MatchesScreen({
                       alignItems: "flex-start",
                     }}
                   >
-                    <div
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                      }}
-                    >
-                      <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
-                        {formatDisplayDate(match.date)}
-                        {match.time ? ` • ${match.time}` : ""}
-                        {" — "}
-                        {match.team}-tým
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: "7px",
+                          alignItems: "center",
+                          color: "#b8b8b8",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                        }}
+                      >
+                        <span style={{ color: primaryColor }}>📅</span>
+                        <span>{formatDisplayDate(match.date)}</span>
+                        {match.time && (
+                          <>
+                            <span>•</span>
+                            <span>🕒 {match.time}</span>
+                          </>
+                        )}
+                        <span>•</span>
+                        <span>{match.team}-tým</span>
                       </div>
 
                       <div
                         style={{
-                          fontWeight: "bold",
-                          marginTop: "4px",
-                          lineHeight: 1.35,
-                          wordBreak: "break-word",
+                          marginTop: "12px",
+                          display: "grid",
+                          gridTemplateColumns: "1fr auto 1fr",
+                          alignItems: "center",
+                          gap: "10px",
                         }}
                       >
-                        {match.homeTeam} vs. {match.awayTeam}
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontWeight: 950,
+                              fontSize: "15px",
+                              lineHeight: 1.25,
+                              wordBreak: "break-word",
+                              color: "#ffffff",
+                            }}
+                          >
+                            {match.homeTeam}
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            color: primaryColor,
+                            fontWeight: 950,
+                            fontSize: "13px",
+                          }}
+                        >
+                          VS.
+                        </div>
+
+                        <div style={{ minWidth: 0, textAlign: "right" }}>
+                          <div
+                            style={{
+                              fontWeight: 950,
+                              fontSize: "15px",
+                              lineHeight: 1.25,
+                              wordBreak: "break-word",
+                              color: "#ffffff",
+                            }}
+                          >
+                            {match.awayTeam}
+                          </div>
+                        </div>
                       </div>
 
                       {match.location && (
                         <div
                           style={{
-                            marginTop: "6px",
+                            marginTop: "12px",
                             fontSize: "13px",
-                            color: "#b9c4bb",
+                            color: "#b8b8b8",
                             wordBreak: "break-word",
                           }}
                         >
-                          Hřiště: {match.location}
+                          📍 Hřiště: {match.location}
                         </div>
                       )}
-
-                      <div
-                        style={{
-                          marginTop: "8px",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          padding: "5px 9px",
-                          borderRadius: "999px",
-                          fontSize: "11px",
-                          fontWeight: "bold",
-                          background:
-                            match.status === "prepared" || match.status === "live"
-                              ? "rgba(61, 214, 140, 0.16)"
-                              : "rgba(255,255,255,0.08)",
-                          color:
-                            match.status === "prepared" || match.status === "live"
-                              ? "#7dffbc"
-                              : "#d5d5d5",
-                          border:
-                            match.status === "prepared" || match.status === "live"
-                              ? "1px solid rgba(61, 214, 140, 0.28)"
-                              : "1px solid rgba(255,255,255,0.08)",
-                        }}
-                      >
-                        {statusLabel}
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: "8px",
-                          fontSize: "13px",
-                          color: "#d4d4d4",
-                          lineHeight: 1.45,
-                        }}
-                      >
-                        {match.status === "prepared"
-                          ? "Sestava je uložená. Můžeš jít do live zápasu."
-                          : match.status === "live"
-                          ? "Zápas už běží. Můžeš se do něj vrátit."
-                          : match.status === "halftime"
-                          ? "Zápas je v přestávce. Můžeš pokračovat v live zápasu."
-                          : "Klikni na anketu nebo live podle stavu zápasu."}
-                      </div>
-
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: "8px",
-                          marginTop: "10px",
-                        }}
-                      >
-                        <div
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: "999px",
-                            background: "rgba(255,255,255,0.08)",
-                            fontSize: "12px",
-                            fontWeight: "bold",
-                          }}
-                        >
-                          Hlasovalo: {summary.totalVotes}
-                        </div>
-
-                        <div
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: "999px",
-                            background: "rgba(46, 204, 113, 0.16)",
-                            border: "1px solid rgba(46, 204, 113, 0.24)",
-                            color: "#9af0b6",
-                            fontSize: "12px",
-                            fontWeight: "bold",
-                          }}
-                        >
-                          BUDU: {summary.yesCount}
-                        </div>
-
-                        <div
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: "999px",
-                            background: "rgba(231, 76, 60, 0.16)",
-                            border: "1px solid rgba(231, 76, 60, 0.24)",
-                            color: "#ffb0a8",
-                            fontSize: "12px",
-                            fontWeight: "bold",
-                          }}
-                        >
-                          NEBUDU: {summary.noCount}
-                        </div>
-
-                        <div
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: "999px",
-                            background: "rgba(52, 152, 219, 0.16)",
-                            border: "1px solid rgba(52, 152, 219, 0.24)",
-                            color: "#9fd3ff",
-                            fontSize: "12px",
-                            fontWeight: "bold",
-                          }}
-                        >
-                          NEHLASOVAL: {summary.notVotedCount}
-                        </div>
-                      </div>
                     </div>
 
                     <div
                       style={{
-                        display: "grid",
-                        gap: "6px",
-                        flexShrink: 0,
+                        padding: "6px 10px",
+                        borderRadius: "999px",
+                        fontSize: "11px",
+                        fontWeight: 900,
+                        whiteSpace: "nowrap",
+                        ...statusStyle,
                       }}
                     >
+                      {statusLabel}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: isAdmin ? "1fr 1fr" : "1fr",
+                      gap: "8px",
+                    }}
+                  >
+                    <button
+                      style={softButtonStyle}
+                      onClick={() =>
+                        setExpandedAttendanceMatchId((prev) =>
+                          prev === match.id ? null : match.id
+                        )
+                      }
+                    >
+                      👥 {isExpanded ? "Skrýt anketu" : "Anketa"}
+                    </button>
+
+                    {isAdmin && (
                       <button
                         style={{
-                          minWidth: "92px",
-                          height: "36px",
-                          borderRadius: "8px",
+                          ...softButtonStyle,
+                          background: `${primaryColor}22`,
+                          border: `1px solid ${primaryColor}44`,
+                          color: "#ffffff",
+                        }}
+                        onClick={() => {
+                          setSelectedMatchId(match.id);
+                          setSelectedMode("detail");
+                          setMessage("");
+                        }}
+                      >
+                        ⚙️ Správa
+                      </button>
+                    )}
+
+                    {canOpenLive && (
+                      <button
+                        style={{
+                          ...primaryButtonStyle,
+                          gridColumn: "1 / -1",
+                        }}
+                        onClick={() => {
+                          setSelectedMatchId(match.id);
+                          setSelectedMode("live");
+                          setMessage("");
+                        }}
+                      >
+                        LIVE ZÁPAS
+                      </button>
+                    )}
+
+                    {isAdmin && (
+                      <button
+                        style={{
+                          ...softButtonStyle,
+                          gridColumn: "1 / -1",
+                          background: "rgba(198,40,40,0.95)",
                           border: "none",
-                          background: "rgba(255,255,255,0.12)",
-                          color: "white",
-                          cursor: "pointer",
-                          fontWeight: "bold",
-                          padding: "0 10px",
+                          opacity: deletingMatchId === match.id ? 0.7 : 1,
                         }}
                         onClick={() =>
-                          setExpandedAttendanceMatchId((prev) =>
-                            prev === match.id ? null : match.id
+                          void handleDeleteMatch(
+                            match.id,
+                            `${match.homeTeam} vs. ${match.awayTeam}`
                           )
                         }
+                        disabled={deletingMatchId === match.id}
                       >
-                        {isExpanded ? "Skrýt" : "Anketa"}
+                        {deletingMatchId === match.id ? "Mažu..." : "🗑️ Smazat"}
                       </button>
+                    )}
+                  </div>
 
-                      {canOpenLive && (
-                        <button
-                          style={{
-                            minWidth: "92px",
-                            height: "36px",
-                            borderRadius: "8px",
-                            border: "none",
-                            background: "#16a34a",
-                            color: "white",
-                            cursor: "pointer",
-                            fontWeight: "bold",
-                            padding: "0 10px",
-                          }}
-                          onClick={() => {
-                            setSelectedMatchId(match.id);
-                            setSelectedMode("live");
-                            setMessage("");
-                          }}
-                        >
-                          LIVE
-                        </button>
-                      )}
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "8px",
+                      paddingTop: "10px",
+                      borderTop: "1px solid rgba(255,255,255,0.07)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: "#d4d4d4",
+                        fontSize: "12px",
+                        fontWeight: 800,
+                      }}
+                    >
+                      👥 Hlasovalo: {summary.totalVotes}
+                    </div>
 
-                      {isAdmin && (
-                        <>
-                          <button
-                            style={{
-                              minWidth: "92px",
-                              height: "36px",
-                              borderRadius: "8px",
-                              border: "none",
-                              background: primaryColor,
-                              color: "white",
-                              cursor: "pointer",
-                              fontWeight: "bold",
-                              padding: "0 10px",
-                            }}
-                            onClick={() => {
-                              setSelectedMatchId(match.id);
-                              setSelectedMode("detail");
-                              setMessage("");
-                            }}
-                          >
-                            Správa
-                          </button>
+                    <div
+                      style={{
+                        color: "#9af0b6",
+                        fontSize: "12px",
+                        fontWeight: 900,
+                      }}
+                    >
+                      ✓ BUDU: {summary.yesCount}
+                    </div>
 
-                          <button
-                            style={{
-                              minWidth: "92px",
-                              height: "36px",
-                              borderRadius: "8px",
-                              border: "none",
-                              background: "#ff3b3b",
-                              color: "white",
-                              cursor:
-                                deletingMatchId === match.id ? "default" : "pointer",
-                              fontWeight: "bold",
-                              padding: "0 10px",
-                              opacity: deletingMatchId === match.id ? 0.7 : 1,
-                            }}
-                            onClick={() =>
-                              void handleDeleteMatch(
-                                match.id,
-                                `${match.homeTeam} vs. ${match.awayTeam}`
-                              )
-                            }
-                            disabled={deletingMatchId === match.id}
-                          >
-                            {deletingMatchId === match.id ? "..." : "Smazat"}
-                          </button>
-                        </>
-                      )}
+                    <div
+                      style={{
+                        color: "#ffb0a8",
+                        fontSize: "12px",
+                        fontWeight: 900,
+                      }}
+                    >
+                      ✕ NEBUDU: {summary.noCount}
+                    </div>
+
+                    <div
+                      style={{
+                        color: "#9fd3ff",
+                        fontSize: "12px",
+                        fontWeight: 900,
+                      }}
+                    >
+                      ? NEHLASOVAL: {summary.notVotedCount}
                     </div>
                   </div>
 
                   {isExpanded && (
-                    <div style={{ marginTop: "14px", display: "grid", gap: "12px" }}>
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: "12px",
+                        marginTop: "4px",
+                        paddingTop: "12px",
+                        borderTop: "1px solid rgba(255,255,255,0.07)",
+                      }}
+                    >
                       <button
                         type="button"
                         onClick={() => void handleCopyMatchLink(match.id)}
                         style={{
-                          ...styles.primaryButton,
-                          marginTop: 0,
-                          background: "rgba(255,255,255,0.12)",
-                          border: "none",
+                          ...softButtonStyle,
+                          width: "100%",
                         }}
                       >
                         Kopírovat odkaz na anketu
@@ -1118,14 +1245,14 @@ export default function MatchesScreen({
                           style={{
                             flex: 1,
                             border: "none",
-                            borderRadius: "12px",
+                            borderRadius: "14px",
                             padding: "12px",
                             background:
                               myStatus === "yes"
                                 ? "rgba(46, 204, 113, 0.95)"
                                 : "rgba(46, 204, 113, 0.18)",
                             color: "white",
-                            fontWeight: "bold",
+                            fontWeight: 950,
                             cursor: isSavingAttendance ? "default" : "pointer",
                             opacity: isSavingAttendance ? 0.7 : 1,
                           }}
@@ -1140,14 +1267,14 @@ export default function MatchesScreen({
                           style={{
                             flex: 1,
                             border: "none",
-                            borderRadius: "12px",
+                            borderRadius: "14px",
                             padding: "12px",
                             background:
                               myStatus === "no"
                                 ? "rgba(231, 76, 60, 0.95)"
                                 : "rgba(231, 76, 60, 0.18)",
                             color: "white",
-                            fontWeight: "bold",
+                            fontWeight: 950,
                             cursor: isSavingAttendance ? "default" : "pointer",
                             opacity: isSavingAttendance ? 0.7 : 1,
                           }}
@@ -1159,15 +1286,15 @@ export default function MatchesScreen({
                       <div style={{ display: "grid", gap: "10px" }}>
                         <div
                           style={{
-                            padding: "10px 12px",
-                            borderRadius: "12px",
+                            padding: "12px",
+                            borderRadius: "16px",
                             background: "rgba(46, 204, 113, 0.10)",
                             border: "1px solid rgba(46, 204, 113, 0.20)",
                           }}
                         >
                           <div
                             style={{
-                              fontWeight: "bold",
+                              fontWeight: 950,
                               color: "#9af0b6",
                               marginBottom: "8px",
                             }}
@@ -1195,15 +1322,15 @@ export default function MatchesScreen({
 
                         <div
                           style={{
-                            padding: "10px 12px",
-                            borderRadius: "12px",
+                            padding: "12px",
+                            borderRadius: "16px",
                             background: "rgba(231, 76, 60, 0.10)",
                             border: "1px solid rgba(231, 76, 60, 0.20)",
                           }}
                         >
                           <div
                             style={{
-                              fontWeight: "bold",
+                              fontWeight: 950,
                               color: "#ffb0a8",
                               marginBottom: "8px",
                             }}
@@ -1231,15 +1358,15 @@ export default function MatchesScreen({
 
                         <div
                           style={{
-                            padding: "10px 12px",
-                            borderRadius: "12px",
+                            padding: "12px",
+                            borderRadius: "16px",
                             background: "rgba(52, 152, 219, 0.10)",
                             border: "1px solid rgba(52, 152, 219, 0.20)",
                           }}
                         >
                           <div
                             style={{
-                              fontWeight: "bold",
+                              fontWeight: 950,
                               color: "#9fd3ff",
                               marginBottom: "8px",
                               display: "flex",
@@ -1262,11 +1389,11 @@ export default function MatchesScreen({
                                 disabled={isSavingFine}
                                 style={{
                                   border: "none",
-                                  borderRadius: "10px",
+                                  borderRadius: "12px",
                                   padding: "8px 10px",
                                   background: "rgba(241, 196, 15, 0.95)",
                                   color: "#111111",
-                                  fontWeight: "bold",
+                                  fontWeight: 950,
                                   cursor: isSavingFine ? "default" : "pointer",
                                   opacity: isSavingFine ? 0.7 : 1,
                                   whiteSpace: "nowrap",
@@ -1298,157 +1425,133 @@ export default function MatchesScreen({
                     </div>
                   )}
                 </div>
-              );
-            })}
-          </div>
-        )}
-
-        {isAdmin ? (
-          <div style={{ marginTop: "14px" }}>
-            <button
-              style={primaryButtonStyle}
-              onClick={() => {
-                setShowAddForm((prev) => !prev);
-                setMessage("");
-              }}
-            >
-              {showAddForm ? "Zavřít formulář" : "Přidat zápas"}
-            </button>
-
-            {showAddForm && (
-              <div
-                style={{
-                  marginTop: "12px",
-                  padding: "14px",
-                  borderRadius: "14px",
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                }}
-              >
-                <h3 style={{ marginTop: 0, marginBottom: "12px" }}>Přidat zápas</h3>
-
-                <div style={{ display: "grid", gap: "10px" }}>
-                  <select
-                    value={newTeam}
-                    onChange={(e) => setNewTeam(e.target.value as "A" | "B")}
-                    style={{
-                      ...styles.input,
-                      appearance: "none",
-                    }}
-                  >
-                    <option value="A" style={{ color: "black" }}>
-                      A-tým
-                    </option>
-                    {hasBTeam && (
-                      <option value="B" style={{ color: "black" }}>
-                        B-tým
-                      </option>
-                    )}
-                  </select>
-
-                  <input
-                    type="text"
-                    placeholder="Soupeř"
-                    value={newOpponent}
-                    onChange={(e) => setNewOpponent(e.target.value)}
-                    style={styles.input}
-                  />
-
-                  <div style={{ fontSize: "13px", color: "#b8b8b8", marginBottom: "-2px" }}>
-                    Datum zápasu
-                  </div>
-                  <input
-                    type="date"
-                    value={newDate}
-                    onChange={(e) => setNewDate(e.target.value)}
-                    style={styles.input}
-                  />
-
-                  <div style={{ fontSize: "13px", color: "#b8b8b8", marginBottom: "-2px" }}>
-                    Čas zápasu
-                  </div>
-                  <input
-                    type="time"
-                    value={newTime}
-                    onChange={(e) => setNewTime(e.target.value)}
-                    style={styles.input}
-                  />
-
-                  <div style={{ fontSize: "13px", color: "#b8b8b8", marginBottom: "-2px" }}>
-                    Hřiště / místo
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Např. Sport Arena Klatovy"
-                    value={newLocation}
-                    onChange={(e) => setNewLocation(e.target.value)}
-                    style={{
-                      ...styles.input,
-                      color: "white",
-                    }}
-                  />
-
-                  <select
-                    value={newVenue}
-                    onChange={(e) => setNewVenue(e.target.value as "home" | "away")}
-                    style={{
-                      ...styles.input,
-                      appearance: "none",
-                    }}
-                  >
-                    <option value="home" style={{ color: "black" }}>
-                      Doma
-                    </option>
-                    <option value="away" style={{ color: "black" }}>
-                      Venku
-                    </option>
-                  </select>
-
-                  <button
-                    style={{
-                      ...primaryButtonStyle,
-                      opacity: savingMatch ? 0.7 : 1,
-                    }}
-                    onClick={() => void handleAddMatch()}
-                    disabled={savingMatch}
-                  >
-                    {savingMatch ? "Ukládám..." : "Uložit zápas"}
-                  </button>
-
-                  <button
-                    style={{
-                      ...styles.primaryButton,
-                      marginTop: 0,
-                      background: "rgba(255,255,255,0.12)",
-                      border: "none",
-                    }}
-                    onClick={() => setShowAddForm(false)}
-                  >
-                    Zrušit
-                  </button>
-                </div>
               </div>
-            )}
-          </div>
-        ) : (
-          <div
-            style={{
-              marginTop: "14px",
-              padding: "12px",
-              borderRadius: "12px",
-              background: "rgba(255,255,255,0.04)",
-              color: "#b8b8b8",
-              fontSize: "14px",
+            );
+          })}
+        </div>
+      )}
+
+      {isAdmin ? (
+        <div style={{ ...modernCardStyle, padding: "14px" }}>
+          <button
+            style={primaryButtonStyle}
+            onClick={() => {
+              setShowAddForm((prev) => !prev);
+              setMessage("");
             }}
           >
-            Jako člen týmu můžeš sledovat zápasy, hlasovat v anketě a otevřít live zápas.
-          </div>
-        )}
+            {showAddForm ? "Zavřít formulář" : "＋ Přidat zápas"}
+          </button>
 
-        {message && (
-          <p style={{ marginTop: "12px", color: "#d9d9d9" }}>{message}</p>
-        )}
-      </div>
+          {showAddForm && (
+            <div
+              style={{
+                marginTop: "14px",
+                display: "grid",
+                gap: "10px",
+              }}
+            >
+              <select
+                value={newTeam}
+                onChange={(e) => setNewTeam(e.target.value as "A" | "B")}
+                style={{
+                  ...styles.input,
+                  appearance: "none",
+                }}
+              >
+                <option value="A" style={{ background: "#111111", color: "white" }}>
+                  A-tým
+                </option>
+                {hasBTeam && (
+                  <option value="B" style={{ background: "#111111", color: "white" }}>
+                    B-tým
+                  </option>
+                )}
+              </select>
+
+              <input
+                type="text"
+                placeholder="Soupeř"
+                value={newOpponent}
+                onChange={(e) => setNewOpponent(e.target.value)}
+                style={styles.input}
+              />
+
+              <input
+                type="date"
+                value={newDate}
+                onChange={(e) => setNewDate(e.target.value)}
+                style={styles.input}
+              />
+
+              <input
+                type="time"
+                value={newTime}
+                onChange={(e) => setNewTime(e.target.value)}
+                style={styles.input}
+              />
+
+              <input
+                type="text"
+                placeholder="Hřiště / místo"
+                value={newLocation}
+                onChange={(e) => setNewLocation(e.target.value)}
+                style={styles.input}
+              />
+
+              <select
+                value={newVenue}
+                onChange={(e) => setNewVenue(e.target.value as "home" | "away")}
+                style={{
+                  ...styles.input,
+                  appearance: "none",
+                }}
+              >
+                <option value="home" style={{ background: "#111111", color: "white" }}>
+                  Doma
+                </option>
+                <option value="away" style={{ background: "#111111", color: "white" }}>
+                  Venku
+                </option>
+              </select>
+
+              <button
+                style={{
+                  ...primaryButtonStyle,
+                  opacity: savingMatch ? 0.7 : 1,
+                }}
+                onClick={() => void handleAddMatch()}
+                disabled={savingMatch}
+              >
+                {savingMatch ? "Ukládám..." : "Uložit zápas"}
+              </button>
+
+              <button
+                style={{
+                  ...softButtonStyle,
+                  width: "100%",
+                }}
+                onClick={() => setShowAddForm(false)}
+              >
+                Zrušit
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div
+          style={{
+            ...modernCardStyle,
+            padding: "14px",
+            color: "#b8b8b8",
+            fontSize: "14px",
+            lineHeight: 1.5,
+          }}
+        >
+          Jako člen týmu můžeš sledovat zápasy, hlasovat v anketě a otevřít live
+          zápas.
+        </div>
+      )}
     </div>
   );
 }
