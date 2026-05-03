@@ -144,6 +144,9 @@ export default function PlayedMatchDetailScreen({
   );
   const [savingEdit, setSavingEdit] = useState(false);
 
+  const [eventsOpen, setEventsOpen] = useState(false);
+  const [lineupOpen, setLineupOpen] = useState(false);
+
   useEffect(() => {
     setLocalMatch(match);
     setEditScore(match.score);
@@ -233,16 +236,6 @@ export default function PlayedMatchDetailScreen({
     fontWeight: 900,
   };
 
-  const dangerButtonStyle: React.CSSProperties = {
-    ...styles.primaryButton,
-    marginTop: 0,
-    background: "rgba(198,40,40,0.95)",
-    color: "#ffffff",
-    border: "none",
-    boxShadow: "none",
-    fontWeight: 900,
-  };
-
   const getPlayerName = (number: number) => {
     return players.find((player) => player.number === number)?.name ?? `#${number}`;
   };
@@ -273,14 +266,26 @@ export default function PlayedMatchDetailScreen({
   }, [ratingSummary]);
 
   const playersWithStats = useMemo(() => {
-    return localMatch.playerStats.filter(
-      (player) =>
-        player.goals > 0 ||
-        player.assists > 0 ||
-        (player.yellowCards ?? 0) > 0 ||
-        (player.redCards ?? 0) > 0
-    );
-  }, [localMatch.playerStats]);
+    return localMatch.playerStats
+      .filter(
+        (player) =>
+          player.goals > 0 ||
+          player.assists > 0 ||
+          (player.yellowCards ?? 0) > 0 ||
+          (player.redCards ?? 0) > 0
+      )
+      .sort((a, b) => {
+        const bPoints = b.goals + b.assists;
+        const aPoints = a.goals + a.assists;
+
+        if (bPoints !== aPoints) return bPoints - aPoints;
+        if (b.goals !== a.goals) return b.goals - a.goals;
+        return getPlayerName(a.playerNumber).localeCompare(
+          getPlayerName(b.playerNumber),
+          "cs"
+        );
+      });
+  }, [localMatch.playerStats, players]);
 
   const lineupPlayers = useMemo(() => {
     return localMatch.playerStats
@@ -297,6 +302,20 @@ export default function PlayedMatchDetailScreen({
   }, [localMatch.finished_at]);
 
   const isVotingOpen = votingStatus?.isOpen ?? false;
+
+  const sortedRatingPlayerNumbers = useMemo(() => {
+    if (isVotingOpen) return matchPlayerNumbers;
+
+    return matchPlayerNumbers.slice().sort((a, b) => {
+      const aSummary = summaryMap.get(a);
+      const bSummary = summaryMap.get(b);
+      const aRating = aSummary?.averageRating ?? -1;
+      const bRating = bSummary?.averageRating ?? -1;
+
+      if (bRating !== aRating) return bRating - aRating;
+      return getPlayerName(a).localeCompare(getPlayerName(b), "cs");
+    });
+  }, [isVotingOpen, matchPlayerNumbers, summaryMap, players]);
 
   const playerHasEvent = (playerNumber: number) => {
     return localMatch.events.some((event) => {
@@ -409,6 +428,7 @@ export default function PlayedMatchDetailScreen({
 
     setEditScore(localMatch.score);
     setEditPlayerStats(localMatch.playerStats);
+    setLineupOpen(true);
     setEditMode(true);
     setMessage("");
   };
@@ -515,21 +535,71 @@ export default function PlayedMatchDetailScreen({
     setSavingPlayerNumber(null);
   };
 
-  return (
-    <div style={{ display: "grid", gap: "14px" }}>
+  const renderCollapsibleHeader = (
+    title: string,
+    subtitle: string,
+    isOpen: boolean,
+    onClick: () => void
+  ) => (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        width: "100%",
+        border: "none",
+        background: "transparent",
+        color: "white",
+        padding: 0,
+        cursor: "pointer",
+        textAlign: "left",
+      }}
+    >
       <div
         style={{
-          ...glassCardStyle,
-          padding: "12px 14px",
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "12px",
+          alignItems: "center",
         }}
       >
+        <div>
+          <div style={{ fontWeight: 950, fontSize: "15px" }}>{title}</div>
+          <div
+            style={{
+              marginTop: "4px",
+              color: "#b8b8b8",
+              fontSize: "12px",
+              fontWeight: 700,
+            }}
+          >
+            {subtitle}
+          </div>
+        </div>
+
         <div
           style={{
+            width: "34px",
+            height: "34px",
+            borderRadius: "12px",
+            background: "rgba(255,255,255,0.08)",
             display: "flex",
             alignItems: "center",
-            gap: "12px",
+            justifyContent: "center",
+            fontWeight: 950,
+            transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+            transition: "transform 0.2s ease",
           }}
         >
+          ›
+        </div>
+      </div>
+    </button>
+  );
+
+  return (
+    <div style={{ display: "grid", gap: "14px" }}>
+      <div style={{ ...glassCardStyle, padding: "12px 14px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <button
             onClick={onBack}
             style={{
@@ -546,13 +616,7 @@ export default function PlayedMatchDetailScreen({
             ← Zpět
           </button>
 
-          <div
-            style={{
-              fontWeight: 950,
-              fontSize: "16px",
-              letterSpacing: "0.3px",
-            }}
-          >
+          <div style={{ fontWeight: 950, fontSize: "16px", letterSpacing: "0.3px" }}>
             DETAIL ZÁPASU
           </div>
         </div>
@@ -669,10 +733,7 @@ export default function PlayedMatchDetailScreen({
                 <>
                   <button
                     type="button"
-                    style={{
-                      ...primaryButtonStyle,
-                      opacity: savingEdit ? 0.7 : 1,
-                    }}
+                    style={{ ...primaryButtonStyle, opacity: savingEdit ? 0.7 : 1 }}
                     onClick={() => void handleSaveEdit()}
                     disabled={savingEdit}
                   >
@@ -708,311 +769,13 @@ export default function PlayedMatchDetailScreen({
         </div>
       )}
 
-      <div
-        style={{
-          ...glassCardStyle,
-          padding: "14px",
-        }}
-      >
-        <div
-          style={{
-            fontWeight: 950,
-            marginBottom: "10px",
-            fontSize: "15px",
-          }}
-        >
-          Průběh zápasu
+      <div style={{ ...glassCardStyle, padding: "14px" }}>
+        <div style={{ fontWeight: 950, marginBottom: "10px", fontSize: "15px" }}>
+          Zápasové statistiky
         </div>
 
         <div style={{ display: "grid", gap: "8px" }}>
-          {localMatch.events.length === 0 ? (
-            <div
-              style={{
-                padding: "12px",
-                borderRadius: "16px",
-                background: "rgba(255,255,255,0.04)",
-                color: "#b8b8b8",
-              }}
-            >
-              Bez zapsaných událostí.
-            </div>
-          ) : (
-            localMatch.events.map((event, index) => (
-              <div
-                key={index}
-                style={{
-                  padding: "12px",
-                  borderRadius: "16px",
-                  background:
-                    event.type === "goal_for"
-                      ? "rgba(34,197,94,0.10)"
-                      : event.type === "goal_against"
-                      ? "rgba(198,40,40,0.14)"
-                      : event.type === "yellow_card"
-                      ? "rgba(245, 158, 11, 0.16)"
-                      : "rgba(185, 28, 28, 0.18)",
-                  border:
-                    event.type === "goal_for"
-                      ? "1px solid rgba(34,197,94,0.22)"
-                      : event.type === "goal_against"
-                      ? "1px solid rgba(198,40,40,0.35)"
-                      : event.type === "yellow_card"
-                      ? "1px solid rgba(245, 158, 11, 0.30)"
-                      : "1px solid rgba(185, 28, 28, 0.35)",
-                }}
-              >
-                {event.type === "goal_for" ? (
-                  <div style={{ fontWeight: 900 }}>
-                    ⚽ {getPlayerName(event.scorer)}
-                    {event.assist !== null
-                      ? ` (asistence ${getPlayerName(event.assist)})`
-                      : ""}
-                  </div>
-                ) : event.type === "goal_against" ? (
-                  <div style={{ fontWeight: 900 }}>🥅 Inkasovaný gól</div>
-                ) : event.type === "yellow_card" ? (
-                  <div style={{ fontWeight: 900 }}>
-                    🟨 Žlutá karta: {getPlayerName(event.playerNumber)}
-                  </div>
-                ) : (
-                  <div style={{ fontWeight: 900 }}>
-                    🟥 Červená karta: {getPlayerName(event.playerNumber)}
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      <div
-        style={{
-          ...glassCardStyle,
-          padding: "14px",
-        }}
-      >
-        <div
-          style={{
-            fontWeight: 950,
-            marginBottom: "10px",
-            fontSize: "15px",
-          }}
-        >
-          Zapsaní hráči v zápase
-        </div>
-
-        <div style={{ display: "grid", gap: "8px" }}>
-          {lineupPlayers.map((stat) => {
-            const removable = canRemovePlayer(stat.playerNumber);
-            const isRemoving = removingPlayerNumber === stat.playerNumber;
-            const isGoalkeeper = localMatch.goalkeeperNumber === stat.playerNumber;
-
-            const editStat =
-              editPlayerStats.find((item) => item.playerNumber === stat.playerNumber) ??
-              stat;
-
-            return (
-              <div
-                key={stat.playerNumber}
-                style={{
-                  position: "relative",
-                  overflow: "hidden",
-                  padding: "12px",
-                  borderRadius: "18px",
-                  background: isGoalkeeper
-                    ? "rgba(255,216,107,0.10)"
-                    : "rgba(255,255,255,0.04)",
-                  border: isGoalkeeper
-                    ? "1px solid rgba(255,216,107,0.28)"
-                    : "1px solid rgba(255,255,255,0.06)",
-                }}
-              >
-                {isGoalkeeper && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      top: 0,
-                      bottom: 0,
-                      width: "4px",
-                      background: "#ffd86b",
-                      boxShadow: "0 0 16px rgba(255,216,107,0.45)",
-                    }}
-                  />
-                )}
-
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: "12px",
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 950 }}>
-                      {getPlayerName(stat.playerNumber)}
-                    </div>
-
-                    {!editMode ? (
-                      <div
-                        style={{
-                          fontSize: "12px",
-                          color: isGoalkeeper ? "#ffd86b" : "#b8b8b8",
-                          marginTop: "4px",
-                          lineHeight: 1.5,
-                          fontWeight: isGoalkeeper ? 900 : 600,
-                        }}
-                      >
-                        {stat.goals}G / {stat.assists}A • ŽK:{" "}
-                        {stat.yellowCards ?? 0} • ČK: {stat.redCards ?? 0}
-                        {isGoalkeeper ? " • BR" : ""}
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr",
-                          gap: "8px",
-                          marginTop: "10px",
-                        }}
-                      >
-                        <input
-                          type="number"
-                          min={0}
-                          value={editStat.goals}
-                          onChange={(event) =>
-                            updateEditStat(
-                              stat.playerNumber,
-                              "goals",
-                              event.target.value
-                            )
-                          }
-                          placeholder="Góly"
-                          style={styles.input}
-                        />
-
-                        <input
-                          type="number"
-                          min={0}
-                          value={editStat.assists}
-                          onChange={(event) =>
-                            updateEditStat(
-                              stat.playerNumber,
-                              "assists",
-                              event.target.value
-                            )
-                          }
-                          placeholder="Asistence"
-                          style={styles.input}
-                        />
-
-                        <input
-                          type="number"
-                          min={0}
-                          value={editStat.yellowCards ?? 0}
-                          onChange={(event) =>
-                            updateEditStat(
-                              stat.playerNumber,
-                              "yellowCards",
-                              event.target.value
-                            )
-                          }
-                          placeholder="ŽK"
-                          style={styles.input}
-                        />
-
-                        <input
-                          type="number"
-                          min={0}
-                          value={editStat.redCards ?? 0}
-                          onChange={(event) =>
-                            updateEditStat(
-                              stat.playerNumber,
-                              "redCards",
-                              event.target.value
-                            )
-                          }
-                          placeholder="ČK"
-                          style={styles.input}
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {!editMode && (
-                    <>
-                      {removable ? (
-                        <button
-                          type="button"
-                          onClick={() => void handleRemovePlayer(stat.playerNumber)}
-                          disabled={isRemoving}
-                          style={{
-                            border: "none",
-                            borderRadius: "12px",
-                            padding: "10px 12px",
-                            background: "rgba(198,40,40,0.95)",
-                            color: "white",
-                            fontWeight: 900,
-                            cursor: isRemoving ? "default" : "pointer",
-                            opacity: isRemoving ? 0.7 : 1,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {isRemoving ? "..." : "Odebrat"}
-                        </button>
-                      ) : (
-                        <div
-                          style={{
-                            fontSize: "12px",
-                            color: isGoalkeeper ? "#ffd86b" : "#8f8f8f",
-                            fontWeight: 900,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {isGoalkeeper ? "BR" : "Zásah"}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-
-          {lineupPlayers.length === 0 && (
-            <div
-              style={{
-                padding: "12px",
-                borderRadius: "16px",
-                background: "rgba(255,255,255,0.04)",
-                color: "#b8b8b8",
-              }}
-            >
-              V zápase zatím nejsou zapsaní žádní hráči.
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div
-        style={{
-          ...glassCardStyle,
-          padding: "14px",
-        }}
-      >
-        <div
-          style={{
-            fontWeight: 950,
-            marginBottom: "10px",
-            fontSize: "15px",
-          }}
-        >
-          Statistiky hráčů v zápase
-        </div>
-
-        <div style={{ display: "grid", gap: "8px" }}>
-          {playersWithStats.map((stat) => (
+          {playersWithStats.map((stat, index) => (
             <div
               key={stat.playerNumber}
               style={{
@@ -1025,18 +788,36 @@ export default function PlayedMatchDetailScreen({
                 border: "1px solid rgba(255,255,255,0.06)",
               }}
             >
-              <div style={{ fontWeight: 900 }}>{getPlayerName(stat.playerNumber)}</div>
-              <div style={{ textAlign: "right", fontWeight: 800 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div
+                  style={{
+                    width: "34px",
+                    height: "34px",
+                    borderRadius: "12px",
+                    background: index === 0 ? "rgba(34,197,94,0.22)" : "rgba(255,255,255,0.08)",
+                    color: index === 0 ? "#22c55e" : "#ffffff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 950,
+                  }}
+                >
+                  {index + 1}
+                </div>
+
+                <div>
+                  <div style={{ fontWeight: 950 }}>{getPlayerName(stat.playerNumber)}</div>
+                  <div style={{ fontSize: "12px", color: "#b8b8b8", marginTop: "3px" }}>
+                    Body: {stat.goals + stat.assists}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ textAlign: "right", fontWeight: 900 }}>
                 <div>
                   {stat.goals}G / {stat.assists}A
                 </div>
-                <div
-                  style={{
-                    fontSize: "12px",
-                    color: "#b8b8b8",
-                    marginTop: "4px",
-                  }}
-                >
+                <div style={{ fontSize: "12px", color: "#b8b8b8", marginTop: "4px" }}>
                   ŽK: {stat.yellowCards ?? 0} / ČK: {stat.redCards ?? 0}
                 </div>
               </div>
@@ -1058,19 +839,283 @@ export default function PlayedMatchDetailScreen({
         </div>
       </div>
 
-      <div
-        style={{
-          ...glassCardStyle,
-          padding: "14px",
-        }}
-      >
-        <div
-          style={{
-            fontWeight: 950,
-            marginBottom: "10px",
-            fontSize: "15px",
-          }}
-        >
+      <div style={{ ...glassCardStyle, padding: "14px" }}>
+        {renderCollapsibleHeader(
+          "Průběh zápasu",
+          `${localMatch.events.length} událostí`,
+          eventsOpen,
+          () => setEventsOpen((prev) => !prev)
+        )}
+
+        {eventsOpen && (
+          <div style={{ display: "grid", gap: "8px", marginTop: "12px" }}>
+            {localMatch.events.length === 0 ? (
+              <div
+                style={{
+                  padding: "12px",
+                  borderRadius: "16px",
+                  background: "rgba(255,255,255,0.04)",
+                  color: "#b8b8b8",
+                }}
+              >
+                Bez zapsaných událostí.
+              </div>
+            ) : (
+              localMatch.events.map((event, index) => (
+                <div
+                  key={index}
+                  style={{
+                    padding: "12px",
+                    borderRadius: "16px",
+                    background:
+                      event.type === "goal_for"
+                        ? "rgba(34,197,94,0.10)"
+                        : event.type === "goal_against"
+                        ? "rgba(198,40,40,0.14)"
+                        : event.type === "yellow_card"
+                        ? "rgba(245, 158, 11, 0.16)"
+                        : "rgba(185, 28, 28, 0.18)",
+                    border:
+                      event.type === "goal_for"
+                        ? "1px solid rgba(34,197,94,0.22)"
+                        : event.type === "goal_against"
+                        ? "1px solid rgba(198,40,40,0.35)"
+                        : event.type === "yellow_card"
+                        ? "1px solid rgba(245, 158, 11, 0.30)"
+                        : "1px solid rgba(185, 28, 28, 0.35)",
+                  }}
+                >
+                  {event.type === "goal_for" ? (
+                    <div style={{ fontWeight: 900 }}>
+                      ⚽ {getPlayerName(event.scorer)}
+                      {event.assist !== null
+                        ? ` (asistence ${getPlayerName(event.assist)})`
+                        : ""}
+                    </div>
+                  ) : event.type === "goal_against" ? (
+                    <div style={{ fontWeight: 900 }}>🥅 Inkasovaný gól</div>
+                  ) : event.type === "yellow_card" ? (
+                    <div style={{ fontWeight: 900 }}>
+                      🟨 Žlutá karta: {getPlayerName(event.playerNumber)}
+                    </div>
+                  ) : (
+                    <div style={{ fontWeight: 900 }}>
+                      🟥 Červená karta: {getPlayerName(event.playerNumber)}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={{ ...glassCardStyle, padding: "14px" }}>
+        {renderCollapsibleHeader(
+          "SESTAVA",
+          `${lineupPlayers.length} hráčů v zápase`,
+          lineupOpen,
+          () => setLineupOpen((prev) => !prev)
+        )}
+
+        {lineupOpen && (
+          <div style={{ display: "grid", gap: "8px", marginTop: "12px" }}>
+            {lineupPlayers.map((stat) => {
+              const removable = canRemovePlayer(stat.playerNumber);
+              const isRemoving = removingPlayerNumber === stat.playerNumber;
+              const isGoalkeeper = localMatch.goalkeeperNumber === stat.playerNumber;
+
+              const editStat =
+                editPlayerStats.find((item) => item.playerNumber === stat.playerNumber) ??
+                stat;
+
+              return (
+                <div
+                  key={stat.playerNumber}
+                  style={{
+                    position: "relative",
+                    overflow: "hidden",
+                    padding: "12px",
+                    borderRadius: "18px",
+                    background: isGoalkeeper
+                      ? "rgba(255,216,107,0.10)"
+                      : "rgba(255,255,255,0.04)",
+                    border: isGoalkeeper
+                      ? "1px solid rgba(255,216,107,0.28)"
+                      : "1px solid rgba(255,255,255,0.06)",
+                  }}
+                >
+                  {isGoalkeeper && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: "4px",
+                        background: "#ffd86b",
+                        boxShadow: "0 0 16px rgba(255,216,107,0.45)",
+                      }}
+                    />
+                  )}
+
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: "12px",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 950 }}>
+                        {getPlayerName(stat.playerNumber)}
+                      </div>
+
+                      {!editMode ? (
+                        <div
+                          style={{
+                            fontSize: "12px",
+                            color: isGoalkeeper ? "#ffd86b" : "#b8b8b8",
+                            marginTop: "4px",
+                            lineHeight: 1.5,
+                            fontWeight: isGoalkeeper ? 900 : 600,
+                          }}
+                        >
+                          {stat.goals}G / {stat.assists}A • ŽK:{" "}
+                          {stat.yellowCards ?? 0} • ČK: {stat.redCards ?? 0}
+                          {isGoalkeeper ? " • BR" : ""}
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: "8px",
+                            marginTop: "10px",
+                          }}
+                        >
+                          <input
+                            type="number"
+                            min={0}
+                            value={editStat.goals}
+                            onChange={(event) =>
+                              updateEditStat(
+                                stat.playerNumber,
+                                "goals",
+                                event.target.value
+                              )
+                            }
+                            placeholder="Góly"
+                            style={styles.input}
+                          />
+
+                          <input
+                            type="number"
+                            min={0}
+                            value={editStat.assists}
+                            onChange={(event) =>
+                              updateEditStat(
+                                stat.playerNumber,
+                                "assists",
+                                event.target.value
+                              )
+                            }
+                            placeholder="Asistence"
+                            style={styles.input}
+                          />
+
+                          <input
+                            type="number"
+                            min={0}
+                            value={editStat.yellowCards ?? 0}
+                            onChange={(event) =>
+                              updateEditStat(
+                                stat.playerNumber,
+                                "yellowCards",
+                                event.target.value
+                              )
+                            }
+                            placeholder="ŽK"
+                            style={styles.input}
+                          />
+
+                          <input
+                            type="number"
+                            min={0}
+                            value={editStat.redCards ?? 0}
+                            onChange={(event) =>
+                              updateEditStat(
+                                stat.playerNumber,
+                                "redCards",
+                                event.target.value
+                              )
+                            }
+                            placeholder="ČK"
+                            style={styles.input}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {!editMode && (
+                      <>
+                        {removable ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleRemovePlayer(stat.playerNumber)}
+                            disabled={isRemoving}
+                            style={{
+                              border: "none",
+                              borderRadius: "12px",
+                              padding: "10px 12px",
+                              background: "rgba(198,40,40,0.95)",
+                              color: "white",
+                              fontWeight: 900,
+                              cursor: isRemoving ? "default" : "pointer",
+                              opacity: isRemoving ? 0.7 : 1,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {isRemoving ? "..." : "Odebrat"}
+                          </button>
+                        ) : (
+                          <div
+                            style={{
+                              fontSize: "12px",
+                              color: isGoalkeeper ? "#ffd86b" : "#8f8f8f",
+                              fontWeight: 900,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {isGoalkeeper ? "BR" : "Zásah"}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {lineupPlayers.length === 0 && (
+              <div
+                style={{
+                  padding: "12px",
+                  borderRadius: "16px",
+                  background: "rgba(255,255,255,0.04)",
+                  color: "#b8b8b8",
+                }}
+              >
+                V zápase zatím nejsou zapsaní žádní hráči.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={{ ...glassCardStyle, padding: "14px" }}>
+        <div style={{ fontWeight: 950, marginBottom: "10px", fontSize: "15px" }}>
           Hodnocení hráčů
         </div>
 
@@ -1116,7 +1161,7 @@ export default function PlayedMatchDetailScreen({
         </div>
 
         <div style={{ display: "grid", gap: "10px" }}>
-          {matchPlayerNumbers.map((playerNumber) => {
+          {sortedRatingPlayerNumbers.map((playerNumber, index) => {
             const summary = summaryMap.get(playerNumber);
             const badgeStyles = getRatingBadgeStyles(summary?.color ?? "neutral");
             const selectedValue = selectedRatings[playerNumber];
@@ -1139,15 +1184,38 @@ export default function PlayedMatchDetailScreen({
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: "12px",
-                    marginBottom: "10px",
+                    marginBottom: isVotingOpen ? "10px" : 0,
                   }}
                 >
-                  <div>
-                    <div style={{ fontWeight: 950 }}>
-                      {getPlayerName(playerNumber)}
-                    </div>
-                    <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
-                      Hlasů: {summary?.votes ?? 0}
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    {!isVotingOpen && (
+                      <div
+                        style={{
+                          width: "34px",
+                          height: "34px",
+                          borderRadius: "12px",
+                          background:
+                            index === 0
+                              ? "rgba(52, 152, 219, 0.22)"
+                              : "rgba(255,255,255,0.08)",
+                          color: index === 0 ? "#9fd3ff" : "#ffffff",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontWeight: 950,
+                        }}
+                      >
+                        {index + 1}
+                      </div>
+                    )}
+
+                    <div>
+                      <div style={{ fontWeight: 950 }}>{getPlayerName(playerNumber)}</div>
+                      {isVotingOpen && (
+                        <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
+                          Hlasů: {summary?.votes ?? 0}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1184,77 +1252,60 @@ export default function PlayedMatchDetailScreen({
                   </div>
                 </div>
 
-                {!isVotingOpen ? (
-                  <div
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: "12px",
-                      background: "rgba(255,255,255,0.06)",
-                      color: "#9f9f9f",
-                      fontSize: "12px",
-                      fontWeight: 900,
-                      textAlign: "center",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                    }}
-                  >
-                    Hlasování pro tento zápas už skončilo
-                  </div>
-                ) : isSelf ? (
-                  <div
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: "12px",
-                      background: "rgba(255,255,255,0.06)",
-                      color: "#9f9f9f",
-                      fontSize: "12px",
-                      fontWeight: 900,
-                      textAlign: "center",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                    }}
-                  >
-                    Nelze hodnotit sám sebe
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "6px",
-                    }}
-                  >
-                    {ratingOptions.map((ratingValue) => {
-                      const isSelected = selectedValue === ratingValue;
-                      const isSaving = savingPlayerNumber === playerNumber;
+                {isVotingOpen && (
+                  <>
+                    {isSelf ? (
+                      <div
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: "12px",
+                          background: "rgba(255,255,255,0.06)",
+                          color: "#9f9f9f",
+                          fontSize: "12px",
+                          fontWeight: 900,
+                          textAlign: "center",
+                          border: "1px solid rgba(255,255,255,0.08)",
+                        }}
+                      >
+                        Nelze hodnotit sám sebe
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                        {ratingOptions.map((ratingValue) => {
+                          const isSelected = selectedValue === ratingValue;
+                          const isSaving = savingPlayerNumber === playerNumber;
 
-                      return (
-                        <button
-                          key={`${playerNumber}-${ratingValue}`}
-                          type="button"
-                          onClick={() => void handleSaveRating(playerNumber, ratingValue)}
-                          disabled={isSaving || !isVotingOpen}
-                          style={{
-                            minWidth: "48px",
-                            height: "36px",
-                            padding: "0 8px",
-                            borderRadius: "12px",
-                            border: isSelected
-                              ? "1px solid rgba(255,255,255,0.32)"
-                              : "1px solid rgba(255,255,255,0.08)",
-                            background: isSelected
-                              ? "rgba(255,255,255,0.18)"
-                              : "rgba(255,255,255,0.08)",
-                            color: "white",
-                            fontWeight: 900,
-                            fontSize: "13px",
-                            cursor: isSaving ? "default" : "pointer",
-                            opacity: isSaving ? 0.7 : 1,
-                          }}
-                        >
-                          {formatRatingValue(ratingValue)}
-                        </button>
-                      );
-                    })}
-                  </div>
+                          return (
+                            <button
+                              key={`${playerNumber}-${ratingValue}`}
+                              type="button"
+                              onClick={() => void handleSaveRating(playerNumber, ratingValue)}
+                              disabled={isSaving || !isVotingOpen}
+                              style={{
+                                minWidth: "48px",
+                                height: "36px",
+                                padding: "0 8px",
+                                borderRadius: "12px",
+                                border: isSelected
+                                  ? "1px solid rgba(255,255,255,0.32)"
+                                  : "1px solid rgba(255,255,255,0.08)",
+                                background: isSelected
+                                  ? "rgba(255,255,255,0.18)"
+                                  : "rgba(255,255,255,0.08)",
+                                color: "white",
+                                fontWeight: 900,
+                                fontSize: "13px",
+                                cursor: isSaving ? "default" : "pointer",
+                                opacity: isSaving ? 0.7 : 1,
+                              }}
+                            >
+                              {formatRatingValue(ratingValue)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             );
