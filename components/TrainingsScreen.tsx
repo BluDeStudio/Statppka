@@ -151,7 +151,7 @@ function normalizeTemplateName(value?: string | null) {
 
 export default function TrainingsScreen({
   clubId,
-  primaryColor = "#888888",
+  primaryColor = "#22c55e",
   isAdmin,
   openTrainingId = null,
   onOpenTrainingHandled,
@@ -819,26 +819,89 @@ export default function TrainingsScreen({
     setMessage(`Pokuta za nehlasování byla udělena ${createdCount} hráčům.`);
   };
 
+  const glassCardStyle: React.CSSProperties = {
+    borderRadius: "22px",
+    background:
+      "linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.025))",
+    border: "1px solid rgba(255,255,255,0.09)",
+    boxShadow: "0 16px 36px rgba(0,0,0,0.30)",
+    backdropFilter: "blur(14px)",
+  };
+
+  const primaryButtonStyle: React.CSSProperties = {
+    ...styles.primaryButton,
+    marginTop: 0,
+    background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`,
+    color: "#071107",
+    border: "none",
+    boxShadow: `0 12px 28px ${primaryColor}33`,
+    fontWeight: 950,
+  };
+
+  const softButtonStyle: React.CSSProperties = {
+    ...styles.primaryButton,
+    marginTop: 0,
+    background: "rgba(255,255,255,0.10)",
+    color: "#ffffff",
+    border: "1px solid rgba(255,255,255,0.10)",
+    boxShadow: "none",
+    fontWeight: 900,
+  };
+
+  const dangerButtonStyle: React.CSSProperties = {
+    ...styles.primaryButton,
+    marginTop: 0,
+    background: "rgba(198,40,40,0.95)",
+    color: "#ffffff",
+    border: "none",
+    boxShadow: "none",
+    fontWeight: 900,
+  };
+
   const tabButtonBaseStyle: React.CSSProperties = {
     flex: 1,
     border: "none",
-    borderRadius: "10px",
-    padding: "10px 12px",
-    background: "rgba(255,255,255,0.08)",
+    borderRadius: "14px",
+    padding: "12px 10px",
+    background: "rgba(255,255,255,0.07)",
     color: "white",
-    fontWeight: "bold",
+    fontWeight: 950,
     cursor: "pointer",
   };
 
   const getTabButtonStyle = (active: boolean): React.CSSProperties => ({
     ...tabButtonBaseStyle,
-    background: active ? primaryColor : "rgba(255,255,255,0.08)",
+    background: active
+      ? `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`
+      : "rgba(255,255,255,0.07)",
+    color: active ? "#071107" : "#ffffff",
+    boxShadow: active ? `0 10px 24px ${primaryColor}33` : "none",
+  });
+
+  const summaryPillStyle = (
+    background: string,
+    color: string,
+    border: string
+  ): React.CSSProperties => ({
+    padding: "6px 9px",
+    borderRadius: "999px",
+    background,
+    border,
+    color,
+    fontSize: "11px",
+    fontWeight: 950,
+    whiteSpace: "nowrap",
   });
 
   return (
-    <div style={{ display: "grid", gap: "12px" }}>
+    <div style={{ display: "grid", gap: "14px" }}>
       {isAdmin && (
-        <div style={styles.card}>
+        <div
+          style={{
+            ...glassCardStyle,
+            padding: "14px",
+          }}
+        >
           <button
             onClick={() => {
               if (editingTrainingId) {
@@ -846,122 +909,127 @@ export default function TrainingsScreen({
               }
               setShowForm((prev) => !prev);
             }}
-            style={{
-              ...styles.primaryButton,
-              marginTop: 0,
-              background: primaryColor,
-            }}
+            style={primaryButtonStyle}
           >
-            {showForm ? "Zavřít formulář" : "Vytvořit trénink"}
+            {showForm ? "Zavřít formulář" : "＋ Vytvořit trénink"}
           </button>
 
           {(showForm || editingTrainingId) && (
-            <>
-              <h2 style={{ ...styles.screenTitle, marginTop: "16px" }}>
+            <div
+              style={{
+                display: "grid",
+                gap: "10px",
+                marginTop: "14px",
+                paddingTop: "14px",
+                borderTop: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "13px",
+                  color: "#b8b8b8",
+                  fontWeight: 950,
+                  letterSpacing: "0.8px",
+                  textTransform: "uppercase",
+                }}
+              >
                 {editingTrainingId ? "Upravit trénink" : "Nový trénink"}
-              </h2>
+              </div>
 
-              <div style={{ display: "grid", gap: "10px" }}>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                style={styles.input}
+              />
+
+              <div style={{ display: "flex", gap: "10px" }}>
                 <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  style={styles.input}
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  style={{ ...styles.input, flex: 1 }}
                 />
-
-                <div style={{ display: "flex", gap: "10px" }}>
-                  <input
-                    type="time"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    style={{ ...styles.input, flex: 1 }}
-                  />
-
-                  <input
-                    type="time"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    style={{ ...styles.input, flex: 1 }}
-                  />
-                </div>
 
                 <input
-                  type="text"
-                  placeholder="Místo"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  style={styles.input}
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  style={{ ...styles.input, flex: 1 }}
                 />
+              </div>
 
-                <textarea
-                  placeholder="Poznámka k tréninku"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  style={{
-                    ...styles.input,
-                    minHeight: "90px",
-                    resize: "vertical",
-                    fontFamily: "inherit",
-                  }}
-                />
+              <input
+                type="text"
+                placeholder="Místo"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                style={styles.input}
+              />
 
-                {editingTrainingId ? (
-                  <>
-                    <button
-                      type="button"
-                      style={{
-                        ...styles.primaryButton,
-                        marginTop: 0,
-                        background: primaryColor,
-                        opacity: saving ? 0.7 : 1,
-                      }}
-                      onClick={handleUpdateTraining}
-                      disabled={saving}
-                    >
-                      {saving ? "Ukládám..." : "Uložit změny"}
-                    </button>
+              <textarea
+                placeholder="Poznámka k tréninku"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                style={{
+                  ...styles.input,
+                  minHeight: "90px",
+                  resize: "vertical",
+                  fontFamily: "inherit",
+                }}
+              />
 
-                    <button
-                      type="button"
-                      style={{
-                        ...styles.primaryButton,
-                        marginTop: 0,
-                        background: "rgba(255,255,255,0.12)",
-                      }}
-                      onClick={() => {
-                        resetForm();
-                        setShowForm(false);
-                      }}
-                      disabled={saving}
-                    >
-                      Zrušit úpravu
-                    </button>
-                  </>
-                ) : (
+              {editingTrainingId ? (
+                <>
                   <button
                     type="button"
                     style={{
-                      ...styles.primaryButton,
-                      marginTop: 0,
-                      background: primaryColor,
+                      ...primaryButtonStyle,
                       opacity: saving ? 0.7 : 1,
                     }}
-                    onClick={handleCreateTraining}
+                    onClick={handleUpdateTraining}
                     disabled={saving}
                   >
-                    {saving ? "Ukládám..." : "Vytvořit trénink"}
+                    {saving ? "Ukládám..." : "Uložit změny"}
                   </button>
-                )}
-              </div>
-            </>
+
+                  <button
+                    type="button"
+                    style={softButtonStyle}
+                    onClick={() => {
+                      resetForm();
+                      setShowForm(false);
+                    }}
+                    disabled={saving}
+                  >
+                    Zrušit úpravu
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  style={{
+                    ...primaryButtonStyle,
+                    opacity: saving ? 0.7 : 1,
+                  }}
+                  onClick={handleCreateTraining}
+                  disabled={saving}
+                >
+                  {saving ? "Ukládám..." : "Vytvořit trénink"}
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
 
-      <div style={styles.card}>
-        <h2 style={styles.screenTitle}>Tréninky</h2>
-
-        <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+      <div
+        style={{
+          ...glassCardStyle,
+          padding: "8px",
+        }}
+      >
+        <div style={{ display: "flex", gap: "8px" }}>
           <button
             type="button"
             style={getTabButtonStyle(tab === "planned")}
@@ -978,96 +1046,143 @@ export default function TrainingsScreen({
             STARŠÍ
           </button>
         </div>
+      </div>
 
-        {loading ? (
-          <div style={{ color: "#b8b8b8" }}>Načítám tréninky...</div>
-        ) : visibleTrainings.length === 0 ? (
-          <div style={{ color: "#b8b8b8" }}>
-            {tab === "planned"
-              ? "Zatím žádné plánované tréninky."
-              : "Zatím žádné starší tréninky."}
-          </div>
-        ) : (
-          <div style={{ display: "grid", gap: "10px" }}>
-            {visibleTrainings.map((training) => {
-              const summary = getTrainingSummary(training.id);
-              const presenceCount = getPresenceSummary(training.id);
-              const myStatus = getMyAttendanceStatus(training.id);
-              const attendanceRows = getTrainingAttendanceRows(training.id);
-              const presenceRows = getTrainingPresenceRows(training.id);
-              const nonVotedPlayers = getNonVotedPlayers(training.id);
+      {message && (
+        <div
+          style={{
+            ...glassCardStyle,
+            padding: "12px 14px",
+            color: "#d9d9d9",
+            fontSize: "14px",
+            lineHeight: 1.45,
+          }}
+        >
+          {message}
+        </div>
+      )}
 
-              const yesRows = attendanceRows
-                .filter((row) => row.status === "yes")
-                .sort((a, b) =>
-                  getPlayerName(rowToPlayerId(a)).localeCompare(
-                    getPlayerName(rowToPlayerId(b)),
-                    "cs"
-                  )
-                );
+      {loading ? (
+        <div
+          style={{
+            ...glassCardStyle,
+            padding: "16px",
+            color: "#b8b8b8",
+          }}
+        >
+          Načítám tréninky...
+        </div>
+      ) : visibleTrainings.length === 0 ? (
+        <div
+          style={{
+            ...glassCardStyle,
+            padding: "16px",
+            color: "#b8b8b8",
+          }}
+        >
+          {tab === "planned"
+            ? "Zatím žádné plánované tréninky."
+            : "Zatím žádné starší tréninky."}
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: "12px" }}>
+          {visibleTrainings.map((training) => {
+            const summary = getTrainingSummary(training.id);
+            const presenceCount = getPresenceSummary(training.id);
+            const myStatus = getMyAttendanceStatus(training.id);
+            const attendanceRows = getTrainingAttendanceRows(training.id);
+            const presenceRows = getTrainingPresenceRows(training.id);
+            const nonVotedPlayers = getNonVotedPlayers(training.id);
 
-              const maybeRows = attendanceRows
-                .filter((row) => row.status === "maybe")
-                .sort((a, b) =>
-                  getPlayerName(rowToPlayerId(a)).localeCompare(
-                    getPlayerName(rowToPlayerId(b)),
-                    "cs"
-                  )
-                );
+            const yesRows = attendanceRows
+              .filter((row) => row.status === "yes")
+              .sort((a, b) =>
+                getPlayerName(rowToPlayerId(a)).localeCompare(
+                  getPlayerName(rowToPlayerId(b)),
+                  "cs"
+                )
+              );
 
-              const noRows = attendanceRows
-                .filter((row) => row.status === "no")
-                .sort((a, b) =>
-                  getPlayerName(rowToPlayerId(a)).localeCompare(
-                    getPlayerName(rowToPlayerId(b)),
-                    "cs"
-                  )
-                );
+            const maybeRows = attendanceRows
+              .filter((row) => row.status === "maybe")
+              .sort((a, b) =>
+                getPlayerName(rowToPlayerId(a)).localeCompare(
+                  getPlayerName(rowToPlayerId(b)),
+                  "cs"
+                )
+              );
 
-              const presentRows = presenceRows
-                .filter((row) => row.present)
-                .sort((a, b) =>
-                  getPlayerName(a.player_id).localeCompare(
-                    getPlayerName(b.player_id),
-                    "cs"
-                  )
-                );
+            const noRows = attendanceRows
+              .filter((row) => row.status === "no")
+              .sort((a, b) =>
+                getPlayerName(rowToPlayerId(a)).localeCompare(
+                  getPlayerName(rowToPlayerId(b)),
+                  "cs"
+                )
+              );
 
-              const isExpanded = expandedTrainingId === training.id;
-              const isEditingPresence =
-                editingPresenceTrainingId === training.id;
+            const presentRows = presenceRows
+              .filter((row) => row.present)
+              .sort((a, b) =>
+                getPlayerName(a.player_id).localeCompare(
+                  getPlayerName(b.player_id),
+                  "cs"
+                )
+              );
 
-              const canShowPollFineButton =
-                isAdmin &&
-                !isTrainingPlanned(training) &&
-                nonVotedPlayers.length > 0;
+            const isExpanded = expandedTrainingId === training.id;
+            const isEditingPresence = editingPresenceTrainingId === training.id;
 
-              return (
+            const canShowPollFineButton =
+              isAdmin &&
+              !isTrainingPlanned(training) &&
+              nonVotedPlayers.length > 0;
+
+            return (
+              <div
+                id={`training-${training.id}`}
+                key={training.id}
+                style={{
+                  ...glassCardStyle,
+                  position: "relative",
+                  overflow: "hidden",
+                  padding: "14px",
+                }}
+              >
                 <div
-                  id={`training-${training.id}`}
-                  key={training.id}
                   style={{
-                    padding: "12px",
-                    borderRadius: "14px",
-                    background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(255,255,255,0.05)",
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: "5px",
+                    background: primaryColor,
+                    boxShadow: `0 0 18px ${primaryColor}66`,
+                  }}
+                />
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedTrainingId((prev) =>
+                      prev === training.id ? null : training.id
+                    )
+                  }
+                  style={{
+                    width: "100%",
+                    background: "transparent",
+                    border: "none",
+                    padding: 0,
+                    color: "white",
+                    cursor: "pointer",
+                    textAlign: "left",
                   }}
                 >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setExpandedTrainingId((prev) =>
-                        prev === training.id ? null : training.id
-                      )
-                    }
+                  <div
                     style={{
-                      width: "100%",
-                      background: "transparent",
-                      border: "none",
-                      padding: 0,
-                      color: "white",
-                      cursor: "pointer",
-                      textAlign: "left",
+                      display: "grid",
+                      gap: "12px",
+                      paddingLeft: "4px",
                     }}
                   >
                     <div
@@ -1078,665 +1193,655 @@ export default function TrainingsScreen({
                         gap: "12px",
                       }}
                     >
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: "bold", fontSize: "16px" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            color: "#9b9b9b",
+                            fontSize: "11px",
+                            fontWeight: 950,
+                            letterSpacing: "0.8px",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {isTrainingPlanned(training)
+                            ? "Plánovaný trénink"
+                            : "Starší trénink"}
+                        </div>
+
+                        <div
+                          style={{
+                            fontWeight: 950,
+                            fontSize: "18px",
+                            marginTop: "5px",
+                          }}
+                        >
                           Trénink
                         </div>
 
                         <div
                           style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: "7px",
+                            alignItems: "center",
                             fontSize: "13px",
-                            color: "#d9d9d9",
-                            marginTop: "6px",
+                            color: "#b8b8b8",
+                            fontWeight: 700,
+                            marginTop: "8px",
                           }}
                         >
-                          {formatDisplayDate(training.date)}
-                          {getTrainingTimeLabel(training)
-                            ? ` • ${getTrainingTimeLabel(training)}`
-                            : ""}
+                          <span style={{ color: primaryColor }}>📅</span>
+                          <span>{formatDisplayDate(training.date)}</span>
+
+                          {getTrainingTimeLabel(training) && (
+                            <>
+                              <span>•</span>
+                              <span>🕒 {getTrainingTimeLabel(training)}</span>
+                            </>
+                          )}
                         </div>
 
                         {training.location && (
                           <div
                             style={{
-                              fontSize: "12px",
+                              fontSize: "13px",
                               color: "#b8b8b8",
-                              marginTop: "6px",
+                              marginTop: "8px",
+                              wordBreak: "break-word",
                             }}
                           >
-                            {training.location}
+                            📍 {training.location}
                           </div>
                         )}
-
-                        <div
-                          style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            gap: "8px",
-                            marginTop: "10px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              padding: "6px 10px",
-                              borderRadius: "999px",
-                              background: "rgba(255,255,255,0.08)",
-                              fontSize: "12px",
-                              fontWeight: "bold",
-                            }}
-                          >
-                            Hlasovalo: {summary.total}
-                          </div>
-
-                          <div
-                            style={{
-                              padding: "6px 10px",
-                              borderRadius: "999px",
-                              background: "rgba(46, 204, 113, 0.16)",
-                              border: "1px solid rgba(46, 204, 113, 0.24)",
-                              color: "#9af0b6",
-                              fontSize: "12px",
-                              fontWeight: "bold",
-                            }}
-                          >
-                            BUDU: {summary.yesCount}
-                          </div>
-
-                          <div
-                            style={{
-                              padding: "6px 10px",
-                              borderRadius: "999px",
-                              background: "rgba(52, 152, 219, 0.16)",
-                              border: "1px solid rgba(52, 152, 219, 0.24)",
-                              color: "#9fd3ff",
-                              fontSize: "12px",
-                              fontWeight: "bold",
-                            }}
-                          >
-                            MOŽNÁ: {summary.maybeCount}
-                          </div>
-
-                          <div
-                            style={{
-                              padding: "6px 10px",
-                              borderRadius: "999px",
-                              background: "rgba(231, 76, 60, 0.16)",
-                              border: "1px solid rgba(231, 76, 60, 0.24)",
-                              color: "#ffb0a8",
-                              fontSize: "12px",
-                              fontWeight: "bold",
-                            }}
-                          >
-                            NEBUDU: {summary.noCount}
-                          </div>
-
-                          <div
-                            style={{
-                              padding: "6px 10px",
-                              borderRadius: "999px",
-                              background: "rgba(255, 193, 7, 0.16)",
-                              border: "1px solid rgba(255, 193, 7, 0.24)",
-                              color: "#ffd97a",
-                              fontSize: "12px",
-                              fontWeight: "bold",
-                            }}
-                          >
-                            NEHLASOVALO: {summary.notVotedCount}
-                          </div>
-
-                          {!isTrainingPlanned(training) && (
-                            <div
-                              style={{
-                                padding: "6px 10px",
-                                borderRadius: "999px",
-                                background: "rgba(52, 152, 219, 0.16)",
-                                border: "1px solid rgba(52, 152, 219, 0.24)",
-                                color: "#9fd3ff",
-                                fontSize: "12px",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              ZÚČASTNILI SE: {presenceCount}
-                            </div>
-                          )}
-                        </div>
                       </div>
 
                       <div
                         style={{
-                          fontSize: "12px",
+                          fontSize: "22px",
                           color: "#b8b8b8",
-                          fontWeight: "bold",
-                          whiteSpace: "nowrap",
+                          transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                          transition: "transform 0.2s ease",
+                          lineHeight: 1,
                         }}
                       >
-                        {isExpanded ? "Skrýt" : "Detail"}
+                        ⌄
                       </div>
                     </div>
-                  </button>
 
-                  {isExpanded && (
-                    <div style={{ marginTop: "14px", display: "grid", gap: "12px" }}>
-                      {training.note && (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "7px",
+                      }}
+                    >
+                      <div
+                        style={summaryPillStyle(
+                          "rgba(255,255,255,0.08)",
+                          "#d4d4d4",
+                          "1px solid rgba(255,255,255,0.10)"
+                        )}
+                      >
+                        Hlasovalo: {summary.total}
+                      </div>
+
+                      <div
+                        style={summaryPillStyle(
+                          "rgba(46, 204, 113, 0.16)",
+                          "#9af0b6",
+                          "1px solid rgba(46, 204, 113, 0.24)"
+                        )}
+                      >
+                        BUDU: {summary.yesCount}
+                      </div>
+
+                      <div
+                        style={summaryPillStyle(
+                          "rgba(52, 152, 219, 0.16)",
+                          "#9fd3ff",
+                          "1px solid rgba(52, 152, 219, 0.24)"
+                        )}
+                      >
+                        MOŽNÁ: {summary.maybeCount}
+                      </div>
+
+                      <div
+                        style={summaryPillStyle(
+                          "rgba(231, 76, 60, 0.16)",
+                          "#ffb0a8",
+                          "1px solid rgba(231, 76, 60, 0.24)"
+                        )}
+                      >
+                        NEBUDU: {summary.noCount}
+                      </div>
+
+                      <div
+                        style={summaryPillStyle(
+                          "rgba(255, 193, 7, 0.16)",
+                          "#ffd97a",
+                          "1px solid rgba(255, 193, 7, 0.24)"
+                        )}
+                      >
+                        NEHLASOVALO: {summary.notVotedCount}
+                      </div>
+
+                      {!isTrainingPlanned(training) && (
                         <div
-                          style={{
-                            padding: "12px",
-                            borderRadius: "12px",
-                            background: "rgba(255,255,255,0.04)",
-                            color: "#d9d9d9",
-                            fontSize: "14px",
-                            lineHeight: 1.5,
-                          }}
+                          style={summaryPillStyle(
+                            `${primaryColor}22`,
+                            primaryColor,
+                            `1px solid ${primaryColor}44`
+                          )}
                         >
-                          {training.note}
+                          ÚČAST: {presenceCount}
                         </div>
                       )}
+                    </div>
+                  </div>
+                </button>
 
-                      <button
-                        type="button"
-                        onClick={() => void handleCopyTrainingLink(training.id)}
+                {isExpanded && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: "12px",
+                      marginTop: "14px",
+                      paddingTop: "14px",
+                      borderTop: "1px solid rgba(255,255,255,0.08)",
+                    }}
+                  >
+                    {training.note && (
+                      <div
                         style={{
-                          ...styles.primaryButton,
-                          marginTop: 0,
-                          background: "rgba(255,255,255,0.12)",
-                          border: "none",
+                          padding: "12px",
+                          borderRadius: "16px",
+                          background: "rgba(255,255,255,0.04)",
+                          color: "#d9d9d9",
+                          fontSize: "14px",
+                          lineHeight: 1.5,
+                          border: "1px solid rgba(255,255,255,0.06)",
                         }}
                       >
-                        Kopírovat odkaz na anketu
-                      </button>
+                        {training.note}
+                      </div>
+                    )}
 
-                      {isTrainingPlanned(training) && (
-                        <div style={{ display: "flex", gap: "8px" }}>
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyTrainingLink(training.id)}
+                      style={softButtonStyle}
+                    >
+                      Kopírovat odkaz na anketu
+                    </button>
+
+                    {isTrainingPlanned(training) && (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
+                        <button
+                          type="button"
+                          onClick={() => void handleVote(training.id, "yes")}
+                          disabled={saving}
+                          style={{
+                            border: "none",
+                            borderRadius: "14px",
+                            padding: "12px 8px",
+                            background:
+                              myStatus === "yes"
+                                ? "rgba(46, 204, 113, 0.95)"
+                                : "rgba(46, 204, 113, 0.18)",
+                            color: "white",
+                            fontWeight: 950,
+                            cursor: saving ? "default" : "pointer",
+                            opacity: saving ? 0.7 : 1,
+                          }}
+                        >
+                          BUDU
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void handleVote(training.id, "maybe")}
+                          disabled={saving}
+                          style={{
+                            border: "none",
+                            borderRadius: "14px",
+                            padding: "12px 8px",
+                            background:
+                              myStatus === "maybe"
+                                ? "rgba(52, 152, 219, 0.95)"
+                                : "rgba(52, 152, 219, 0.18)",
+                            color: "white",
+                            fontWeight: 950,
+                            cursor: saving ? "default" : "pointer",
+                            opacity: saving ? 0.7 : 1,
+                          }}
+                        >
+                          MOŽNÁ
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void handleVote(training.id, "no")}
+                          disabled={saving}
+                          style={{
+                            border: "none",
+                            borderRadius: "14px",
+                            padding: "12px 8px",
+                            background:
+                              myStatus === "no"
+                                ? "rgba(231, 76, 60, 0.95)"
+                                : "rgba(231, 76, 60, 0.18)",
+                            color: "white",
+                            fontWeight: 950,
+                            cursor: saving ? "default" : "pointer",
+                            opacity: saving ? 0.7 : 1,
+                          }}
+                        >
+                          NEBUDU
+                        </button>
+                      </div>
+                    )}
+
+                    {isAdmin && (
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button
+                          type="button"
+                          onClick={() => handleStartEdit(training)}
+                          disabled={saving}
+                          style={{
+                            flex: 1,
+                            ...primaryButtonStyle,
+                            opacity: saving ? 0.7 : 1,
+                          }}
+                        >
+                          UPRAVIT
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteTraining(training.id)}
+                          disabled={saving}
+                          style={{
+                            flex: 1,
+                            ...dangerButtonStyle,
+                            opacity: saving ? 0.7 : 1,
+                          }}
+                        >
+                          SMAZAT
+                        </button>
+                      </div>
+                    )}
+
+                    {!isTrainingPlanned(training) && isAdmin && (
+                      <div style={{ display: "grid", gap: "10px" }}>
+                        {canShowPollFineButton && (
                           <button
                             type="button"
-                            onClick={() => void handleVote(training.id, "yes")}
-                            disabled={saving}
-                            style={{
-                              flex: 1,
-                              border: "none",
-                              borderRadius: "12px",
-                              padding: "12px",
-                              background:
-                                myStatus === "yes"
-                                  ? "rgba(46, 204, 113, 0.95)"
-                                  : "rgba(46, 204, 113, 0.18)",
-                              color: "white",
-                              fontWeight: "bold",
-                              cursor: saving ? "default" : "pointer",
-                              opacity: saving ? 0.7 : 1,
-                            }}
-                          >
-                            BUDU
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => void handleVote(training.id, "maybe")}
-                            disabled={saving}
-                            style={{
-                              flex: 1,
-                              border: "none",
-                              borderRadius: "12px",
-                              padding: "12px",
-                              background:
-                                myStatus === "maybe"
-                                  ? "rgba(52, 152, 219, 0.95)"
-                                  : "rgba(52, 152, 219, 0.18)",
-                              color: "white",
-                              fontWeight: "bold",
-                              cursor: saving ? "default" : "pointer",
-                              opacity: saving ? 0.7 : 1,
-                            }}
-                          >
-                            MOŽNÁ
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => void handleVote(training.id, "no")}
-                            disabled={saving}
-                            style={{
-                              flex: 1,
-                              border: "none",
-                              borderRadius: "12px",
-                              padding: "12px",
-                              background:
-                                myStatus === "no"
-                                  ? "rgba(231, 76, 60, 0.95)"
-                                  : "rgba(231, 76, 60, 0.18)",
-                              color: "white",
-                              fontWeight: "bold",
-                              cursor: saving ? "default" : "pointer",
-                              opacity: saving ? 0.7 : 1,
-                            }}
-                          >
-                            NEBUDU
-                          </button>
-                        </div>
-                      )}
-
-                      {isAdmin && (
-                        <div style={{ display: "flex", gap: "8px" }}>
-                          <button
-                            type="button"
-                            onClick={() => handleStartEdit(training)}
-                            disabled={saving}
-                            style={{
-                              flex: 1,
-                              border: "none",
-                              borderRadius: "12px",
-                              padding: "10px 12px",
-                              background: primaryColor,
-                              color: "white",
-                              fontWeight: "bold",
-                              cursor: saving ? "default" : "pointer",
-                              opacity: saving ? 0.7 : 1,
-                            }}
-                          >
-                            UPRAVIT
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => void handleDeleteTraining(training.id)}
-                            disabled={saving}
-                            style={{
-                              flex: 1,
-                              border: "none",
-                              borderRadius: "12px",
-                              padding: "10px 12px",
-                              background: "rgba(198,40,40,0.95)",
-                              color: "white",
-                              fontWeight: "bold",
-                              cursor: saving ? "default" : "pointer",
-                              opacity: saving ? 0.7 : 1,
-                            }}
-                          >
-                            SMAZAT
-                          </button>
-                        </div>
-                      )}
-
-                      {!isTrainingPlanned(training) && isAdmin && (
-                        <div style={{ display: "grid", gap: "10px" }}>
-                          {canShowPollFineButton && (
-                            <button
-                              type="button"
-                              onClick={() => void handleAwardPollFine(training)}
-                              disabled={awardingPollFineTrainingId === training.id}
-                              style={{
-                                ...styles.primaryButton,
-                                marginTop: 0,
-                                background: "rgba(255, 193, 7, 0.95)",
-                                border: "none",
-                                color: "#111111",
-                                opacity:
-                                  awardingPollFineTrainingId === training.id
-                                    ? 0.7
-                                    : 1,
-                              }}
-                            >
-                              {awardingPollFineTrainingId === training.id
-                                ? "Uděluji pokuty..."
-                                : "POKUTA ZA NEHLASOVÁNÍ"}
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => handleStartPresenceEdit(training.id)}
-                            disabled={saving}
+                            onClick={() => void handleAwardPollFine(training)}
+                            disabled={awardingPollFineTrainingId === training.id}
                             style={{
                               ...styles.primaryButton,
                               marginTop: 0,
-                              background: "rgba(52, 152, 219, 0.95)",
+                              background: "rgba(255, 193, 7, 0.95)",
                               border: "none",
-                              opacity: saving ? 0.7 : 1,
+                              color: "#111111",
+                              fontWeight: 950,
+                              opacity:
+                                awardingPollFineTrainingId === training.id
+                                  ? 0.7
+                                  : 1,
                             }}
                           >
-                            {isEditingPresence
-                              ? "Upravuji docházku"
-                              : "Upravit docházku"}
+                            {awardingPollFineTrainingId === training.id
+                              ? "Uděluji pokuty..."
+                              : "POKUTA ZA NEHLASOVÁNÍ"}
                           </button>
+                        )}
 
-                          {isEditingPresence && (
+                        <button
+                          type="button"
+                          onClick={() => handleStartPresenceEdit(training.id)}
+                          disabled={saving}
+                          style={{
+                            ...styles.primaryButton,
+                            marginTop: 0,
+                            background: "rgba(52, 152, 219, 0.95)",
+                            border: "none",
+                            fontWeight: 950,
+                            opacity: saving ? 0.7 : 1,
+                          }}
+                        >
+                          {isEditingPresence
+                            ? "Upravuji docházku"
+                            : "Upravit docházku"}
+                        </button>
+
+                        {isEditingPresence && (
+                          <div
+                            style={{
+                              display: "grid",
+                              gap: "10px",
+                              padding: "12px",
+                              borderRadius: "16px",
+                              background: "rgba(255,255,255,0.04)",
+                              border: "1px solid rgba(255,255,255,0.06)",
+                            }}
+                          >
                             <div
                               style={{
-                                display: "grid",
-                                gap: "10px",
-                                padding: "12px",
-                                borderRadius: "12px",
-                                background: "rgba(255,255,255,0.04)",
-                                border: "1px solid rgba(255,255,255,0.06)",
+                                fontWeight: 950,
+                                fontSize: "14px",
                               }}
                             >
-                              <div
-                                style={{
-                                  fontWeight: "bold",
-                                  fontSize: "14px",
-                                }}
-                              >
-                                Kdo se zúčastnil
-                              </div>
+                              Kdo se zúčastnil
+                            </div>
 
-                              <div
-                                style={{
-                                  fontSize: "13px",
-                                  color: "#cfcfcf",
-                                  lineHeight: 1.5,
-                                }}
-                              >
-                                Výchozí stav se vezme z hráčů, kteří dali BUDU.
-                                Můžeš kohokoliv odebrat nebo přidat, i hráče bez
-                                hlasování.
-                              </div>
+                            <div
+                              style={{
+                                fontSize: "13px",
+                                color: "#cfcfcf",
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              Výchozí stav se vezme z hráčů, kteří dali BUDU.
+                              Můžeš kohokoliv odebrat nebo přidat.
+                            </div>
 
-                              <div style={{ display: "grid", gap: "8px" }}>
-                                {players
-                                  .slice()
-                                  .sort((a, b) => a.number - b.number)
-                                  .map((player) => {
-                                    const checked = presenceDraft.includes(
-                                      player.id
-                                    );
+                            <div style={{ display: "grid", gap: "8px" }}>
+                              {players
+                                .slice()
+                                .sort((a, b) => a.number - b.number)
+                                .map((player) => {
+                                  const checked = presenceDraft.includes(
+                                    player.id
+                                  );
 
-                                    return (
-                                      <label
-                                        key={player.id}
+                                  return (
+                                    <label
+                                      key={player.id}
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "10px",
+                                        padding: "10px 12px",
+                                        borderRadius: "14px",
+                                        background: checked
+                                          ? `${primaryColor}22`
+                                          : "rgba(255,255,255,0.03)",
+                                        border: checked
+                                          ? `1px solid ${primaryColor}44`
+                                          : "1px solid rgba(255,255,255,0.05)",
+                                        cursor: "pointer",
+                                      }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() =>
+                                          togglePresenceDraftPlayer(player.id)
+                                        }
+                                      />
+
+                                      <div
                                         style={{
+                                          minWidth: "34px",
+                                          height: "34px",
+                                          borderRadius: "10px",
+                                          background: checked
+                                            ? `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`
+                                            : "rgba(255,255,255,0.10)",
+                                          color: checked ? "#071107" : "white",
                                           display: "flex",
                                           alignItems: "center",
-                                          gap: "10px",
-                                          padding: "10px 12px",
-                                          borderRadius: "12px",
-                                          background: checked
-                                            ? "rgba(46, 204, 113, 0.12)"
-                                            : "rgba(255,255,255,0.03)",
-                                          border: checked
-                                            ? "1px solid rgba(46, 204, 113, 0.22)"
-                                            : "1px solid rgba(255,255,255,0.05)",
-                                          cursor: "pointer",
+                                          justifyContent: "center",
+                                          fontWeight: 950,
+                                          fontSize: "13px",
                                         }}
                                       >
-                                        <input
-                                          type="checkbox"
-                                          checked={checked}
-                                          onChange={() =>
-                                            togglePresenceDraftPlayer(player.id)
-                                          }
-                                        />
+                                        {player.number}
+                                      </div>
 
+                                      <div style={{ flex: 1 }}>
+                                        <div style={{ fontWeight: 950 }}>
+                                          {player.name}
+                                        </div>
                                         <div
                                           style={{
-                                            minWidth: "34px",
-                                            height: "34px",
-                                            borderRadius: "8px",
-                                            background: primaryColor,
-                                            color: "white",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
-                                            fontWeight: "bold",
-                                            fontSize: "13px",
+                                            fontSize: "12px",
+                                            color: "#b8b8b8",
                                           }}
                                         >
-                                          {player.number}
+                                          {player.position}
                                         </div>
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                            </div>
 
-                                        <div style={{ flex: 1 }}>
-                                          <div style={{ fontWeight: "bold" }}>
-                                            {player.name}
-                                          </div>
-                                          <div
-                                            style={{
-                                              fontSize: "12px",
-                                              color: "#b8b8b8",
-                                            }}
-                                          >
-                                            {player.position}
-                                          </div>
-                                        </div>
-                                      </label>
-                                    );
-                                  })}
+                            <div style={{ display: "flex", gap: "8px" }}>
+                              <button
+                                type="button"
+                                onClick={() => void handleSavePresence(training.id)}
+                                disabled={saving}
+                                style={{
+                                  flex: 1,
+                                  ...primaryButtonStyle,
+                                  opacity: saving ? 0.7 : 1,
+                                }}
+                              >
+                                {saving ? "Ukládám..." : "Potvrdit docházku"}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingPresenceTrainingId(null);
+                                  setPresenceDraft([]);
+                                }}
+                                disabled={saving}
+                                style={{
+                                  flex: 1,
+                                  ...softButtonStyle,
+                                }}
+                              >
+                                Zrušit
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div style={{ display: "grid", gap: "10px" }}>
+                      <div
+                        style={{
+                          padding: "12px",
+                          borderRadius: "16px",
+                          background: "rgba(46, 204, 113, 0.10)",
+                          border: "1px solid rgba(46, 204, 113, 0.20)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontWeight: 950,
+                            color: "#9af0b6",
+                            marginBottom: "8px",
+                          }}
+                        >
+                          BUDU ({yesRows.length})
+                        </div>
+
+                        {yesRows.length === 0 ? (
+                          <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
+                            Zatím nikdo.
+                          </div>
+                        ) : (
+                          <div style={{ display: "grid", gap: "6px" }}>
+                            {yesRows.map((row) => (
+                              <div
+                                key={`${training.id}-yes-${rowToPlayerId(row)}`}
+                                style={{ fontSize: "13px", color: "white" }}
+                              >
+                                {getPlayerName(rowToPlayerId(row))}
                               </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
 
-                              <div style={{ display: "flex", gap: "8px" }}>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    void handleSavePresence(training.id)
-                                  }
-                                  disabled={saving}
-                                  style={{
-                                    flex: 1,
-                                    ...styles.primaryButton,
-                                    marginTop: 0,
-                                    background: "rgba(46, 204, 113, 0.95)",
-                                    border: "none",
-                                    opacity: saving ? 0.7 : 1,
-                                  }}
-                                >
-                                  {saving ? "Ukládám..." : "Potvrdit docházku"}
-                                </button>
+                      <div
+                        style={{
+                          padding: "12px",
+                          borderRadius: "16px",
+                          background: "rgba(52, 152, 219, 0.10)",
+                          border: "1px solid rgba(52, 152, 219, 0.20)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontWeight: 950,
+                            color: "#9fd3ff",
+                            marginBottom: "8px",
+                          }}
+                        >
+                          MOŽNÁ ({maybeRows.length})
+                        </div>
 
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingPresenceTrainingId(null);
-                                    setPresenceDraft([]);
-                                  }}
-                                  disabled={saving}
-                                  style={{
-                                    flex: 1,
-                                    ...styles.primaryButton,
-                                    marginTop: 0,
-                                    background: "rgba(255,255,255,0.12)",
-                                  }}
-                                >
-                                  Zrušit edit
-                                </button>
+                        {maybeRows.length === 0 ? (
+                          <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
+                            Zatím nikdo.
+                          </div>
+                        ) : (
+                          <div style={{ display: "grid", gap: "6px" }}>
+                            {maybeRows.map((row) => (
+                              <div
+                                key={`${training.id}-maybe-${rowToPlayerId(row)}`}
+                                style={{ fontSize: "13px", color: "white" }}
+                              >
+                                {getPlayerName(rowToPlayerId(row))}
                               </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div
+                        style={{
+                          padding: "12px",
+                          borderRadius: "16px",
+                          background: "rgba(231, 76, 60, 0.10)",
+                          border: "1px solid rgba(231, 76, 60, 0.20)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontWeight: 950,
+                            color: "#ffb0a8",
+                            marginBottom: "8px",
+                          }}
+                        >
+                          NEBUDU ({noRows.length})
+                        </div>
+
+                        {noRows.length === 0 ? (
+                          <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
+                            Zatím nikdo.
+                          </div>
+                        ) : (
+                          <div style={{ display: "grid", gap: "6px" }}>
+                            {noRows.map((row) => (
+                              <div
+                                key={`${training.id}-no-${rowToPlayerId(row)}`}
+                                style={{ fontSize: "13px", color: "white" }}
+                              >
+                                {getPlayerName(rowToPlayerId(row))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div
+                        style={{
+                          padding: "12px",
+                          borderRadius: "16px",
+                          background: "rgba(255, 193, 7, 0.10)",
+                          border: "1px solid rgba(255, 193, 7, 0.20)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontWeight: 950,
+                            color: "#ffd97a",
+                            marginBottom: "8px",
+                          }}
+                        >
+                          NEHLASOVALO ({nonVotedPlayers.length})
+                        </div>
+
+                        {nonVotedPlayers.length === 0 ? (
+                          <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
+                            Všichni hlasovali.
+                          </div>
+                        ) : (
+                          <div style={{ display: "grid", gap: "6px" }}>
+                            {nonVotedPlayers.map((player) => (
+                              <div
+                                key={`${training.id}-not-voted-${player.id}`}
+                                style={{ fontSize: "13px", color: "white" }}
+                              >
+                                {player.name}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {!isTrainingPlanned(training) && (
+                        <div
+                          style={{
+                            padding: "12px",
+                            borderRadius: "16px",
+                            background: `${primaryColor}14`,
+                            border: `1px solid ${primaryColor}33`,
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontWeight: 950,
+                              color: primaryColor,
+                              marginBottom: "8px",
+                            }}
+                          >
+                            ZÚČASTNILI SE ({presentRows.length})
+                          </div>
+
+                          {presentRows.length === 0 ? (
+                            <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
+                              Zatím nepotvrzeno.
+                            </div>
+                          ) : (
+                            <div style={{ display: "grid", gap: "6px" }}>
+                              {presentRows.map((row) => (
+                                <div
+                                  key={`${training.id}-present-${row.player_id}`}
+                                  style={{ fontSize: "13px", color: "white" }}
+                                >
+                                  {getPlayerName(row.player_id)}
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>
                       )}
-
-                      <div style={{ display: "grid", gap: "10px" }}>
-                        <div
-                          style={{
-                            padding: "10px 12px",
-                            borderRadius: "12px",
-                            background: "rgba(46, 204, 113, 0.10)",
-                            border: "1px solid rgba(46, 204, 113, 0.20)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: "bold",
-                              color: "#9af0b6",
-                              marginBottom: "8px",
-                            }}
-                          >
-                            BUDU ({yesRows.length})
-                          </div>
-
-                          {yesRows.length === 0 ? (
-                            <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
-                              Zatím nikdo.
-                            </div>
-                          ) : (
-                            <div style={{ display: "grid", gap: "6px" }}>
-                              {yesRows.map((row) => (
-                                <div
-                                  key={`${training.id}-yes-${rowToPlayerId(row)}`}
-                                  style={{ fontSize: "13px", color: "white" }}
-                                >
-                                  {getPlayerName(rowToPlayerId(row))}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div
-                          style={{
-                            padding: "10px 12px",
-                            borderRadius: "12px",
-                            background: "rgba(52, 152, 219, 0.10)",
-                            border: "1px solid rgba(52, 152, 219, 0.20)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: "bold",
-                              color: "#9fd3ff",
-                              marginBottom: "8px",
-                            }}
-                          >
-                            MOŽNÁ ({maybeRows.length})
-                          </div>
-
-                          {maybeRows.length === 0 ? (
-                            <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
-                              Zatím nikdo.
-                            </div>
-                          ) : (
-                            <div style={{ display: "grid", gap: "6px" }}>
-                              {maybeRows.map((row) => (
-                                <div
-                                  key={`${training.id}-maybe-${rowToPlayerId(row)}`}
-                                  style={{ fontSize: "13px", color: "white" }}
-                                >
-                                  {getPlayerName(rowToPlayerId(row))}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div
-                          style={{
-                            padding: "10px 12px",
-                            borderRadius: "12px",
-                            background: "rgba(231, 76, 60, 0.10)",
-                            border: "1px solid rgba(231, 76, 60, 0.20)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: "bold",
-                              color: "#ffb0a8",
-                              marginBottom: "8px",
-                            }}
-                          >
-                            NEBUDU ({noRows.length})
-                          </div>
-
-                          {noRows.length === 0 ? (
-                            <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
-                              Zatím nikdo.
-                            </div>
-                          ) : (
-                            <div style={{ display: "grid", gap: "6px" }}>
-                              {noRows.map((row) => (
-                                <div
-                                  key={`${training.id}-no-${rowToPlayerId(row)}`}
-                                  style={{ fontSize: "13px", color: "white" }}
-                                >
-                                  {getPlayerName(rowToPlayerId(row))}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div
-                          style={{
-                            padding: "10px 12px",
-                            borderRadius: "12px",
-                            background: "rgba(255, 193, 7, 0.10)",
-                            border: "1px solid rgba(255, 193, 7, 0.20)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: "bold",
-                              color: "#ffd97a",
-                              marginBottom: "8px",
-                            }}
-                          >
-                            NEHLASOVALO ({nonVotedPlayers.length})
-                          </div>
-
-                          {nonVotedPlayers.length === 0 ? (
-                            <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
-                              Všichni hlasovali.
-                            </div>
-                          ) : (
-                            <div style={{ display: "grid", gap: "6px" }}>
-                              {nonVotedPlayers.map((player) => (
-                                <div
-                                  key={`${training.id}-not-voted-${player.id}`}
-                                  style={{ fontSize: "13px", color: "white" }}
-                                >
-                                  {player.name}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        {!isTrainingPlanned(training) && (
-                          <div
-                            style={{
-                              padding: "10px 12px",
-                              borderRadius: "12px",
-                              background: "rgba(52, 152, 219, 0.10)",
-                              border: "1px solid rgba(52, 152, 219, 0.20)",
-                            }}
-                          >
-                            <div
-                              style={{
-                                fontWeight: "bold",
-                                color: "#9fd3ff",
-                                marginBottom: "8px",
-                              }}
-                            >
-                              ZÚČASTNILI SE ({presentRows.length})
-                            </div>
-
-                            {presentRows.length === 0 ? (
-                              <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
-                                Zatím nepotvrzeno.
-                              </div>
-                            ) : (
-                              <div style={{ display: "grid", gap: "6px" }}>
-                                {presentRows.map((row) => (
-                                  <div
-                                    key={`${training.id}-present-${row.player_id}`}
-                                    style={{ fontSize: "13px", color: "white" }}
-                                  >
-                                    {getPlayerName(row.player_id)}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {message && (
-          <p style={{ marginTop: "12px", color: "#d9d9d9" }}>{message}</p>
-        )}
-      </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
