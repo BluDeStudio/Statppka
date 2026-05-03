@@ -31,7 +31,7 @@ type MatchesScreenProps = {
 };
 
 type AttendanceStatus = "yes" | "no";
-type MatchFilter = "ALL" | "A" | "B" | "READY";
+type MatchFilter = "ALL" | "A" | "B";
 
 type Player = {
   id: string;
@@ -82,22 +82,6 @@ function createMatchId(
   return `${date}-${homeTeam}-${awayTeam}-${team}`
     .replace(/\s+/g, "-")
     .replace(/\//g, "-");
-}
-
-function getMatchStatusLabel(status?: PlannedMatch["status"]) {
-  switch (status) {
-    case "prepared":
-      return "PŘIPRAVENÝ";
-    case "live":
-      return "LIVE";
-    case "halftime":
-      return "PŘESTÁVKA";
-    case "finished":
-      return "ODEHRANÝ";
-    case "planned":
-    default:
-      return "PLÁNOVANÝ";
-  }
 }
 
 function normalizeDateToIso(value?: string | null) {
@@ -314,15 +298,6 @@ export default function MatchesScreen({
 
   const filteredMatches = useMemo(() => {
     if (filter === "ALL") return availableMatches;
-    if (filter === "READY") {
-      return availableMatches.filter(
-        (match) =>
-          match.status === "prepared" ||
-          match.status === "live" ||
-          match.status === "halftime"
-      );
-    }
-
     return availableMatches.filter((match) => match.team === filter);
   }, [availableMatches, filter]);
 
@@ -366,7 +341,7 @@ export default function MatchesScreen({
   const getFilterButtonStyle = (value: MatchFilter): React.CSSProperties => ({
     border: "none",
     borderRadius: "999px",
-    padding: "10px 13px",
+    padding: "10px 10px",
     background:
       filter === value
         ? `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`
@@ -376,20 +351,8 @@ export default function MatchesScreen({
     cursor: "pointer",
     whiteSpace: "nowrap",
     boxShadow: filter === value ? `0 10px 24px ${primaryColor}33` : "none",
+    width: "100%",
   });
-
-  const getStatusStyle = (status?: PlannedMatch["status"]) => {
-    const isHot =
-      status === "prepared" || status === "live" || status === "halftime";
-
-    return {
-      background: isHot ? `${primaryColor}22` : "rgba(255,255,255,0.08)",
-      color: isHot ? primaryColor : "#d5d5d5",
-      border: isHot
-        ? `1px solid ${primaryColor}44`
-        : "1px solid rgba(255,255,255,0.10)",
-    };
-  };
 
   const getPlayerNameByUserId = (rowUserId: string) => {
     return (
@@ -794,70 +757,27 @@ export default function MatchesScreen({
       <div
         style={{
           ...modernCardStyle,
-          padding: "8px",
-        }}
-      >
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button
-            style={{
-              flex: 1,
-              border: "none",
-              borderRadius: "16px",
-              padding: "13px 10px",
-              background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`,
-              color: "#071107",
-              fontWeight: 950,
-              cursor: "pointer",
-              boxShadow: `0 10px 24px ${primaryColor}33`,
-            }}
-          >
-            📅 PLÁNOVANÉ
-          </button>
-
-          <button
-            style={{
-              flex: 1,
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: "16px",
-              padding: "13px 10px",
-              background: "rgba(255,255,255,0.06)",
-              color: "#ffffff",
-              fontWeight: 950,
-              cursor: "default",
-              opacity: 0.75,
-            }}
-            disabled
-          >
-            ◷ ODEHRANÉ
-          </button>
-        </div>
-      </div>
-
-      <div
-        style={{
-          ...modernCardStyle,
-          padding: "14px",
+          padding: "12px",
         }}
       >
         <div
           style={{
             color: "#9b9b9b",
-            fontSize: "12px",
+            fontSize: "11px",
             fontWeight: 950,
             letterSpacing: "0.8px",
             textTransform: "uppercase",
             marginBottom: "10px",
           }}
         >
-          Filtr
+          Filtr týmu
         </div>
 
         <div
           style={{
-            display: "flex",
+            display: "grid",
+            gridTemplateColumns: hasBTeam ? "1fr 1fr 1fr" : "1fr 1fr",
             gap: "8px",
-            overflowX: "auto",
-            paddingBottom: "2px",
           }}
         >
           <button onClick={() => setFilter("ALL")} style={getFilterButtonStyle("ALL")}>
@@ -873,13 +793,6 @@ export default function MatchesScreen({
               B-tým
             </button>
           )}
-
-          <button
-            onClick={() => setFilter("READY")}
-            style={getFilterButtonStyle("READY")}
-          >
-            Připravené
-          </button>
         </div>
       </div>
 
@@ -909,7 +822,6 @@ export default function MatchesScreen({
       ) : (
         <div style={{ display: "grid", gap: "12px" }}>
           {filteredMatches.map((match) => {
-            const statusLabel = getMatchStatusLabel(match.status);
             const canOpenLive =
               match.status === "prepared" ||
               match.status === "live" ||
@@ -921,7 +833,6 @@ export default function MatchesScreen({
             const isExpanded = expandedAttendanceMatchId === match.id;
             const isSavingAttendance = savingAttendanceMatchId === match.id;
             const isSavingFine = savingFineMatchId === match.id;
-            const statusStyle = getStatusStyle(match.status);
 
             const yesRows = attendanceRows
               .filter((row) => row.status === "yes")
@@ -967,12 +878,7 @@ export default function MatchesScreen({
                     top: 0,
                     bottom: 0,
                     width: "5px",
-                    background:
-                      match.status === "prepared" ||
-                      match.status === "live" ||
-                      match.status === "halftime"
-                        ? primaryColor
-                        : primaryColor,
+                    background: primaryColor,
                     boxShadow: `0 0 18px ${primaryColor}66`,
                   }}
                 />
@@ -984,112 +890,91 @@ export default function MatchesScreen({
                     paddingLeft: "4px",
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: "10px",
-                      alignItems: "flex-start",
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: "7px",
-                          alignItems: "center",
-                          color: "#b8b8b8",
-                          fontSize: "12px",
-                          fontWeight: 700,
-                        }}
-                      >
-                        <span style={{ color: primaryColor }}>📅</span>
-                        <span>{formatDisplayDate(match.date)}</span>
-                        {match.time && (
-                          <>
-                            <span>•</span>
-                            <span>🕒 {match.time}</span>
-                          </>
-                        )}
-                        <span>•</span>
-                        <span>{match.team}-tým</span>
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: "12px",
-                          display: "grid",
-                          gridTemplateColumns: "1fr auto 1fr",
-                          alignItems: "center",
-                          gap: "10px",
-                        }}
-                      >
-                        <div style={{ minWidth: 0 }}>
-                          <div
-                            style={{
-                              fontWeight: 950,
-                              fontSize: "15px",
-                              lineHeight: 1.25,
-                              wordBreak: "break-word",
-                              color: "#ffffff",
-                            }}
-                          >
-                            {match.homeTeam}
-                          </div>
-                        </div>
-
-                        <div
-                          style={{
-                            color: primaryColor,
-                            fontWeight: 950,
-                            fontSize: "13px",
-                          }}
-                        >
-                          VS.
-                        </div>
-
-                        <div style={{ minWidth: 0, textAlign: "right" }}>
-                          <div
-                            style={{
-                              fontWeight: 950,
-                              fontSize: "15px",
-                              lineHeight: 1.25,
-                              wordBreak: "break-word",
-                              color: "#ffffff",
-                            }}
-                          >
-                            {match.awayTeam}
-                          </div>
-                        </div>
-                      </div>
-
-                      {match.location && (
-                        <div
-                          style={{
-                            marginTop: "12px",
-                            fontSize: "13px",
-                            color: "#b8b8b8",
-                            wordBreak: "break-word",
-                          }}
-                        >
-                          📍 Hřiště: {match.location}
-                        </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "7px",
+                        alignItems: "center",
+                        color: "#b8b8b8",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      <span style={{ color: primaryColor }}>📅</span>
+                      <span>{formatDisplayDate(match.date)}</span>
+                      {match.time && (
+                        <>
+                          <span>•</span>
+                          <span>🕒 {match.time}</span>
+                        </>
                       )}
+                      <span>•</span>
+                      <span>{match.team}-tým</span>
                     </div>
 
                     <div
                       style={{
-                        padding: "6px 10px",
-                        borderRadius: "999px",
-                        fontSize: "11px",
-                        fontWeight: 900,
-                        whiteSpace: "nowrap",
-                        ...statusStyle,
+                        marginTop: "12px",
+                        display: "grid",
+                        gridTemplateColumns: "1fr auto 1fr",
+                        alignItems: "center",
+                        gap: "8px",
                       }}
                     >
-                      {statusLabel}
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontWeight: 950,
+                            fontSize: "14px",
+                            lineHeight: 1.25,
+                            wordBreak: "break-word",
+                            color: "#ffffff",
+                          }}
+                        >
+                          {match.homeTeam}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          color: primaryColor,
+                          fontWeight: 950,
+                          fontSize: "12px",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        VS
+                      </div>
+
+                      <div style={{ minWidth: 0, textAlign: "right" }}>
+                        <div
+                          style={{
+                            fontWeight: 950,
+                            fontSize: "14px",
+                            lineHeight: 1.25,
+                            wordBreak: "break-word",
+                            color: "#ffffff",
+                          }}
+                        >
+                          {match.awayTeam}
+                        </div>
+                      </div>
                     </div>
+
+                    {match.location && (
+                      <div
+                        style={{
+                          marginTop: "12px",
+                          fontSize: "13px",
+                          color: "#b8b8b8",
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        📍 {match.location}
+                      </div>
+                    )}
                   </div>
 
                   <div
@@ -1107,7 +992,7 @@ export default function MatchesScreen({
                         )
                       }
                     >
-                      👥 {isExpanded ? "Skrýt anketu" : "Anketa"}
+                      👥 {isExpanded ? "Skrýt" : "Anketa"}
                     </button>
 
                     {isAdmin && (
