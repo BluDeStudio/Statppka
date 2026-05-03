@@ -40,16 +40,17 @@ function ValueBadge({
       style={{
         minWidth: "58px",
         height: "40px",
-        borderRadius: "12px",
+        borderRadius: "14px",
         background,
         color,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         fontSize: "16px",
-        fontWeight: "bold",
+        fontWeight: 950,
         padding: "0 10px",
         boxSizing: "border-box",
+        boxShadow: "0 10px 22px rgba(0,0,0,0.22)",
       }}
     >
       {value}
@@ -106,6 +107,10 @@ function isMatchInsidePeriod(matchDate: string, period: Period | null) {
   );
 }
 
+function formatPeriodType(type?: string | null) {
+  return type === "season" ? "Sezóna" : "Rok";
+}
+
 export default function StatsScreen({
   clubId,
   finishedMatches,
@@ -120,6 +125,7 @@ export default function StatsScreen({
   const [periodFilterMode, setPeriodFilterMode] =
     useState<PeriodFilterMode>("active");
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>("");
+  const [periodPanelOpen, setPeriodPanelOpen] = useState(false);
 
   const [statsMode, setStatsMode] = useState<StatsMode>("players");
   const [playerSort, setPlayerSort] = useState<PlayerSort>("points");
@@ -417,19 +423,46 @@ export default function StatsScreen({
     });
   }, [filteredStatsMatches, goalkeeperSort, playerNameByNumber]);
 
+  const glassCardStyle: React.CSSProperties = {
+    borderRadius: "22px",
+    background:
+      "linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.025))",
+    border: "1px solid rgba(255,255,255,0.09)",
+    boxShadow: "0 16px 36px rgba(0,0,0,0.30)",
+    backdropFilter: "blur(14px)",
+  };
+
   const baseToggleStyle: React.CSSProperties = {
     flex: 1,
-    padding: "10px",
-    borderRadius: "10px",
+    padding: "11px 10px",
+    borderRadius: "14px",
     border: "none",
-    fontWeight: "bold",
+    fontWeight: 950,
     cursor: "pointer",
     color: "white",
+    letterSpacing: "0.2px",
   };
 
   const getToggleStyle = (active: boolean): React.CSSProperties => ({
     ...baseToggleStyle,
-    background: active ? primaryColor : "rgba(255,255,255,0.08)",
+    background: active
+      ? `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`
+      : "rgba(255,255,255,0.07)",
+    color: active ? "#071107" : "#ffffff",
+    boxShadow: active ? `0 10px 24px ${primaryColor}33` : "none",
+  });
+
+  const getChipStyle = (active: boolean): React.CSSProperties => ({
+    border: active
+      ? `1px solid ${primaryColor}66`
+      : "1px solid rgba(255,255,255,0.10)",
+    borderRadius: "999px",
+    padding: "10px 13px",
+    background: active ? `${primaryColor}22` : "rgba(255,255,255,0.06)",
+    color: active ? primaryColor : "#ffffff",
+    fontWeight: 950,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
   });
 
   const listWrapStyle: React.CSSProperties = {
@@ -456,8 +489,8 @@ export default function StatsScreen({
     }
 
     return {
-      background: primaryColor,
-      color: "#ffffff",
+      background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`,
+      color: "#071107",
     };
   };
 
@@ -478,241 +511,458 @@ export default function StatsScreen({
     }
 
     return {
-      background: primaryColor,
-      color: "#ffffff",
+      background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`,
+      color: "#071107",
     };
   };
 
-  return (
-    <div style={styles.card}>
-      <h2 style={styles.screenTitle}>Statistiky</h2>
+  const periodTitle =
+    periodFilterMode === "all"
+      ? "Všechna období"
+      : effectivePeriod?.name ?? "Bez aktivního období";
 
+  const periodSubtitle =
+    periodFilterMode === "all"
+      ? `${filteredStatsMatches.length} odehraných zápasů`
+      : effectivePeriod
+      ? `${formatPeriodType(effectivePeriod.type)} • ${effectivePeriod.start_date} až ${effectivePeriod.end_date}`
+      : "Nejdřív vytvoř aktivní období";
+
+  return (
+    <div style={{ display: "grid", gap: "14px" }}>
       {loading ? (
-        <div style={{ color: "#b8b8b8" }}>Načítám statistiky...</div>
+        <div
+          style={{
+            ...glassCardStyle,
+            padding: "16px",
+            color: "#b8b8b8",
+          }}
+        >
+          Načítám statistiky...
+        </div>
       ) : (
         <>
-          <div style={{ marginBottom: "12px" }}>
-            <div
+          <div
+            style={{
+              ...glassCardStyle,
+              overflow: "hidden",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setPeriodPanelOpen((prev) => !prev)}
               style={{
-                fontSize: "13px",
-                color: "#b8b8b8",
-                marginBottom: "6px",
+                width: "100%",
+                border: "none",
+                background: "transparent",
+                color: "white",
+                padding: "16px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "12px",
+                cursor: "pointer",
+                textAlign: "left",
               }}
             >
-              Období
-            </div>
-
-            <div style={{ display: "grid", gap: "8px", marginBottom: "8px" }}>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  onClick={() => setPeriodFilterMode("active")}
-                  style={getToggleStyle(periodFilterMode === "active")}
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div
+                  style={{
+                    width: "44px",
+                    height: "44px",
+                    borderRadius: "14px",
+                    background: `${primaryColor}22`,
+                    color: primaryColor,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "21px",
+                  }}
                 >
-                  Aktivní období
-                </button>
+                  📊
+                </div>
 
-                <button
-                  onClick={() => setPeriodFilterMode("all")}
-                  style={getToggleStyle(periodFilterMode === "all")}
-                >
-                  Vše
-                </button>
+                <div>
+                  <div
+                    style={{
+                      color: "#9b9b9b",
+                      fontSize: "12px",
+                      fontWeight: 950,
+                      letterSpacing: "0.8px",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Období statistik
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: "18px",
+                      fontWeight: 950,
+                      marginTop: "3px",
+                    }}
+                  >
+                    {periodTitle}
+                  </div>
+
+                  <div
+                    style={{
+                      color: "#b8b8b8",
+                      fontSize: "12px",
+                      marginTop: "3px",
+                    }}
+                  >
+                    {periodSubtitle}
+                  </div>
+                </div>
               </div>
 
-              <button
-                onClick={() => {
-                  setPeriodFilterMode("custom");
-                  if (!selectedPeriodId && periods.length > 0) {
-                    setSelectedPeriodId(periods[0].id);
-                  }
-                }}
-                style={getToggleStyle(periodFilterMode === "custom")}
-              >
-                Vybrat konkrétní období
-              </button>
-            </div>
-
-            {periodFilterMode === "custom" && (
-              <select
-                value={selectedPeriodId}
-                onChange={(e) => setSelectedPeriodId(e.target.value)}
+              <div
                 style={{
-                  ...styles.input,
-                  appearance: "none",
-                  cursor: "pointer",
-                  marginBottom: "0",
+                  fontSize: "24px",
+                  color: "#b8b8b8",
+                  transform: periodPanelOpen ? "rotate(180deg)" : "rotate(0deg)",
+                  transition: "transform 0.2s ease",
                 }}
               >
-                <option value="" style={{ background: "#111111", color: "white" }}>
-                  Vyber období
-                </option>
+                ⌄
+              </div>
+            </button>
 
-                {periods.map((period) => (
-                  <option
-                    key={period.id}
-                    value={period.id}
-                    style={{ background: "#111111", color: "white" }}
+            {periodPanelOpen && (
+              <div
+                style={{
+                  display: "grid",
+                  gap: "10px",
+                  padding: "0 16px 16px",
+                  borderTop: "1px solid rgba(255,255,255,0.06)",
+                }}
+              >
+                <div style={{ display: "flex", gap: "8px", marginTop: "14px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setPeriodFilterMode("active")}
+                    style={getToggleStyle(periodFilterMode === "active")}
                   >
-                    {period.name}
-                    {period.is_active ? " (aktivní)" : ""}
-                  </option>
-                ))}
-              </select>
+                    Aktivní
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPeriodFilterMode("all")}
+                    style={getToggleStyle(periodFilterMode === "all")}
+                  >
+                    Vše
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPeriodFilterMode("custom");
+                    if (!selectedPeriodId && periods.length > 0) {
+                      setSelectedPeriodId(periods[0].id);
+                    }
+                  }}
+                  style={getToggleStyle(periodFilterMode === "custom")}
+                >
+                  Vybrat období
+                </button>
+
+                {periodFilterMode === "custom" && (
+                  <select
+                    value={selectedPeriodId}
+                    onChange={(e) => setSelectedPeriodId(e.target.value)}
+                    style={{
+                      ...styles.input,
+                      appearance: "none",
+                      cursor: "pointer",
+                      marginBottom: "0",
+                    }}
+                  >
+                    <option
+                      value=""
+                      style={{ background: "#111111", color: "white" }}
+                    >
+                      Vyber období
+                    </option>
+
+                    {periods.map((period) => (
+                      <option
+                        key={period.id}
+                        value={period.id}
+                        style={{ background: "#111111", color: "white" }}
+                      >
+                        {period.name}
+                        {period.is_active ? " (aktivní)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
             )}
           </div>
 
-          <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
-            <button
-              onClick={() => setStatsMode("players")}
-              style={getToggleStyle(statsMode === "players")}
-            >
-              Hráči
-            </button>
+          <div
+            style={{
+              ...glassCardStyle,
+              padding: "8px",
+            }}
+          >
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                onClick={() => setStatsMode("players")}
+                style={getToggleStyle(statsMode === "players")}
+              >
+                HRÁČI
+              </button>
 
-            <button
-              onClick={() => setStatsMode("goalkeepers")}
-              style={getToggleStyle(statsMode === "goalkeepers")}
-            >
-              Brankáři
-            </button>
+              <button
+                onClick={() => setStatsMode("goalkeepers")}
+                style={getToggleStyle(statsMode === "goalkeepers")}
+              >
+                BRANKÁŘI
+              </button>
+            </div>
           </div>
 
-          <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
-            <button
-              onClick={() => setStatsTeamFilter("ALL")}
-              style={getToggleStyle(statsTeamFilter === "ALL")}
+          <div
+            style={{
+              ...glassCardStyle,
+              padding: "14px",
+            }}
+          >
+            <div
+              style={{
+                color: "#9b9b9b",
+                fontSize: "12px",
+                fontWeight: 950,
+                letterSpacing: "0.8px",
+                textTransform: "uppercase",
+                marginBottom: "10px",
+              }}
             >
-              Vše
-            </button>
+              Filtr týmu
+            </div>
 
-            <button
-              onClick={() => setStatsTeamFilter("A")}
-              style={getToggleStyle(statsTeamFilter === "A")}
+            <div
+              style={{
+                display: "flex",
+                gap: "8px",
+                overflowX: "auto",
+                paddingBottom: "2px",
+              }}
             >
-              A-tým
-            </button>
+              <button
+                onClick={() => setStatsTeamFilter("ALL")}
+                style={getChipStyle(statsTeamFilter === "ALL")}
+              >
+                Vše
+              </button>
 
-            <button
-              onClick={() => setStatsTeamFilter("B")}
-              style={getToggleStyle(statsTeamFilter === "B")}
-            >
-              B-tým
-            </button>
+              <button
+                onClick={() => setStatsTeamFilter("A")}
+                style={getChipStyle(statsTeamFilter === "A")}
+              >
+                A-tým
+              </button>
+
+              <button
+                onClick={() => setStatsTeamFilter("B")}
+                style={getChipStyle(statsTeamFilter === "B")}
+              >
+                B-tým
+              </button>
+            </div>
           </div>
 
           {statsMode === "players" && (
             <>
-              <div style={{ display: "grid", gap: "8px", marginBottom: "12px" }}>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <button
-                    onClick={() => setPlayerSort("goals")}
-                    style={getToggleStyle(playerSort === "goals")}
-                  >
-                    GÓLY
-                  </button>
-
-                  <button
-                    onClick={() => setPlayerSort("assists")}
-                    style={getToggleStyle(playerSort === "assists")}
-                  >
-                    ASISTENCE
-                  </button>
-
-                  <button
-                    onClick={() => setPlayerSort("points")}
-                    style={getToggleStyle(playerSort === "points")}
-                  >
-                    BODY
-                  </button>
+              <div
+                style={{
+                  ...glassCardStyle,
+                  padding: "14px",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#9b9b9b",
+                    fontSize: "12px",
+                    fontWeight: 950,
+                    letterSpacing: "0.8px",
+                    textTransform: "uppercase",
+                    marginBottom: "10px",
+                  }}
+                >
+                  Řazení hráčů
                 </div>
 
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <button
-                    onClick={() => setPlayerSort("rating")}
-                    style={getToggleStyle(playerSort === "rating")}
-                  >
-                    ZNÁMKA
-                  </button>
+                <div style={{ display: "grid", gap: "8px" }}>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button
+                      onClick={() => setPlayerSort("points")}
+                      style={getToggleStyle(playerSort === "points")}
+                    >
+                      BODY
+                    </button>
 
-                  <button
-                    onClick={() => setPlayerSort("motm")}
-                    style={getToggleStyle(playerSort === "motm")}
-                  >
-                    HZ
-                  </button>
+                    <button
+                      onClick={() => setPlayerSort("goals")}
+                      style={getToggleStyle(playerSort === "goals")}
+                    >
+                      GÓLY
+                    </button>
+
+                    <button
+                      onClick={() => setPlayerSort("assists")}
+                      style={getToggleStyle(playerSort === "assists")}
+                    >
+                      ASIST.
+                    </button>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button
+                      onClick={() => setPlayerSort("rating")}
+                      style={getToggleStyle(playerSort === "rating")}
+                    >
+                      ZNÁMKA
+                    </button>
+
+                    <button
+                      onClick={() => setPlayerSort("motm")}
+                      style={getToggleStyle(playerSort === "motm")}
+                    >
+                      HRÁČ ZÁPASU
+                    </button>
+                  </div>
                 </div>
               </div>
 
               {fieldPlayerStats.length === 0 ? (
-                <div style={{ color: "#b8b8b8" }}>Zatím žádná data.</div>
+                <div
+                  style={{
+                    ...glassCardStyle,
+                    padding: "16px",
+                    color: "#b8b8b8",
+                  }}
+                >
+                  Zatím žádná data.
+                </div>
               ) : (
                 <div style={listWrapStyle}>
-                  {fieldPlayerStats.map((player, index) => (
-                    <div
-                      key={player.number}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: "12px",
-                        padding: "10px 12px",
-                        borderRadius: "14px",
-                        background: "rgba(255,255,255,0.04)",
-                        border: "1px solid rgba(255,255,255,0.05)",
-                      }}
-                    >
+                  {fieldPlayerStats.map((player, index) => {
+                    const badge = getPlayerBadgeStyle(player);
+                    const isTop = index === 0;
+
+                    return (
                       <div
+                        key={player.number}
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "12px",
+                          ...glassCardStyle,
+                          position: "relative",
+                          overflow: "hidden",
+                          padding: "12px",
                         }}
                       >
                         <div
                           style={{
-                            minWidth: "42px",
-                            height: "42px",
-                            borderRadius: "10px",
-                            background: primaryColor,
+                            position: "absolute",
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            width: "5px",
+                            background: isTop ? primaryColor : "rgba(255,255,255,0.12)",
+                            boxShadow: isTop
+                              ? `0 0 18px ${primaryColor}66`
+                              : "none",
+                          }}
+                        />
+
+                        <div
+                          style={{
                             display: "flex",
                             alignItems: "center",
-                            justifyContent: "center",
-                            fontWeight: "bold",
-                            color: "white",
+                            justifyContent: "space-between",
+                            gap: "12px",
+                            paddingLeft: "4px",
                           }}
                         >
-                          {index + 1}
-                        </div>
-
-                        <div>
-                          <div style={{ fontWeight: "bold" }}>{player.name}</div>
-                          <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
-                            Z {player.matches} / G {player.goals} / A{" "}
-                            {player.assists} / B {player.points}
-                          </div>
                           <div
                             style={{
-                              fontSize: "12px",
-                              color: "#b8b8b8",
-                              marginTop: "2px",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "12px",
+                              minWidth: 0,
                             }}
                           >
-                            Ø{" "}
-                            {player.averageRating !== null
-                              ? player.averageRating.toFixed(1)
-                              : "--"}{" "}
-                            / HZ {player.motmCount}
+                            <div
+                              style={{
+                                minWidth: "44px",
+                                height: "44px",
+                                borderRadius: "13px",
+                                background: isTop
+                                  ? `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`
+                                  : "rgba(255,255,255,0.08)",
+                                color: isTop ? "#071107" : "#ffffff",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontWeight: 950,
+                                fontSize: "16px",
+                              }}
+                            >
+                              {index + 1}
+                            </div>
+
+                            <div style={{ minWidth: 0 }}>
+                              <div
+                                style={{
+                                  fontWeight: 950,
+                                  fontSize: "16px",
+                                  wordBreak: "break-word",
+                                }}
+                              >
+                                {player.name}
+                              </div>
+
+                              <div
+                                style={{
+                                  fontSize: "12px",
+                                  color: "#b8b8b8",
+                                  marginTop: "4px",
+                                  lineHeight: 1.45,
+                                }}
+                              >
+                                Z {player.matches} • G {player.goals} • A{" "}
+                                {player.assists} • B {player.points}
+                              </div>
+
+                              <div
+                                style={{
+                                  fontSize: "12px",
+                                  color: "#b8b8b8",
+                                  marginTop: "2px",
+                                }}
+                              >
+                                Ø{" "}
+                                {player.averageRating !== null
+                                  ? player.averageRating.toFixed(1)
+                                  : "--"}{" "}
+                                • HZ {player.motmCount}
+                              </div>
+                            </div>
                           </div>
+
+                          <ValueBadge
+                            value={getPlayerDisplayValue(player)}
+                            background={badge.background}
+                            color={badge.color}
+                          />
                         </div>
                       </div>
-
-                      <ValueBadge
-                        value={getPlayerDisplayValue(player)}
-                        background={getPlayerBadgeStyle(player).background}
-                        color={getPlayerBadgeStyle(player).color}
-                      />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </>
@@ -720,90 +970,159 @@ export default function StatsScreen({
 
           {statsMode === "goalkeepers" && (
             <>
-              <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
-                <button
-                  onClick={() => setGoalkeeperSort("matches")}
-                  style={getToggleStyle(goalkeeperSort === "matches")}
+              <div
+                style={{
+                  ...glassCardStyle,
+                  padding: "14px",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#9b9b9b",
+                    fontSize: "12px",
+                    fontWeight: 950,
+                    letterSpacing: "0.8px",
+                    textTransform: "uppercase",
+                    marginBottom: "10px",
+                  }}
                 >
-                  ZÁPASY
-                </button>
+                  Řazení brankářů
+                </div>
 
-                <button
-                  onClick={() => setGoalkeeperSort("goalsAgainst")}
-                  style={getToggleStyle(goalkeeperSort === "goalsAgainst")}
-                >
-                  GÓLY
-                </button>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    onClick={() => setGoalkeeperSort("matches")}
+                    style={getToggleStyle(goalkeeperSort === "matches")}
+                  >
+                    ZÁPASY
+                  </button>
 
-                <button
-                  onClick={() => setGoalkeeperSort("average")}
-                  style={getToggleStyle(goalkeeperSort === "average")}
-                >
-                  PRŮMĚR
-                </button>
+                  <button
+                    onClick={() => setGoalkeeperSort("goalsAgainst")}
+                    style={getToggleStyle(goalkeeperSort === "goalsAgainst")}
+                  >
+                    GÓLY
+                  </button>
+
+                  <button
+                    onClick={() => setGoalkeeperSort("average")}
+                    style={getToggleStyle(goalkeeperSort === "average")}
+                  >
+                    PRŮMĚR
+                  </button>
+                </div>
               </div>
 
               {goalkeeperStats.length === 0 ? (
-                <div style={{ color: "#b8b8b8" }}>
+                <div
+                  style={{
+                    ...glassCardStyle,
+                    padding: "16px",
+                    color: "#b8b8b8",
+                  }}
+                >
                   Zatím žádná data brankářů.
                 </div>
               ) : (
                 <div style={listWrapStyle}>
-                  {goalkeeperStats.map((goalkeeper, index) => (
-                    <div
-                      key={goalkeeper.number}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: "12px",
-                        padding: "10px 12px",
-                        borderRadius: "14px",
-                        background: "rgba(255,255,255,0.04)",
-                        border: "1px solid rgba(255,255,255,0.05)",
-                      }}
-                    >
+                  {goalkeeperStats.map((goalkeeper, index) => {
+                    const badge = getGoalkeeperBadgeStyle(goalkeeper);
+                    const isTop = index === 0;
+
+                    return (
                       <div
+                        key={goalkeeper.number}
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "12px",
+                          ...glassCardStyle,
+                          position: "relative",
+                          overflow: "hidden",
+                          padding: "12px",
                         }}
                       >
                         <div
                           style={{
-                            minWidth: "42px",
-                            height: "42px",
-                            borderRadius: "10px",
-                            background: primaryColor,
-                            color: "white",
+                            position: "absolute",
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            width: "5px",
+                            background: isTop ? primaryColor : "rgba(255,255,255,0.12)",
+                            boxShadow: isTop
+                              ? `0 0 18px ${primaryColor}66`
+                              : "none",
+                          }}
+                        />
+
+                        <div
+                          style={{
                             display: "flex",
                             alignItems: "center",
-                            justifyContent: "center",
-                            fontWeight: "bold",
+                            justifyContent: "space-between",
+                            gap: "12px",
+                            paddingLeft: "4px",
                           }}
                         >
-                          {index + 1}
-                        </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "12px",
+                              minWidth: 0,
+                            }}
+                          >
+                            <div
+                              style={{
+                                minWidth: "44px",
+                                height: "44px",
+                                borderRadius: "13px",
+                                background: isTop
+                                  ? `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`
+                                  : "rgba(255,255,255,0.08)",
+                                color: isTop ? "#071107" : "#ffffff",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontWeight: 950,
+                                fontSize: "16px",
+                              }}
+                            >
+                              {index + 1}
+                            </div>
 
-                        <div>
-                          <div style={{ fontWeight: "bold" }}>
-                            {goalkeeper.name}
+                            <div style={{ minWidth: 0 }}>
+                              <div
+                                style={{
+                                  fontWeight: 950,
+                                  fontSize: "16px",
+                                  wordBreak: "break-word",
+                                }}
+                              >
+                                {goalkeeper.name}
+                              </div>
+
+                              <div
+                                style={{
+                                  fontSize: "12px",
+                                  color: "#b8b8b8",
+                                  marginTop: "4px",
+                                }}
+                              >
+                                Z {goalkeeper.matches} • G{" "}
+                                {goalkeeper.goalsAgainst} • Ø{" "}
+                                {goalkeeper.average}
+                              </div>
+                            </div>
                           </div>
-                          <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
-                            Z {goalkeeper.matches} / G{" "}
-                            {goalkeeper.goalsAgainst} / Ø {goalkeeper.average}
-                          </div>
+
+                          <ValueBadge
+                            value={getGoalkeeperDisplayValue(goalkeeper)}
+                            background={badge.background}
+                            color={badge.color}
+                          />
                         </div>
                       </div>
-
-                      <ValueBadge
-                        value={getGoalkeeperDisplayValue(goalkeeper)}
-                        background={getGoalkeeperBadgeStyle(goalkeeper).background}
-                        color={getGoalkeeperBadgeStyle(goalkeeper).color}
-                      />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </>
