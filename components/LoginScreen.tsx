@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { styles } from "@/styles/appStyles";
 
 const INVITE_STORAGE_KEY = "statppka_invite_token";
+const MOBILE_LOGIN_REDIRECT_URL = "cz.myteamhub.app://login-callback";
 
 function getBaseAppUrl() {
   const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
@@ -32,9 +33,36 @@ function getInviteTokenFromUrl() {
   return params.get("invite") ?? "";
 }
 
+function isNativeApp() {
+  if (typeof window === "undefined") return false;
+
+  const capacitor = (window as unknown as {
+    Capacitor?: {
+      isNativePlatform?: () => boolean;
+      getPlatform?: () => string;
+    };
+  }).Capacitor;
+
+  if (capacitor?.isNativePlatform?.()) return true;
+
+  const platform = capacitor?.getPlatform?.();
+  return platform === "android" || platform === "ios";
+}
+
 function buildRedirectUrl() {
-  const baseUrl = getBaseAppUrl();
   const inviteToken = getInviteTokenFromUrl() || getStoredInviteToken();
+
+  if (isNativeApp()) {
+    if (!inviteToken) {
+      return MOBILE_LOGIN_REDIRECT_URL;
+    }
+
+    return `${MOBILE_LOGIN_REDIRECT_URL}?invite=${encodeURIComponent(
+      inviteToken
+    )}`;
+  }
+
+  const baseUrl = getBaseAppUrl();
 
   if (!inviteToken) {
     return baseUrl;
@@ -47,7 +75,9 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [messageType, setMessageType] = useState<"success" | "error" | "info">("info");
+  const [messageType, setMessageType] = useState<"success" | "error" | "info">(
+    "info"
+  );
 
   useEffect(() => {
     const inviteToken = getInviteTokenFromUrl();
@@ -82,7 +112,7 @@ export default function LoginScreen() {
       setMessageType("error");
     } else {
       setMessage(
-        "Hotovo. Zkontroluj email a klikni na přihlašovací odkaz. Když zprávu nevidíš, podívej se i do spamu nebo hromadných."
+        "Hotovo. Zkontroluj email a klikni na přihlašovací odkaz. V mobilní aplikaci se odkaz otevře zpět do MyTeamHub."
       );
       setMessageType("success");
     }
@@ -122,19 +152,9 @@ export default function LoginScreen() {
         boxShadow: "0 16px 40px rgba(0,0,0,0.22)",
       }}
     >
-      <div
-        style={{
-          display: "grid",
-          gap: "16px",
-        }}
-      >
+      <div style={{ display: "grid", gap: "16px" }}>
         <div>
-          <h2
-            style={{
-              ...styles.screenTitle,
-              marginBottom: "8px",
-            }}
-          >
+          <h2 style={{ ...styles.screenTitle, marginBottom: "8px" }}>
             Přihlášení
           </h2>
 
@@ -146,7 +166,8 @@ export default function LoginScreen() {
               fontSize: "14px",
             }}
           >
-            Přihlas se přes email. Pošleme ti odkaz pro rychlý vstup do aplikace.
+            Přihlas se přes email. Pošleme ti odkaz pro rychlý vstup do
+            aplikace.
           </p>
         </div>
 
@@ -161,16 +182,12 @@ export default function LoginScreen() {
             lineHeight: 1.55,
           }}
         >
-          Přihlašovací odkaz chodí z adresy <strong>noreply@myteamhub.cz</strong>.
-          Když email hned neuvidíš, zkontroluj i spam nebo hromadné.
+          Přihlašovací odkaz chodí z adresy{" "}
+          <strong>noreply@myteamhub.cz</strong>. Když email hned neuvidíš,
+          zkontroluj i spam nebo hromadné.
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gap: "12px",
-          }}
-        >
+        <div style={{ display: "grid", gap: "12px" }}>
           <input
             type="email"
             placeholder="tvuj@email.cz"
@@ -211,14 +228,16 @@ export default function LoginScreen() {
                 : "0 10px 24px rgba(34,197,94,0.28)",
               cursor: loading ? "default" : "pointer",
               opacity: loading ? 0.9 : 1,
-              transition: "transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease",
+              transition:
+                "transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease",
             }}
             onClick={() => void handleLogin()}
             disabled={loading}
             onMouseOver={(e) => {
               if (!loading) {
                 e.currentTarget.style.transform = "translateY(-1px)";
-                e.currentTarget.style.boxShadow = "0 14px 28px rgba(34,197,94,0.34)";
+                e.currentTarget.style.boxShadow =
+                  "0 14px 28px rgba(34,197,94,0.34)";
               }
             }}
             onMouseOut={(e) => {
