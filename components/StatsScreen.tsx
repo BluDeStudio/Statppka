@@ -26,6 +26,12 @@ type StatsScreenProps = {
   primaryColor?: string;
 };
 
+type StatPlayerIdRow = {
+  finished_match_id: string;
+  player_number: number;
+  player_id: string | null;
+};
+
 function ValueBadge({
   value,
   background,
@@ -111,6 +117,35 @@ function formatPeriodType(type?: string | null) {
   return type === "season" ? "Sezóna" : "Rok";
 }
 
+function getStatPlayerId(
+  stat: FinishedMatch["playerStats"][number],
+  fallbackPlayerId?: string | null
+) {
+  return (
+    stat.playerId ??
+    (
+      stat as FinishedMatch["playerStats"][number] & {
+        player_id?: string | null;
+      }
+    ).player_id ??
+    fallbackPlayerId ??
+    null
+  );
+}
+
+function getRatingPlayerId(rating: PlayerRatingRow) {
+  return (
+    (
+      rating as PlayerRatingRow & {
+        player_id?: string | null;
+        playerId?: string | null;
+      }
+    ).player_id ??
+    (rating as PlayerRatingRow & { playerId?: string | null }).playerId ??
+    null
+  );
+}
+
 export default function StatsScreen({
   clubId,
   finishedMatches,
@@ -118,6 +153,9 @@ export default function StatsScreen({
 }: StatsScreenProps) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [ratings, setRatings] = useState<PlayerRatingRow[]>([]);
+  const [statPlayerIdRows, setStatPlayerIdRows] = useState<StatPlayerIdRow[]>(
+    []
+  );
   const [periods, setPeriods] = useState<Period[]>([]);
   const [activePeriod, setActivePeriod] = useState<Period | null>(null);
   const [loading, setLoading] = useState(true);
@@ -135,7 +173,7 @@ export default function StatsScreen({
 
   const finishedMatchIds = useMemo(
     () => finishedMatches.map((match) => match.id),
-    [finishedMatches],
+    [finishedMatches]
   );
 
   useEffect(() => {
@@ -144,14 +182,21 @@ export default function StatsScreen({
     const loadData = async () => {
       setLoading(true);
 
-      const [loadedPlayers, periodsResponse] = await Promise.all([
-        getPlayersByClubId(clubId),
-        supabase
-          .from("periods")
-          .select("*")
-          .eq("club_id", clubId)
-          .order("start_date", { ascending: false }),
-      ]);
+      const [loadedPlayers, periodsResponse, statsResponse] =
+        await Promise.all([
+          getPlayersByClubId(clubId),
+          supabase
+            .from("periods")
+            .select("*")
+            .eq("club_id", clubId)
+            .order("start_date", { ascending: false }),
+          finishedMatchIds.length > 0
+            ? supabase
+                .from("finished_match_player_stats")
+                .select("finished_match_id, player_number, player_id")
+                .in("finished_match_id", finishedMatchIds)
+            : Promise.resolve({ data: [], error: null }),
+        ]);
 
       const loadedRatings =
         finishedMatchIds.length > 0
@@ -160,8 +205,18 @@ export default function StatsScreen({
 
       if (!active) return;
 
+      if (statsResponse.error) {
+        console.error(
+          "Nepodařilo se načíst player_id statistik:",
+          statsResponse.error
+        );
+      }
+
       setPlayers(loadedPlayers);
       setRatings(loadedRatings);
+      setStatPlayerIdRows(
+        ((statsResponse.data as StatPlayerIdRow[]) ?? []).filter(Boolean)
+      );
 
       const loadedPeriods = ((periodsResponse.data as Period[]) ?? [])
         .slice()
@@ -212,6 +267,17 @@ export default function StatsScreen({
     return map;
   }, [players]);
 
+  const statPlayerIdByMatchAndNumber = useMemo(() => {
+    const map = new Map<string, string>();
+
+    statPlayerIdRows.forEach((row) => {
+      if (!row.player_id) return;
+      map.set(`${row.finished_match_id}:${row.player_number}`, row.player_id);
+    });
+
+    return map;
+  }, [statPlayerIdRows]);
+
   const ratingsByMatchId = useMemo(() => {
     const map = new Map<string, PlayerRatingRow[]>();
 
@@ -224,53 +290,46 @@ export default function StatsScreen({
     return map;
   }, [ratings]);
 
-  const getStatPlayerId = (
-    stat: FinishedMatch["playerStats"][number],
-  ): string | null => {
-    return (
-      stat.playerId ??
-      (
-        stat as FinishedMatch["playerStats"][number] & {
-          player_id?: string | null;
-        }
-      ).player_id ??
-      null
+  const getPlayerIdForStat = (
+    matchId: string,
+    stat: FinishedMatch["playerStats"][number]
+  ) => {
+    return getStatPlayerId(
+      stat,
+      statPlayerIdByMatchAndNumber.get(`${matchId}:${stat.playerNumber}`) ??
+        null
     );
   };
 
-  const getPlayerName = (number: number, playerId?: string | null) => {
+  const getPlayerName = (
+    playerNumber: number,
+    playerId?: string | null
+  ) => {
     if (playerId) {
       const player = playerById.get(playerId);
       if (player) return player.name;
     }
 
-    return playerByNumber.get(number)?.name ?? `#${number}`;
+    return playerByNumber.get(playerNumber)?.name ?? `#${playerNumber}`;
   };
 
-  const getPlayerNumber = (number: number, playerId?: string | null) => {
+  const getPlayerNumber = (
+    playerNumber: number,
+    playerId?: string | null
+  ) => {
     if (playerId) {
       const player = playerById.get(playerId);
       if (player) return player.number;
     }
 
-    return playerByNumber.get(number)?.number ?? number;
+    return playerNumber;
   };
 
-  const getPlayerKey = (number: number, playerId?: string | null) => {
-    return playerId ? `id:${playerId}` : `number:${number}`;
-  };
-
-  const getRatingPlayerId = (rating: PlayerRatingRow) => {
-    return (
-      (
-        rating as PlayerRatingRow & {
-          player_id?: string | null;
-          playerId?: string | null;
-        }
-      ).player_id ??
-      (rating as PlayerRatingRow & { playerId?: string | null }).playerId ??
-      null
-    );
+  const getPlayerKey = (
+    playerNumber: number,
+    playerId?: string | null
+  ) => {
+    return playerId ? `id:${playerId}` : `number:${playerNumber}`;
   };
 
   const customSelectedPeriod = useMemo(() => {
@@ -289,7 +348,7 @@ export default function StatsScreen({
 
     if (effectivePeriod) {
       matches = matches.filter((match) =>
-        isMatchInsidePeriod(match.date, effectivePeriod),
+        isMatchInsidePeriod(match.date, effectivePeriod)
       );
     }
 
@@ -320,16 +379,16 @@ export default function StatsScreen({
 
       const matchSummary = buildMatchRatingSummary(
         match.playerStats.map((player) => player.playerNumber),
-        matchRatings,
+        matchRatings
       );
 
       match.playerStats.forEach((stat) => {
-        const statPlayerId = getStatPlayerId(stat);
-        const playerKey = getPlayerKey(stat.playerNumber, statPlayerId);
+        const playerId = getPlayerIdForStat(match.id, stat);
+        const playerKey = getPlayerKey(stat.playerNumber, playerId);
 
         if (!playerMap.has(playerKey)) {
           playerMap.set(playerKey, {
-            playerId: statPlayerId,
+            playerId,
             playerNumber: stat.playerNumber,
             matches: 0,
             goals: 0,
@@ -350,10 +409,13 @@ export default function StatsScreen({
       const statsByPlayerId = new Map<string, string>();
 
       match.playerStats.forEach((stat) => {
-        const statPlayerId = getStatPlayerId(stat);
-        const playerKey = getPlayerKey(stat.playerNumber, statPlayerId);
+        const playerId = getPlayerIdForStat(match.id, stat);
+        const playerKey = getPlayerKey(stat.playerNumber, playerId);
+
         statsByNumber.set(stat.playerNumber, playerKey);
-        if (statPlayerId) statsByPlayerId.set(statPlayerId, playerKey);
+        if (playerId) {
+          statsByPlayerId.set(playerId, playerKey);
+        }
       });
 
       const ratingsByPlayerKey = new Map<string, PlayerRatingRow[]>();
@@ -408,7 +470,7 @@ export default function StatsScreen({
 
           current.ratingPoints += playerRatingsForMatch.reduce(
             (sum, rating) => sum + Number(rating.rating),
-            0,
+            0
           );
           current.ratingVotes += playerRatingsForMatch.length;
         }
@@ -454,8 +516,9 @@ export default function StatsScreen({
         if ((b.averageRating ?? 0) !== (a.averageRating ?? 0)) {
           return (b.averageRating ?? 0) - (a.averageRating ?? 0);
         }
-        if (b.ratingVotes !== a.ratingVotes)
+        if (b.ratingVotes !== a.ratingVotes) {
           return b.ratingVotes - a.ratingVotes;
+        }
         return a.name.localeCompare(b.name, "cs");
       }
 
@@ -478,6 +541,7 @@ export default function StatsScreen({
     ratingsByMatchId,
     playerById,
     playerByNumber,
+    statPlayerIdByMatchAndNumber,
   ]);
 
   const goalkeeperStats = useMemo(() => {
@@ -496,15 +560,18 @@ export default function StatsScreen({
 
       const goalkeeperStat =
         match.playerStats.find(
-          (stat) => stat.playerNumber === match.goalkeeperNumber,
+          (stat) => stat.playerNumber === match.goalkeeperNumber
         ) ?? null;
 
       const goalkeeperPlayerId = goalkeeperStat
-        ? getStatPlayerId(goalkeeperStat)
-        : null;
+        ? getPlayerIdForStat(match.id, goalkeeperStat)
+        : statPlayerIdByMatchAndNumber.get(
+            `${match.id}:${match.goalkeeperNumber}`
+          ) ?? null;
+
       const goalkeeperKey = getPlayerKey(
         match.goalkeeperNumber,
-        goalkeeperPlayerId,
+        goalkeeperPlayerId
       );
 
       if (!gkMap.has(goalkeeperKey)) {
@@ -556,7 +623,13 @@ export default function StatsScreen({
       }
       return a.name.localeCompare(b.name, "cs");
     });
-  }, [filteredStatsMatches, goalkeeperSort, playerById, playerByNumber]);
+  }, [
+    filteredStatsMatches,
+    goalkeeperSort,
+    playerById,
+    playerByNumber,
+    statPlayerIdByMatchAndNumber,
+  ]);
 
   const glassCardStyle: React.CSSProperties = {
     borderRadius: "22px",
@@ -630,7 +703,7 @@ export default function StatsScreen({
   };
 
   const getGoalkeeperDisplayValue = (
-    goalkeeper: (typeof goalkeeperStats)[number],
+    goalkeeper: (typeof goalkeeperStats)[number]
   ) => {
     if (goalkeeperSort === "matches") return goalkeeper.matches;
     if (goalkeeperSort === "goalsAgainst") return goalkeeper.goalsAgainst;
@@ -638,7 +711,7 @@ export default function StatsScreen({
   };
 
   const getGoalkeeperBadgeStyle = (
-    goalkeeper: (typeof goalkeeperStats)[number],
+    goalkeeper: (typeof goalkeeperStats)[number]
   ) => {
     if (goalkeeperSort === "average") {
       const colorKey = getRatingBadgeColor(goalkeeper.average, false);
@@ -654,14 +727,14 @@ export default function StatsScreen({
   const periodTitle =
     periodFilterMode === "all"
       ? "Všechna období"
-      : (effectivePeriod?.name ?? "Bez aktivního období");
+      : effectivePeriod?.name ?? "Bez aktivního období";
 
   const periodSubtitle =
     periodFilterMode === "all"
       ? `${filteredStatsMatches.length} odehraných zápasů`
       : effectivePeriod
-        ? `${formatPeriodType(effectivePeriod.type)} • ${effectivePeriod.start_date} až ${effectivePeriod.end_date}`
-        : "Nejdřív vytvoř aktivní období";
+      ? `${formatPeriodType(effectivePeriod.type)} • ${effectivePeriod.start_date} až ${effectivePeriod.end_date}`
+      : "Nejdřív vytvoř aktivní období";
 
   return (
     <div style={{ display: "grid", gap: "14px" }}>
@@ -700,9 +773,7 @@ export default function StatsScreen({
                 textAlign: "left",
               }}
             >
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "12px" }}
-              >
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                 <div
                   style={{
                     width: "44px",
@@ -758,9 +829,7 @@ export default function StatsScreen({
                 style={{
                   fontSize: "24px",
                   color: "#b8b8b8",
-                  transform: periodPanelOpen
-                    ? "rotate(180deg)"
-                    : "rotate(0deg)",
+                  transform: periodPanelOpen ? "rotate(180deg)" : "rotate(0deg)",
                   transition: "transform 0.2s ease",
                 }}
               >
@@ -1011,9 +1080,7 @@ export default function StatsScreen({
                             top: 0,
                             bottom: 0,
                             width: "5px",
-                            background: isTop
-                              ? primaryColor
-                              : "rgba(255,255,255,0.12)",
+                            background: isTop ? primaryColor : "rgba(255,255,255,0.12)",
                             boxShadow: isTop
                               ? `0 0 18px ${primaryColor}66`
                               : "none",
@@ -1187,9 +1254,7 @@ export default function StatsScreen({
                             top: 0,
                             bottom: 0,
                             width: "5px",
-                            background: isTop
-                              ? primaryColor
-                              : "rgba(255,255,255,0.12)",
+                            background: isTop ? primaryColor : "rgba(255,255,255,0.12)",
                             boxShadow: isTop
                               ? `0 0 18px ${primaryColor}66`
                               : "none",
