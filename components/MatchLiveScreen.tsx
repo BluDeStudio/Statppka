@@ -737,8 +737,10 @@ export default function MatchLiveScreen({
     });
 
     const statsMap = new Map<
-      number,
+      string,
       {
+        playerId: string;
+        playerNumber: number;
         goals: number;
         assists: number;
         yellowCards: number;
@@ -752,7 +754,9 @@ export default function MatchLiveScreen({
     selectedPlayerObjects.forEach((player) => {
       const detailRow = finalizedDetailMap.get(player.id);
 
-      statsMap.set(player.number, {
+      statsMap.set(player.id, {
+        playerId: player.id,
+        playerNumber: player.number,
         goals: 0,
         assists: 0,
         yellowCards: 0,
@@ -765,16 +769,18 @@ export default function MatchLiveScreen({
 
     const mappedEvents: FinishedMatch["events"] = events.map((event) => {
       if (event.type === "goal_for") {
-        const scorerNumber = getPlayerNumberById(event.scorer_player_id);
-        const assistNumber = getPlayerNumberById(event.assist_player_id);
+        const scorerPlayerId = event.scorer_player_id ?? null;
+        const assistPlayerId = event.assist_player_id ?? null;
+        const scorerNumber = getPlayerNumberById(scorerPlayerId);
+        const assistNumber = getPlayerNumberById(assistPlayerId);
 
-        if (scorerNumber !== null) {
-          const scorerStats = statsMap.get(scorerNumber);
+        if (scorerPlayerId) {
+          const scorerStats = statsMap.get(scorerPlayerId);
           if (scorerStats) scorerStats.goals += 1;
         }
 
-        if (assistNumber !== null) {
-          const assistStats = statsMap.get(assistNumber);
+        if (assistPlayerId) {
+          const assistStats = statsMap.get(assistPlayerId);
           if (assistStats) assistStats.assists += 1;
         }
 
@@ -782,34 +788,40 @@ export default function MatchLiveScreen({
           type: "goal_for",
           scorer: scorerNumber ?? 0,
           assist: assistNumber,
+          scorerPlayerId,
+          assistPlayerId,
         };
       }
 
       if (event.type === "yellow_card") {
-        const playerNumber = getPlayerNumberById(event.card_player_id);
+        const playerId = event.card_player_id ?? null;
+        const playerNumber = getPlayerNumberById(playerId);
 
-        if (playerNumber !== null) {
-          const playerStats = statsMap.get(playerNumber);
+        if (playerId) {
+          const playerStats = statsMap.get(playerId);
           if (playerStats) playerStats.yellowCards += 1;
         }
 
         return {
           type: "yellow_card",
           playerNumber: playerNumber ?? 0,
+          playerId,
         };
       }
 
       if (event.type === "red_card") {
-        const playerNumber = getPlayerNumberById(event.card_player_id);
+        const playerId = event.card_player_id ?? null;
+        const playerNumber = getPlayerNumberById(playerId);
 
-        if (playerNumber !== null) {
-          const playerStats = statsMap.get(playerNumber);
+        if (playerId) {
+          const playerStats = statsMap.get(playerId);
           if (playerStats) playerStats.redCards += 1;
         }
 
         return {
           type: "red_card",
           playerNumber: playerNumber ?? 0,
+          playerId,
         };
       }
 
@@ -818,8 +830,9 @@ export default function MatchLiveScreen({
       };
     });
 
-    const playerStats = Array.from(statsMap.entries()).map(([playerNumber, stats]) => ({
-      playerNumber,
+    const playerStats = Array.from(statsMap.values()).map((stats) => ({
+      playerId: stats.playerId,
+      playerNumber: stats.playerNumber,
       goals: stats.goals,
       assists: stats.assists,
       yellowCards: stats.yellowCards,

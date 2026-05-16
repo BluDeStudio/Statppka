@@ -192,6 +192,16 @@ export default function StatsScreen({
     };
   }, [clubId, finishedMatchIds.join("|")]);
 
+  const playerById = useMemo(() => {
+    const map = new Map<string, Player>();
+
+    players.forEach((player) => {
+      map.set(player.id, player);
+    });
+
+    return map;
+  }, [players]);
+
   const playerNameByNumber = useMemo(() => {
     const map = new Map<number, string>();
 
@@ -214,8 +224,30 @@ export default function StatsScreen({
     return map;
   }, [ratings]);
 
-  const getPlayerName = (number: number) => {
+  const getPlayerName = (number: number, playerId?: string | null) => {
+    if (playerId) {
+      const player = playerById.get(playerId);
+      if (player) return player.name;
+    }
+
     return playerNameByNumber.get(number) ?? `#${number}`;
+  };
+
+  const getPlayerNumber = (number: number, playerId?: string | null) => {
+    if (playerId) {
+      const player = playerById.get(playerId);
+      if (player) return player.number;
+    }
+
+    return number;
+  };
+
+  const getPlayerKey = (number: number, playerId?: string | null) => {
+    return playerId ? `id:${playerId}` : `number:${number}`;
+  };
+
+  const getRatingPlayerId = (rating: PlayerRatingRow) => {
+    return (rating as PlayerRatingRow & { player_id?: string | null }).player_id ?? null;
   };
 
   const customSelectedPeriod = useMemo(() => {
@@ -247,8 +279,10 @@ export default function StatsScreen({
 
   const fieldPlayerStats = useMemo(() => {
     const playerMap = new Map<
-      number,
+      string,
       {
+        playerId: string | null;
+        playerNumber: number;
         matches: number;
         goals: number;
         assists: number;
@@ -267,8 +301,12 @@ export default function StatsScreen({
       );
 
       match.playerStats.forEach((stat) => {
-        if (!playerMap.has(stat.playerNumber)) {
-          playerMap.set(stat.playerNumber, {
+        const playerKey = getPlayerKey(stat.playerNumber, stat.playerId);
+
+        if (!playerMap.has(playerKey)) {
+          playerMap.set(playerKey, {
+            playerId: stat.playerId ?? null,
+            playerNumber: stat.playerNumber,
             matches: 0,
             goals: 0,
             assists: 0,
@@ -278,23 +316,56 @@ export default function StatsScreen({
           });
         }
 
-        const current = playerMap.get(stat.playerNumber)!;
+        const current = playerMap.get(playerKey)!;
         current.matches += 1;
         current.goals += stat.goals;
         current.assists += stat.assists;
       });
 
-      const ratingsByPlayerNumber = new Map<number, PlayerRatingRow[]>();
+      const statsByNumber = new Map<number, string>();
+      const statsByPlayerId = new Map<string, string>();
+
+      match.playerStats.forEach((stat) => {
+        const playerKey = getPlayerKey(stat.playerNumber, stat.playerId);
+        statsByNumber.set(stat.playerNumber, playerKey);
+        if (stat.playerId) statsByPlayerId.set(stat.playerId, playerKey);
+      });
+
+      const ratingsByPlayerKey = new Map<string, PlayerRatingRow[]>();
 
       matchRatings.forEach((rating) => {
-        const rows = ratingsByPlayerNumber.get(rating.player_number) ?? [];
+        const ratingPlayerId = getRatingPlayerId(rating);
+        const playerKey =
+          (ratingPlayerId ? statsByPlayerId.get(ratingPlayerId) : null) ??
+          statsByNumber.get(rating.player_number) ??
+          getPlayerKey(rating.player_number, ratingPlayerId);
+
+        const rows = ratingsByPlayerKey.get(playerKey) ?? [];
         rows.push(rating);
-        ratingsByPlayerNumber.set(rating.player_number, rows);
+        ratingsByPlayerKey.set(playerKey, rows);
+
+        if (!playerMap.has(playerKey)) {
+          playerMap.set(playerKey, {
+            playerId: ratingPlayerId,
+            playerNumber: rating.player_number,
+            matches: 0,
+            goals: 0,
+            assists: 0,
+            ratingPoints: 0,
+            ratingVotes: 0,
+            motmCount: 0,
+          });
+        }
       });
 
       matchSummary.forEach((summary) => {
-        if (!playerMap.has(summary.playerNumber)) {
-          playerMap.set(summary.playerNumber, {
+        const playerKey = statsByNumber.get(summary.playerNumber) ??
+          getPlayerKey(summary.playerNumber, null);
+
+        if (!playerMap.has(playerKey)) {
+          playerMap.set(playerKey, {
+            playerId: null,
+            playerNumber: summary.playerNumber,
             matches: 0,
             goals: 0,
             assists: 0,
@@ -304,11 +375,10 @@ export default function StatsScreen({
           });
         }
 
-        const current = playerMap.get(summary.playerNumber)!;
+        const current = playerMap.get(playerKey)!;
 
         if (summary.averageRating !== null) {
-          const playerRatingsForMatch =
-            ratingsByPlayerNumber.get(summary.playerNumber) ?? [];
+          const playerRatingsForMatch = ratingsByPlayerKey.get(playerKey) ?? [];
 
           current.ratingPoints += playerRatingsForMatch.reduce(
             (sum, rating) => sum + Number(rating.rating),
@@ -323,9 +393,11 @@ export default function StatsScreen({
       });
     });
 
-    const arr = Array.from(playerMap.entries()).map(([number, stats]) => ({
-      number,
-      name: getPlayerName(number),
+    const arr = Array.from(playerMap.entries()).map(([key, stats]) => ({
+      key,
+      playerId: stats.playerId,
+      number: getPlayerNumber(stats.playerNumber, stats.playerId),
+      name: getPlayerName(stats.playerNumber, stats.playerId),
       matches: stats.matches,
       goals: stats.goals,
       assists: stats.assists,
@@ -372,7 +444,7 @@ export default function StatsScreen({
       if (b.assists !== a.assists) return b.assists - a.assists;
       return a.name.localeCompare(b.name, "cs");
     });
-  }, [filteredStatsMatches, playerSort, ratingsByMatchId, playerNameByNumber]);
+  }, [filteredStatsMatches, playerSort, ratingsByMatchId, playerById, playerNameByNumber]);
 
   const goalkeeperStats = useMemo(() => {
     const gkMap = new Map<number, { matches: number; goalsAgainst: number }>();
@@ -421,7 +493,7 @@ export default function StatsScreen({
       }
       return a.name.localeCompare(b.name, "cs");
     });
-  }, [filteredStatsMatches, goalkeeperSort, playerNameByNumber]);
+  }, [filteredStatsMatches, goalkeeperSort, playerNameByNumber, playerById]);
 
   const glassCardStyle: React.CSSProperties = {
     borderRadius: "22px",
@@ -857,7 +929,7 @@ export default function StatsScreen({
 
                     return (
                       <div
-                        key={player.number}
+                        key={player.key}
                         style={{
                           ...glassCardStyle,
                           position: "relative",

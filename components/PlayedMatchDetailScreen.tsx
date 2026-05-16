@@ -107,6 +107,7 @@ function rebuildCardEventsFromStats(
       cardEvents.push({
         type: "yellow_card",
         playerNumber: stat.playerNumber,
+        playerId: stat.playerId ?? null,
       });
     }
 
@@ -114,6 +115,7 @@ function rebuildCardEventsFromStats(
       cardEvents.push({
         type: "red_card",
         playerNumber: stat.playerNumber,
+        playerId: stat.playerId ?? null,
       });
     }
   });
@@ -236,12 +238,46 @@ export default function PlayedMatchDetailScreen({
     fontWeight: 900,
   };
 
+  const getPlayerByIdOrNumber = (
+    playerId?: string | null,
+    playerNumber?: number | null
+  ) => {
+    if (playerId) {
+      const playerById = players.find((player) => player.id === playerId);
+      if (playerById) return playerById;
+    }
+
+    if (typeof playerNumber === "number") {
+      return players.find((player) => player.number === playerNumber) ?? null;
+    }
+
+    return null;
+  };
+
+  const getPlayerNameByIdOrNumber = (
+    playerId?: string | null,
+    playerNumber?: number | null
+  ) => {
+    const player = getPlayerByIdOrNumber(playerId, playerNumber);
+    if (player) return player.name;
+    if (typeof playerNumber === "number") return `#${playerNumber}`;
+    return "Neznámý hráč";
+  };
+
   const getPlayerName = (number: number) => {
-    return players.find((player) => player.number === number)?.name ?? `#${number}`;
+    return getPlayerNameByIdOrNumber(null, number);
   };
 
   const getPlayerByNumber = (number: number) => {
-    return players.find((player) => player.number === number) ?? null;
+    return getPlayerByIdOrNumber(null, number);
+  };
+
+  const getStatKey = (stat: FinishedMatch["playerStats"][number]) => {
+    return stat.playerId ?? `number:${stat.playerNumber}`;
+  };
+
+  const getStatByNumber = (playerNumber: number) => {
+    return localMatch.playerStats.find((stat) => stat.playerNumber === playerNumber) ?? null;
   };
 
   const matchPlayerNumbers = useMemo(() => {
@@ -280,8 +316,8 @@ export default function PlayedMatchDetailScreen({
 
         if (bPoints !== aPoints) return bPoints - aPoints;
         if (b.goals !== a.goals) return b.goals - a.goals;
-        return getPlayerName(a.playerNumber).localeCompare(
-          getPlayerName(b.playerNumber),
+        return getPlayerNameByIdOrNumber(a.playerId, a.playerNumber).localeCompare(
+          getPlayerNameByIdOrNumber(b.playerId, b.playerNumber),
           "cs"
         );
       });
@@ -313,30 +349,40 @@ export default function PlayedMatchDetailScreen({
       const bRating = bSummary?.averageRating ?? -1;
 
       if (bRating !== aRating) return bRating - aRating;
-      return getPlayerName(a).localeCompare(getPlayerName(b), "cs");
+      const aStat = getStatByNumber(a);
+      const bStat = getStatByNumber(b);
+      return getPlayerNameByIdOrNumber(
+        aStat?.playerId,
+        a
+      ).localeCompare(getPlayerNameByIdOrNumber(bStat?.playerId, b), "cs");
     });
   }, [isVotingOpen, matchPlayerNumbers, summaryMap, players]);
 
-  const playerHasEvent = (playerNumber: number) => {
+  const playerHasEvent = (stat: FinishedMatch["playerStats"][number]) => {
     return localMatch.events.some((event) => {
       if (event.type === "goal_for") {
-        return event.scorer === playerNumber || event.assist === playerNumber;
+        if (stat.playerId) {
+          return (
+            event.scorerPlayerId === stat.playerId ||
+            event.assistPlayerId === stat.playerId
+          );
+        }
+
+        return event.scorer === stat.playerNumber || event.assist === stat.playerNumber;
       }
 
       if (event.type === "yellow_card" || event.type === "red_card") {
-        return event.playerNumber === playerNumber;
+        if (stat.playerId) return event.playerId === stat.playerId;
+        return event.playerNumber === stat.playerNumber;
       }
 
       return false;
     });
   };
 
-  const canRemovePlayer = (playerNumber: number) => {
+  const canRemovePlayer = (stat: FinishedMatch["playerStats"][number]) => {
     if (!isAdmin) return false;
-    if (localMatch.goalkeeperNumber === playerNumber) return false;
-
-    const stat = localMatch.playerStats.find((item) => item.playerNumber === playerNumber);
-    if (!stat) return false;
+    if (localMatch.goalkeeperNumber === stat.playerNumber) return false;
 
     const hasAnyStat =
       stat.goals > 0 ||
@@ -345,30 +391,32 @@ export default function PlayedMatchDetailScreen({
       (stat.redCards ?? 0) > 0;
 
     if (hasAnyStat) return false;
-    if (playerHasEvent(playerNumber)) return false;
+    if (playerHasEvent(stat)) return false;
 
     return true;
   };
 
-  const handleRemovePlayer = async (playerNumber: number) => {
+  const handleRemovePlayer = async (stat: FinishedMatch["playerStats"][number]) => {
     if (!isAdmin) {
       setMessage("Editace zápasu je dostupná jen pro admina.");
       return;
     }
 
-    const playerName = getPlayerName(playerNumber);
+    const playerName = getPlayerNameByIdOrNumber(stat.playerId, stat.playerNumber);
+    const playerKey = getStatKey(stat);
     const confirmed = window.confirm(
       `Opravdu chceš odebrat hráče ${playerName} ze zápasu?`
     );
 
     if (!confirmed) return;
 
-    setRemovingPlayerNumber(playerNumber);
+    setRemovingPlayerNumber(stat.playerNumber);
     setMessage("");
 
     const result = await removePlayerFromFinishedMatch({
       finishedMatchId: localMatch.id,
-      playerNumber,
+      playerNumber: stat.playerNumber,
+      playerId: stat.playerId ?? null,
       goalkeeperNumber: localMatch.goalkeeperNumber,
       events: localMatch.events,
       playerStats: localMatch.playerStats,
@@ -383,17 +431,21 @@ export default function PlayedMatchDetailScreen({
     setLocalMatch((prev) => ({
       ...prev,
       playerStats: prev.playerStats.filter(
-        (player) => player.playerNumber !== playerNumber
+        (player) => getStatKey(player) !== playerKey
       ),
     }));
 
     setRatings((prev) =>
-      prev.filter((rating) => rating.player_number !== playerNumber)
+      prev.filter((rating) => {
+        const ratingPlayerId = (rating as PlayerRatingRow & { player_id?: string | null }).player_id;
+        if (stat.playerId && ratingPlayerId) return ratingPlayerId !== stat.playerId;
+        return rating.player_number !== stat.playerNumber;
+      })
     );
 
     setSelectedRatings((prev) => {
       const next = { ...prev };
-      delete next[playerNumber];
+      delete next[stat.playerNumber];
       return next;
     });
 
@@ -402,7 +454,7 @@ export default function PlayedMatchDetailScreen({
   };
 
   const updateEditStat = (
-    playerNumber: number,
+    statKey: string,
     key: "goals" | "assists" | "yellowCards" | "redCards",
     value: string
   ) => {
@@ -410,7 +462,7 @@ export default function PlayedMatchDetailScreen({
 
     setEditPlayerStats((prev) =>
       prev.map((stat) =>
-        stat.playerNumber === playerNumber
+        getStatKey(stat) === statKey
           ? {
               ...stat,
               [key]: parsed,
@@ -485,7 +537,10 @@ export default function PlayedMatchDetailScreen({
     setSavingEdit(false);
   };
 
-  const handleSaveRating = async (playerNumber: number, ratingValue: number) => {
+  const handleSaveRating = async (
+    stat: FinishedMatch["playerStats"][number],
+    ratingValue: number
+  ) => {
     if (!currentUserId) {
       setMessage("Chybí přihlášený uživatel.");
       return;
@@ -496,7 +551,7 @@ export default function PlayedMatchDetailScreen({
       return;
     }
 
-    const player = getPlayerByNumber(playerNumber);
+    const player = getPlayerByIdOrNumber(stat.playerId, stat.playerNumber);
     const isSelf = player?.profile_id === currentUserId;
 
     if (isSelf) {
@@ -509,16 +564,16 @@ export default function PlayedMatchDetailScreen({
       return;
     }
 
-    setSavingPlayerNumber(playerNumber);
+    setSavingPlayerNumber(stat.playerNumber);
     setMessage("");
     setSelectedRatings((prev) => ({
       ...prev,
-      [playerNumber]: ratingValue,
+      [stat.playerNumber]: ratingValue,
     }));
 
     const result = await upsertMatchPlayerRating({
       finishedMatchId: localMatch.id,
-      playerNumber,
+      playerNumber: stat.playerNumber,
       ratedByUserId: currentUserId,
       rating: ratingValue,
     });
@@ -777,7 +832,7 @@ export default function PlayedMatchDetailScreen({
         <div style={{ display: "grid", gap: "8px" }}>
           {playersWithStats.map((stat, index) => (
             <div
-              key={stat.playerNumber}
+              key={getStatKey(stat)}
               style={{
                 padding: "12px",
                 borderRadius: "16px",
@@ -806,7 +861,7 @@ export default function PlayedMatchDetailScreen({
                 </div>
 
                 <div>
-                  <div style={{ fontWeight: 950 }}>{getPlayerName(stat.playerNumber)}</div>
+                  <div style={{ fontWeight: 950 }}>{getPlayerNameByIdOrNumber(stat.playerId, stat.playerNumber)}</div>
                   <div style={{ fontSize: "12px", color: "#b8b8b8", marginTop: "3px" }}>
                     Body: {stat.goals + stat.assists}
                   </div>
@@ -887,20 +942,20 @@ export default function PlayedMatchDetailScreen({
                 >
                   {event.type === "goal_for" ? (
                     <div style={{ fontWeight: 900 }}>
-                      ⚽ {getPlayerName(event.scorer)}
+                      ⚽ {getPlayerNameByIdOrNumber(event.scorerPlayerId, event.scorer)}
                       {event.assist !== null
-                        ? ` (asistence ${getPlayerName(event.assist)})`
+                        ? ` (asistence ${getPlayerNameByIdOrNumber(event.assistPlayerId, event.assist)})`
                         : ""}
                     </div>
                   ) : event.type === "goal_against" ? (
                     <div style={{ fontWeight: 900 }}>🥅 Inkasovaný gól</div>
                   ) : event.type === "yellow_card" ? (
                     <div style={{ fontWeight: 900 }}>
-                      🟨 Žlutá karta: {getPlayerName(event.playerNumber)}
+                      🟨 Žlutá karta: {getPlayerNameByIdOrNumber(event.playerId, event.playerNumber)}
                     </div>
                   ) : (
                     <div style={{ fontWeight: 900 }}>
-                      🟥 Červená karta: {getPlayerName(event.playerNumber)}
+                      🟥 Červená karta: {getPlayerNameByIdOrNumber(event.playerId, event.playerNumber)}
                     </div>
                   )}
                 </div>
@@ -921,17 +976,17 @@ export default function PlayedMatchDetailScreen({
         {lineupOpen && (
           <div style={{ display: "grid", gap: "8px", marginTop: "12px" }}>
             {lineupPlayers.map((stat) => {
-              const removable = canRemovePlayer(stat.playerNumber);
+              const removable = canRemovePlayer(stat);
               const isRemoving = removingPlayerNumber === stat.playerNumber;
               const isGoalkeeper = localMatch.goalkeeperNumber === stat.playerNumber;
 
+              const statKey = getStatKey(stat);
               const editStat =
-                editPlayerStats.find((item) => item.playerNumber === stat.playerNumber) ??
-                stat;
+                editPlayerStats.find((item) => getStatKey(item) === statKey) ?? stat;
 
               return (
                 <div
-                  key={stat.playerNumber}
+                  key={getStatKey(stat)}
                   style={{
                     position: "relative",
                     overflow: "hidden",
@@ -969,7 +1024,7 @@ export default function PlayedMatchDetailScreen({
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 950 }}>
-                        {getPlayerName(stat.playerNumber)}
+                        {getPlayerNameByIdOrNumber(stat.playerId, stat.playerNumber)}
                       </div>
 
                       {!editMode ? (
@@ -1001,7 +1056,7 @@ export default function PlayedMatchDetailScreen({
                             value={editStat.goals}
                             onChange={(event) =>
                               updateEditStat(
-                                stat.playerNumber,
+                                statKey,
                                 "goals",
                                 event.target.value
                               )
@@ -1016,7 +1071,7 @@ export default function PlayedMatchDetailScreen({
                             value={editStat.assists}
                             onChange={(event) =>
                               updateEditStat(
-                                stat.playerNumber,
+                                statKey,
                                 "assists",
                                 event.target.value
                               )
@@ -1031,7 +1086,7 @@ export default function PlayedMatchDetailScreen({
                             value={editStat.yellowCards ?? 0}
                             onChange={(event) =>
                               updateEditStat(
-                                stat.playerNumber,
+                                statKey,
                                 "yellowCards",
                                 event.target.value
                               )
@@ -1046,7 +1101,7 @@ export default function PlayedMatchDetailScreen({
                             value={editStat.redCards ?? 0}
                             onChange={(event) =>
                               updateEditStat(
-                                stat.playerNumber,
+                                statKey,
                                 "redCards",
                                 event.target.value
                               )
@@ -1063,7 +1118,7 @@ export default function PlayedMatchDetailScreen({
                         {removable ? (
                           <button
                             type="button"
-                            onClick={() => void handleRemovePlayer(stat.playerNumber)}
+                            onClick={() => void handleRemovePlayer(stat)}
                             disabled={isRemoving}
                             style={{
                               border: "none",
@@ -1162,10 +1217,11 @@ export default function PlayedMatchDetailScreen({
 
         <div style={{ display: "grid", gap: "10px" }}>
           {sortedRatingPlayerNumbers.map((playerNumber, index) => {
+            const stat = getStatByNumber(playerNumber);
             const summary = summaryMap.get(playerNumber);
             const badgeStyles = getRatingBadgeStyles(summary?.color ?? "neutral");
             const selectedValue = selectedRatings[playerNumber];
-            const player = getPlayerByNumber(playerNumber);
+            const player = getPlayerByIdOrNumber(stat?.playerId, playerNumber);
             const isSelf = player?.profile_id === currentUserId;
 
             return (
@@ -1210,7 +1266,7 @@ export default function PlayedMatchDetailScreen({
                     )}
 
                     <div>
-                      <div style={{ fontWeight: 950 }}>{getPlayerName(playerNumber)}</div>
+                      <div style={{ fontWeight: 950 }}>{getPlayerNameByIdOrNumber(stat?.playerId, playerNumber)}</div>
                       {isVotingOpen && (
                         <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
                           Hlasů: {summary?.votes ?? 0}
@@ -1279,7 +1335,10 @@ export default function PlayedMatchDetailScreen({
                             <button
                               key={`${playerNumber}-${ratingValue}`}
                               type="button"
-                              onClick={() => void handleSaveRating(playerNumber, ratingValue)}
+                              onClick={() => {
+                                if (!stat) return;
+                                void handleSaveRating(stat, ratingValue);
+                              }}
                               disabled={isSaving || !isVotingOpen}
                               style={{
                                 minWidth: "48px",

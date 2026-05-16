@@ -63,6 +63,8 @@ export type FinishedMatchEvent =
       type: "goal_for";
       scorer: number;
       assist: number | null;
+      scorerPlayerId?: string | null;
+      assistPlayerId?: string | null;
     }
   | {
       type: "goal_against";
@@ -70,10 +72,12 @@ export type FinishedMatchEvent =
   | {
       type: "yellow_card";
       playerNumber: number;
+      playerId?: string | null;
     }
   | {
       type: "red_card";
       playerNumber: number;
+      playerId?: string | null;
     };
 
 export type FinishedMatch = {
@@ -87,6 +91,7 @@ export type FinishedMatch = {
   goalkeeperNumber: number | null;
   goalsAgainst: number;
   playerStats: {
+    playerId?: string | null;
     playerNumber: number;
     goals: number;
     assists: number;
@@ -720,9 +725,11 @@ export default function Home() {
   }, [overviewPlayers]);
 
   const playerOfPreviousMonth = useMemo(() => {
-    const pointsByNumber = new Map<
-      number,
+    const pointsByPlayer = new Map<
+      string,
       {
+        playerId: string | null;
+        playerNumber: number;
         points: number;
         goals: number;
         assists: number;
@@ -734,8 +741,12 @@ export default function Home() {
       .filter((match) => isSameMonthPreviousMonth(match.date))
       .forEach((match) => {
         match.playerStats.forEach((stat) => {
-          if (!pointsByNumber.has(stat.playerNumber)) {
-            pointsByNumber.set(stat.playerNumber, {
+          const key = stat.playerId ?? `number:${stat.playerNumber}`;
+
+          if (!pointsByPlayer.has(key)) {
+            pointsByPlayer.set(key, {
+              playerId: stat.playerId ?? null,
+              playerNumber: stat.playerNumber,
               points: 0,
               goals: 0,
               assists: 0,
@@ -743,7 +754,7 @@ export default function Home() {
             });
           }
 
-          const current = pointsByNumber.get(stat.playerNumber)!;
+          const current = pointsByPlayer.get(key)!;
           current.goals += stat.goals;
           current.assists += stat.assists;
           current.points += stat.goals + stat.assists;
@@ -751,14 +762,19 @@ export default function Home() {
         });
       });
 
-    const sorted = Array.from(pointsByNumber.entries())
-      .map(([playerNumber, stats]) => {
-        const player = overviewPlayers.find((item) => item.number === playerNumber);
+    const sorted = Array.from(pointsByPlayer.values())
+      .map((stats) => {
+        const player = stats.playerId
+          ? overviewPlayers.find((item) => item.id === stats.playerId)
+          : overviewPlayers.find((item) => item.number === stats.playerNumber);
 
         return {
-          playerNumber,
-          name: player?.name ?? `#${playerNumber}`,
-          ...stats,
+          playerNumber: stats.playerNumber,
+          name: player?.name ?? `#${stats.playerNumber}`,
+          points: stats.points,
+          goals: stats.goals,
+          assists: stats.assists,
+          matches: stats.matches,
         };
       })
       .sort((a, b) => {
