@@ -135,7 +135,7 @@ export default function StatsScreen({
 
   const finishedMatchIds = useMemo(
     () => finishedMatches.map((match) => match.id),
-    [finishedMatches]
+    [finishedMatches],
   );
 
   useEffect(() => {
@@ -202,11 +202,11 @@ export default function StatsScreen({
     return map;
   }, [players]);
 
-  const playerNameByNumber = useMemo(() => {
-    const map = new Map<number, string>();
+  const playerByNumber = useMemo(() => {
+    const map = new Map<number, Player>();
 
     players.forEach((player) => {
-      map.set(player.number, player.name);
+      map.set(player.number, player);
     });
 
     return map;
@@ -224,13 +224,27 @@ export default function StatsScreen({
     return map;
   }, [ratings]);
 
+  const getStatPlayerId = (
+    stat: FinishedMatch["playerStats"][number],
+  ): string | null => {
+    return (
+      stat.playerId ??
+      (
+        stat as FinishedMatch["playerStats"][number] & {
+          player_id?: string | null;
+        }
+      ).player_id ??
+      null
+    );
+  };
+
   const getPlayerName = (number: number, playerId?: string | null) => {
     if (playerId) {
       const player = playerById.get(playerId);
       if (player) return player.name;
     }
 
-    return playerNameByNumber.get(number) ?? `#${number}`;
+    return playerByNumber.get(number)?.name ?? `#${number}`;
   };
 
   const getPlayerNumber = (number: number, playerId?: string | null) => {
@@ -239,7 +253,7 @@ export default function StatsScreen({
       if (player) return player.number;
     }
 
-    return number;
+    return playerByNumber.get(number)?.number ?? number;
   };
 
   const getPlayerKey = (number: number, playerId?: string | null) => {
@@ -248,7 +262,13 @@ export default function StatsScreen({
 
   const getRatingPlayerId = (rating: PlayerRatingRow) => {
     return (
-      (rating as PlayerRatingRow & { player_id?: string | null }).player_id ??
+      (
+        rating as PlayerRatingRow & {
+          player_id?: string | null;
+          playerId?: string | null;
+        }
+      ).player_id ??
+      (rating as PlayerRatingRow & { playerId?: string | null }).playerId ??
       null
     );
   };
@@ -269,7 +289,7 @@ export default function StatsScreen({
 
     if (effectivePeriod) {
       matches = matches.filter((match) =>
-        isMatchInsidePeriod(match.date, effectivePeriod)
+        isMatchInsidePeriod(match.date, effectivePeriod),
       );
     }
 
@@ -300,15 +320,16 @@ export default function StatsScreen({
 
       const matchSummary = buildMatchRatingSummary(
         match.playerStats.map((player) => player.playerNumber),
-        matchRatings
+        matchRatings,
       );
 
       match.playerStats.forEach((stat) => {
-        const playerKey = getPlayerKey(stat.playerNumber, stat.playerId);
+        const statPlayerId = getStatPlayerId(stat);
+        const playerKey = getPlayerKey(stat.playerNumber, statPlayerId);
 
         if (!playerMap.has(playerKey)) {
           playerMap.set(playerKey, {
-            playerId: stat.playerId ?? null,
+            playerId: statPlayerId,
             playerNumber: stat.playerNumber,
             matches: 0,
             goals: 0,
@@ -329,9 +350,10 @@ export default function StatsScreen({
       const statsByPlayerId = new Map<string, string>();
 
       match.playerStats.forEach((stat) => {
-        const playerKey = getPlayerKey(stat.playerNumber, stat.playerId);
+        const statPlayerId = getStatPlayerId(stat);
+        const playerKey = getPlayerKey(stat.playerNumber, statPlayerId);
         statsByNumber.set(stat.playerNumber, playerKey);
-        if (stat.playerId) statsByPlayerId.set(stat.playerId, playerKey);
+        if (statPlayerId) statsByPlayerId.set(statPlayerId, playerKey);
       });
 
       const ratingsByPlayerKey = new Map<string, PlayerRatingRow[]>();
@@ -386,7 +408,7 @@ export default function StatsScreen({
 
           current.ratingPoints += playerRatingsForMatch.reduce(
             (sum, rating) => sum + Number(rating.rating),
-            0
+            0,
           );
           current.ratingVotes += playerRatingsForMatch.length;
         }
@@ -401,6 +423,7 @@ export default function StatsScreen({
       key,
       playerId: stats.playerId,
       number: getPlayerNumber(stats.playerNumber, stats.playerId),
+      historicalNumber: stats.playerNumber,
       name: getPlayerName(stats.playerNumber, stats.playerId),
       matches: stats.matches,
       goals: stats.goals,
@@ -431,7 +454,8 @@ export default function StatsScreen({
         if ((b.averageRating ?? 0) !== (a.averageRating ?? 0)) {
           return (b.averageRating ?? 0) - (a.averageRating ?? 0);
         }
-        if (b.ratingVotes !== a.ratingVotes) return b.ratingVotes - a.ratingVotes;
+        if (b.ratingVotes !== a.ratingVotes)
+          return b.ratingVotes - a.ratingVotes;
         return a.name.localeCompare(b.name, "cs");
       }
 
@@ -448,7 +472,13 @@ export default function StatsScreen({
       if (b.assists !== a.assists) return b.assists - a.assists;
       return a.name.localeCompare(b.name, "cs");
     });
-  }, [filteredStatsMatches, playerSort, ratingsByMatchId, playerById, playerNameByNumber]);
+  }, [
+    filteredStatsMatches,
+    playerSort,
+    ratingsByMatchId,
+    playerById,
+    playerByNumber,
+  ]);
 
   const goalkeeperStats = useMemo(() => {
     const gkMap = new Map<
@@ -466,13 +496,15 @@ export default function StatsScreen({
 
       const goalkeeperStat =
         match.playerStats.find(
-          (stat) => stat.playerNumber === match.goalkeeperNumber
+          (stat) => stat.playerNumber === match.goalkeeperNumber,
         ) ?? null;
 
-      const goalkeeperPlayerId = goalkeeperStat?.playerId ?? null;
+      const goalkeeperPlayerId = goalkeeperStat
+        ? getStatPlayerId(goalkeeperStat)
+        : null;
       const goalkeeperKey = getPlayerKey(
         match.goalkeeperNumber,
-        goalkeeperPlayerId
+        goalkeeperPlayerId,
       );
 
       if (!gkMap.has(goalkeeperKey)) {
@@ -493,6 +525,7 @@ export default function StatsScreen({
       key,
       playerId: stats.playerId,
       number: getPlayerNumber(stats.playerNumber, stats.playerId),
+      historicalNumber: stats.playerNumber,
       name: getPlayerName(stats.playerNumber, stats.playerId),
       matches: stats.matches,
       goalsAgainst: stats.goalsAgainst,
@@ -523,7 +556,7 @@ export default function StatsScreen({
       }
       return a.name.localeCompare(b.name, "cs");
     });
-  }, [filteredStatsMatches, goalkeeperSort, playerById, playerNameByNumber]);
+  }, [filteredStatsMatches, goalkeeperSort, playerById, playerByNumber]);
 
   const glassCardStyle: React.CSSProperties = {
     borderRadius: "22px",
@@ -597,7 +630,7 @@ export default function StatsScreen({
   };
 
   const getGoalkeeperDisplayValue = (
-    goalkeeper: (typeof goalkeeperStats)[number]
+    goalkeeper: (typeof goalkeeperStats)[number],
   ) => {
     if (goalkeeperSort === "matches") return goalkeeper.matches;
     if (goalkeeperSort === "goalsAgainst") return goalkeeper.goalsAgainst;
@@ -605,7 +638,7 @@ export default function StatsScreen({
   };
 
   const getGoalkeeperBadgeStyle = (
-    goalkeeper: (typeof goalkeeperStats)[number]
+    goalkeeper: (typeof goalkeeperStats)[number],
   ) => {
     if (goalkeeperSort === "average") {
       const colorKey = getRatingBadgeColor(goalkeeper.average, false);
@@ -621,14 +654,14 @@ export default function StatsScreen({
   const periodTitle =
     periodFilterMode === "all"
       ? "Všechna období"
-      : effectivePeriod?.name ?? "Bez aktivního období";
+      : (effectivePeriod?.name ?? "Bez aktivního období");
 
   const periodSubtitle =
     periodFilterMode === "all"
       ? `${filteredStatsMatches.length} odehraných zápasů`
       : effectivePeriod
-      ? `${formatPeriodType(effectivePeriod.type)} • ${effectivePeriod.start_date} až ${effectivePeriod.end_date}`
-      : "Nejdřív vytvoř aktivní období";
+        ? `${formatPeriodType(effectivePeriod.type)} • ${effectivePeriod.start_date} až ${effectivePeriod.end_date}`
+        : "Nejdřív vytvoř aktivní období";
 
   return (
     <div style={{ display: "grid", gap: "14px" }}>
@@ -667,7 +700,9 @@ export default function StatsScreen({
                 textAlign: "left",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "12px" }}
+              >
                 <div
                   style={{
                     width: "44px",
@@ -723,7 +758,9 @@ export default function StatsScreen({
                 style={{
                   fontSize: "24px",
                   color: "#b8b8b8",
-                  transform: periodPanelOpen ? "rotate(180deg)" : "rotate(0deg)",
+                  transform: periodPanelOpen
+                    ? "rotate(180deg)"
+                    : "rotate(0deg)",
                   transition: "transform 0.2s ease",
                 }}
               >
@@ -974,7 +1011,9 @@ export default function StatsScreen({
                             top: 0,
                             bottom: 0,
                             width: "5px",
-                            background: isTop ? primaryColor : "rgba(255,255,255,0.12)",
+                            background: isTop
+                              ? primaryColor
+                              : "rgba(255,255,255,0.12)",
                             boxShadow: isTop
                               ? `0 0 18px ${primaryColor}66`
                               : "none",
@@ -1148,7 +1187,9 @@ export default function StatsScreen({
                             top: 0,
                             bottom: 0,
                             width: "5px",
-                            background: isTop ? primaryColor : "rgba(255,255,255,0.12)",
+                            background: isTop
+                              ? primaryColor
+                              : "rgba(255,255,255,0.12)",
                             boxShadow: isTop
                               ? `0 0 18px ${primaryColor}66`
                               : "none",
