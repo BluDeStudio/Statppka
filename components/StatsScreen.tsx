@@ -247,7 +247,10 @@ export default function StatsScreen({
   };
 
   const getRatingPlayerId = (rating: PlayerRatingRow) => {
-    return (rating as PlayerRatingRow & { player_id?: string | null }).player_id ?? null;
+    return (
+      (rating as PlayerRatingRow & { player_id?: string | null }).player_id ??
+      null
+    );
   };
 
   const customSelectedPeriod = useMemo(() => {
@@ -359,7 +362,8 @@ export default function StatsScreen({
       });
 
       matchSummary.forEach((summary) => {
-        const playerKey = statsByNumber.get(summary.playerNumber) ??
+        const playerKey =
+          statsByNumber.get(summary.playerNumber) ??
           getPlayerKey(summary.playerNumber, null);
 
         if (!playerMap.has(playerKey)) {
@@ -447,23 +451,49 @@ export default function StatsScreen({
   }, [filteredStatsMatches, playerSort, ratingsByMatchId, playerById, playerNameByNumber]);
 
   const goalkeeperStats = useMemo(() => {
-    const gkMap = new Map<number, { matches: number; goalsAgainst: number }>();
+    const gkMap = new Map<
+      string,
+      {
+        playerId: string | null;
+        playerNumber: number;
+        matches: number;
+        goalsAgainst: number;
+      }
+    >();
 
     filteredStatsMatches.forEach((match) => {
       if (match.goalkeeperNumber === null) return;
 
-      if (!gkMap.has(match.goalkeeperNumber)) {
-        gkMap.set(match.goalkeeperNumber, { matches: 0, goalsAgainst: 0 });
+      const goalkeeperStat =
+        match.playerStats.find(
+          (stat) => stat.playerNumber === match.goalkeeperNumber
+        ) ?? null;
+
+      const goalkeeperPlayerId = goalkeeperStat?.playerId ?? null;
+      const goalkeeperKey = getPlayerKey(
+        match.goalkeeperNumber,
+        goalkeeperPlayerId
+      );
+
+      if (!gkMap.has(goalkeeperKey)) {
+        gkMap.set(goalkeeperKey, {
+          playerId: goalkeeperPlayerId,
+          playerNumber: match.goalkeeperNumber,
+          matches: 0,
+          goalsAgainst: 0,
+        });
       }
 
-      const current = gkMap.get(match.goalkeeperNumber)!;
+      const current = gkMap.get(goalkeeperKey)!;
       current.matches += 1;
       current.goalsAgainst += match.goalsAgainst;
     });
 
-    const arr = Array.from(gkMap.entries()).map(([number, stats]) => ({
-      number,
-      name: getPlayerName(number),
+    const arr = Array.from(gkMap.entries()).map(([key, stats]) => ({
+      key,
+      playerId: stats.playerId,
+      number: getPlayerNumber(stats.playerNumber, stats.playerId),
+      name: getPlayerName(stats.playerNumber, stats.playerId),
       matches: stats.matches,
       goalsAgainst: stats.goalsAgainst,
       average:
@@ -493,7 +523,7 @@ export default function StatsScreen({
       }
       return a.name.localeCompare(b.name, "cs");
     });
-  }, [filteredStatsMatches, goalkeeperSort, playerNameByNumber, playerById]);
+  }, [filteredStatsMatches, goalkeeperSort, playerById, playerNameByNumber]);
 
   const glassCardStyle: React.CSSProperties = {
     borderRadius: "22px",
@@ -1103,7 +1133,7 @@ export default function StatsScreen({
 
                     return (
                       <div
-                        key={goalkeeper.number}
+                        key={goalkeeper.key}
                         style={{
                           ...glassCardStyle,
                           position: "relative",
