@@ -26,19 +26,41 @@ type PlayerStatWithId = FinishedMatch["playerStats"][number] & {
   player_id?: string | null;
 };
 
-type FinishedMatchEventWithIds = FinishedMatchEvent & {
-  scorerPlayerId?: string | null;
-  assistPlayerId?: string | null;
-  playerId?: string | null;
-  cardPlayerId?: string | null;
-  scorer_player_id?: string | null;
-  assist_player_id?: string | null;
-  card_player_id?: string | null;
-};
-
 type RatingRowWithId = PlayerRatingRow & {
   player_id?: string | null;
   playerId?: string | null;
+};
+
+type EventType = "goal_for" | "goal_against" | "yellow_card" | "red_card";
+
+type EditableEvent = {
+  localId: string;
+  id?: string | null;
+  type: EventType;
+  scorer?: number | null;
+  assist?: number | null;
+  playerNumber?: number | null;
+  scorerPlayerId?: string | null;
+  assistPlayerId?: string | null;
+  playerId?: string | null;
+  period: number;
+  minute: number;
+};
+
+type EventRowFromDb = {
+  id?: string | null;
+  type: EventType;
+  scorer?: number | null;
+  assist?: number | null;
+  card_player_number?: number | null;
+  scorer_player_id?: string | null;
+  assist_player_id?: string | null;
+  card_player_id?: string | null;
+  player_id?: string | null;
+  period?: number | null;
+  minute?: number | null;
+  match_minute?: number | null;
+  created_at?: string | null;
 };
 
 type FinishedMatchPlayerStatIdRow = {
@@ -47,8 +69,33 @@ type FinishedMatchPlayerStatIdRow = {
   player_id: string | null;
 };
 
+type GoalkeeperSegment = {
+  localId: string;
+  id?: string | null;
+  playerId: string;
+  playerNumber: number;
+  startMinute: number;
+  endMinute: number;
+  goalsAgainst: number;
+};
+
+type GoalkeeperSegmentDbRow = {
+  id?: string | null;
+  finished_match_id: string;
+  player_id: string;
+  player_number: number | null;
+  start_minute: number;
+  end_minute: number;
+  goals_against: number | null;
+};
+
 const ratingOptions = Array.from({ length: 19 }, (_, index) => 1 + index * 0.5);
 const VOTING_WINDOW_HOURS = 3;
+const DEFAULT_MATCH_END_MINUTE = 60;
+
+function createLocalId(prefix = "row") {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 
 function formatRatingValue(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
@@ -115,24 +162,18 @@ function parseNumber(value: string) {
   return Math.floor(parsed);
 }
 
+function normalizeMinute(value?: number | null) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+  if (value < 0) return 0;
+  return Math.floor(value);
+}
+
 function getStatPlayerId(stat?: PlayerStatWithId | null) {
   return stat?.playerId ?? stat?.player_id ?? null;
 }
 
 function getRatingPlayerId(rating?: RatingRowWithId | null) {
   return rating?.player_id ?? rating?.playerId ?? null;
-}
-
-function getGoalScorerPlayerId(event: FinishedMatchEventWithIds) {
-  return event.scorerPlayerId ?? event.scorer_player_id ?? null;
-}
-
-function getGoalAssistPlayerId(event: FinishedMatchEventWithIds) {
-  return event.assistPlayerId ?? event.assist_player_id ?? null;
-}
-
-function getCardPlayerId(event: FinishedMatchEventWithIds) {
-  return event.playerId ?? event.cardPlayerId ?? event.card_player_id ?? null;
 }
 
 function getStatKey(stat: PlayerStatWithId) {
@@ -166,40 +207,212 @@ function mergePlayerIdsIntoStats(
   });
 }
 
-function rebuildCardEventsFromStats(
-  originalEvents: FinishedMatchEvent[],
-  playerStats: FinishedMatch["playerStats"]
+function eventFromFinishedMatchEvent(
+  event: FinishedMatchEvent,
+  index: number,
+  stats: PlayerStatWithId[]
+): EditableEvent {
+  const eventWithExtra = event as FinishedMatchEvent & {
+    scorerPlayerId?: string | null;
+    assistPlayerId?: string | null;
+    playerId?: string | null;
+    period?: number | null;
+    minute?: number | null;
+  };
+
+  if (event.type === "goal_for") {
+    const scorerStat = stats.find((item) => item.playerNumber === event.scorer);
+    const assistStat =
+      event.assist !== null
+        ? stats.find((item) => item.playerNumber === event.assist)
+        : null;
+
+    return {
+      localId: createLocalId(`event-${index}`),
+      type: "goal_for",
+      scorer: event.scorer,
+      assist: event.assist,
+      scorerPlayerId: eventWithExtra.scorerPlayerId ?? getStatPlayerId(scorerStat),
+      assistPlayerId: eventWithExtra.assistPlayerId ?? getStatPlayerId(assistStat),
+      period: eventWithExtra.period ?? 1,
+      minute: normalizeMinute(eventWithExtra.minute ?? null),
+    };
+  }
+
+  if (event.type === "yellow_card") {
+    const stat = stats.find((item) => item.playerNumber === event.playerNumber);
+
+    return {
+      localId: createLocalId(`event-${index}`),
+      type: "yellow_card",
+      playerNumber: event.playerNumber,
+      playerId: eventWithExtra.playerId ?? getStatPlayerId(stat),
+      period: eventWithExtra.period ?? 1,
+      minute: normalizeMinute(eventWithExtra.minute ?? null),
+    };
+  }
+
+  if (event.type === "red_card") {
+    const stat = stats.find((item) => item.playerNumber === event.playerNumber);
+
+    return {
+      localId: createLocalId(`event-${index}`),
+      type: "red_card",
+      playerNumber: event.playerNumber,
+      playerId: eventWithExtra.playerId ?? getStatPlayerId(stat),
+      period: eventWithExtra.period ?? 1,
+      minute: normalizeMinute(eventWithExtra.minute ?? null),
+    };
+  }
+
+  return {
+    localId: createLocalId(`event-${index}`),
+    type: "goal_against",
+    period: eventWithExtra.period ?? 1,
+    minute: normalizeMinute(eventWithExtra.minute ?? null),
+  };
+}
+
+function eventFromDbRow(row: EventRowFromDb, index: number): EditableEvent {
+  if (row.type === "goal_for") {
+    return {
+      localId: row.id ?? createLocalId(`db-event-${index}`),
+      id: row.id ?? null,
+      type: "goal_for",
+      scorer: row.scorer ?? null,
+      assist: row.assist ?? null,
+      scorerPlayerId: row.scorer_player_id ?? null,
+      assistPlayerId: row.assist_player_id ?? null,
+      period: row.period ?? 1,
+      minute: normalizeMinute(row.minute ?? row.match_minute ?? null),
+    };
+  }
+
+  if (row.type === "yellow_card" || row.type === "red_card") {
+    return {
+      localId: row.id ?? createLocalId(`db-event-${index}`),
+      id: row.id ?? null,
+      type: row.type,
+      playerNumber: row.card_player_number ?? null,
+      playerId: row.card_player_id ?? row.player_id ?? null,
+      period: row.period ?? 1,
+      minute: normalizeMinute(row.minute ?? row.match_minute ?? null),
+    };
+  }
+
+  return {
+    localId: row.id ?? createLocalId(`db-event-${index}`),
+    id: row.id ?? null,
+    type: "goal_against",
+    period: row.period ?? 1,
+    minute: normalizeMinute(row.minute ?? row.match_minute ?? null),
+  };
+}
+
+function eventToFinishedMatchEvent(event: EditableEvent): FinishedMatchEvent {
+  if (event.type === "goal_for") {
+    return {
+      type: "goal_for",
+      scorer: event.scorer ?? 0,
+      assist: event.assist ?? null,
+      scorerPlayerId: event.scorerPlayerId ?? null,
+      assistPlayerId: event.assistPlayerId ?? null,
+      period: event.period,
+      minute: event.minute,
+    } as FinishedMatchEvent;
+  }
+
+  if (event.type === "yellow_card") {
+    return {
+      type: "yellow_card",
+      playerNumber: event.playerNumber ?? 0,
+      playerId: event.playerId ?? null,
+      period: event.period,
+      minute: event.minute,
+    } as FinishedMatchEvent;
+  }
+
+  if (event.type === "red_card") {
+    return {
+      type: "red_card",
+      playerNumber: event.playerNumber ?? 0,
+      playerId: event.playerId ?? null,
+      period: event.period,
+      minute: event.minute,
+    } as FinishedMatchEvent;
+  }
+
+  return {
+    type: "goal_against",
+    period: event.period,
+    minute: event.minute,
+  } as FinishedMatchEvent;
+}
+
+function computeGoalkeeperSegmentsWithGoals(
+  segments: GoalkeeperSegment[],
+  events: EditableEvent[]
 ) {
-  const eventsWithoutCards = originalEvents.filter(
-    (event) => event.type !== "yellow_card" && event.type !== "red_card"
-  );
+  return segments.map((segment) => {
+    const goalsAgainst = events.filter((event) => {
+      if (event.type !== "goal_against") return false;
+      const minute = normalizeMinute(event.minute);
+      return minute >= segment.startMinute && minute <= segment.endMinute;
+    }).length;
 
-  const cardEvents: FinishedMatchEvent[] = [];
+    return {
+      ...segment,
+      goalsAgainst,
+    };
+  });
+}
 
-  playerStats.forEach((rawStat) => {
-    const stat = rawStat as PlayerStatWithId;
-    const yellowCards = stat.yellowCards ?? 0;
-    const redCards = stat.redCards ?? 0;
-    const playerId = getStatPlayerId(stat);
+function recalculateStatsFromEvents(
+  playerStats: FinishedMatch["playerStats"],
+  events: EditableEvent[]
+): FinishedMatch["playerStats"] {
+  const nextStats = (playerStats as PlayerStatWithId[]).map((rawStat) => ({
+    ...rawStat,
+    goals: 0,
+    assists: 0,
+    yellowCards: 0,
+    redCards: 0,
+  }));
 
-    for (let index = 0; index < yellowCards; index++) {
-      cardEvents.push({
-        type: "yellow_card",
-        playerNumber: stat.playerNumber,
-        ...(playerId ? { playerId } : {}),
-      } as FinishedMatchEvent);
+  const findStat = (playerId?: string | null, playerNumber?: number | null) => {
+    if (playerId) {
+      const byId = nextStats.find((stat) => getStatPlayerId(stat) === playerId);
+      if (byId) return byId;
     }
 
-    for (let index = 0; index < redCards; index++) {
-      cardEvents.push({
-        type: "red_card",
-        playerNumber: stat.playerNumber,
-        ...(playerId ? { playerId } : {}),
-      } as FinishedMatchEvent);
+    if (typeof playerNumber === "number") {
+      return nextStats.find((stat) => stat.playerNumber === playerNumber) ?? null;
+    }
+
+    return null;
+  };
+
+  events.forEach((event) => {
+    if (event.type === "goal_for") {
+      const scorerStat = findStat(event.scorerPlayerId, event.scorer);
+      const assistStat = findStat(event.assistPlayerId, event.assist);
+
+      if (scorerStat) scorerStat.goals += 1;
+      if (assistStat) assistStat.assists += 1;
+    }
+
+    if (event.type === "yellow_card") {
+      const stat = findStat(event.playerId, event.playerNumber);
+      if (stat) stat.yellowCards = (stat.yellowCards ?? 0) + 1;
+    }
+
+    if (event.type === "red_card") {
+      const stat = findStat(event.playerId, event.playerNumber);
+      if (stat) stat.redCards = (stat.redCards ?? 0) + 1;
     }
   });
 
-  return [...eventsWithoutCards, ...cardEvents];
+  return nextStats;
 }
 
 export default function PlayedMatchDetailScreen({
@@ -223,15 +436,24 @@ export default function PlayedMatchDetailScreen({
   const [editPlayerStats, setEditPlayerStats] = useState<FinishedMatch["playerStats"]>(
     match.playerStats
   );
+  const [editEvents, setEditEvents] = useState<EditableEvent[]>([]);
+  const [goalkeeperSegments, setGoalkeeperSegments] = useState<GoalkeeperSegment[]>([]);
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [eventsOpen, setEventsOpen] = useState(false);
   const [lineupOpen, setLineupOpen] = useState(false);
+  const [goalkeepersOpen, setGoalkeepersOpen] = useState(false);
+  const [ratingsOpen, setRatingsOpen] = useState(false);
 
   useEffect(() => {
     setLocalMatch(match);
     setEditScore(match.score);
     setEditPlayerStats(match.playerStats);
+    setEditEvents(
+      (match.events ?? []).map((event, index) =>
+        eventFromFinishedMatchEvent(event, index, match.playerStats as PlayerStatWithId[])
+      )
+    );
     setEditMode(false);
   }, [match]);
 
@@ -243,6 +465,8 @@ export default function PlayedMatchDetailScreen({
         loadedPlayers,
         loadedRatings,
         statsResponse,
+        eventsResponse,
+        goalkeeperResponse,
         {
           data: { user },
         },
@@ -253,6 +477,16 @@ export default function PlayedMatchDetailScreen({
           .from("finished_match_player_stats")
           .select("finished_match_id, player_number, player_id")
           .eq("finished_match_id", localMatch.id),
+        supabase
+          .from("finished_match_events")
+          .select("*")
+          .eq("finished_match_id", localMatch.id)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("finished_match_goalkeeper_segments")
+          .select("*")
+          .eq("finished_match_id", localMatch.id)
+          .order("start_minute", { ascending: true }),
         supabase.auth.getUser(),
       ]);
 
@@ -270,12 +504,76 @@ export default function PlayedMatchDetailScreen({
         playerIdRows
       );
 
+      const dbEvents =
+        eventsResponse.error || !eventsResponse.data
+          ? []
+          : ((eventsResponse.data as EventRowFromDb[]) ?? []).map(eventFromDbRow);
+
+      if (eventsResponse.error) {
+        console.error("Nepodařilo se načíst události zápasu:", eventsResponse.error);
+      }
+
+      const nextEvents =
+        dbEvents.length > 0
+          ? dbEvents
+          : (localMatch.events ?? []).map((event, index) =>
+              eventFromFinishedMatchEvent(event, index, mergedPlayerStats as PlayerStatWithId[])
+            );
+
+      const dbGoalkeeperSegments =
+        goalkeeperResponse.error || !goalkeeperResponse.data
+          ? []
+          : ((goalkeeperResponse.data as GoalkeeperSegmentDbRow[]) ?? []).map((row) => ({
+              localId: row.id ?? createLocalId("gk-db"),
+              id: row.id ?? null,
+              playerId: row.player_id,
+              playerNumber: row.player_number ?? 0,
+              startMinute: normalizeMinute(row.start_minute),
+              endMinute: normalizeMinute(row.end_minute),
+              goalsAgainst: row.goals_against ?? 0,
+            }));
+
+      if (goalkeeperResponse.error) {
+        console.warn(
+          "Nepodařilo se načíst brankářské úseky. Pokud tabulka ještě neexistuje, spusť SQL pro finished_match_goalkeeper_segments.",
+          goalkeeperResponse.error
+        );
+      }
+
+      let fallbackGoalkeeperSegments: GoalkeeperSegment[] = [];
+      if (dbGoalkeeperSegments.length === 0 && localMatch.goalkeeperNumber !== null) {
+        const goalkeeperStat = (mergedPlayerStats as PlayerStatWithId[]).find(
+          (stat) => stat.playerNumber === localMatch.goalkeeperNumber
+        );
+        const goalkeeperPlayerId = getStatPlayerId(goalkeeperStat);
+
+        if (goalkeeperPlayerId) {
+          fallbackGoalkeeperSegments = [
+            {
+              localId: createLocalId("gk-default"),
+              playerId: goalkeeperPlayerId,
+              playerNumber: localMatch.goalkeeperNumber,
+              startMinute: 0,
+              endMinute: DEFAULT_MATCH_END_MINUTE,
+              goalsAgainst: localMatch.goalsAgainst,
+            },
+          ];
+        }
+      }
+
+      const loadedGoalkeeperSegments = computeGoalkeeperSegmentsWithGoals(
+        dbGoalkeeperSegments.length > 0 ? dbGoalkeeperSegments : fallbackGoalkeeperSegments,
+        nextEvents
+      );
+
       setLocalMatch((prev) => ({
         ...prev,
-        playerStats: mergePlayerIdsIntoStats(prev.playerStats, playerIdRows),
+        playerStats: mergedPlayerStats,
+        events: nextEvents.map(eventToFinishedMatchEvent),
       }));
-
       setEditPlayerStats(mergedPlayerStats);
+      setEditEvents(nextEvents);
+      setGoalkeeperSegments(loadedGoalkeeperSegments);
       setPlayers(loadedPlayers);
       setRatings(loadedRatings);
       setCurrentUserId(user?.id ?? null);
@@ -357,6 +655,27 @@ export default function PlayedMatchDetailScreen({
     fontWeight: 900,
   };
 
+  const inputStyle: React.CSSProperties = {
+    ...styles.input,
+    marginBottom: 0,
+  };
+
+  const smallButtonStyle: React.CSSProperties = {
+    border: "1px solid rgba(255,255,255,0.10)",
+    borderRadius: "12px",
+    padding: "9px 10px",
+    background: "rgba(255,255,255,0.08)",
+    color: "white",
+    fontWeight: 900,
+    cursor: "pointer",
+  };
+
+  const dangerButtonStyle: React.CSSProperties = {
+    ...smallButtonStyle,
+    background: "rgba(198,40,40,0.88)",
+    border: "1px solid rgba(198,40,40,0.42)",
+  };
+
   const getPlayerByIdOrNumber = (
     playerId?: string | null,
     playerNumber?: number | null
@@ -417,6 +736,23 @@ export default function PlayedMatchDetailScreen({
 
     return null;
   };
+
+  const selectablePlayers = useMemo(() => {
+    return (localMatch.playerStats as PlayerStatWithId[])
+      .map((stat) => {
+        const playerId = getStatPlayerId(stat);
+        const player = getPlayerByIdOrNumber(playerId, stat.playerNumber);
+
+        return {
+          stat,
+          playerId,
+          playerNumber: stat.playerNumber,
+          currentNumber: player?.number ?? stat.playerNumber,
+          name: player?.name ?? `#${stat.playerNumber}`,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, "cs"));
+  }, [localMatch.playerStats, playerById, playerByNumber]);
 
   const matchPlayerNumbers = useMemo(() => {
     const base = localMatch.playerStats.map((player) => player.playerNumber);
@@ -512,25 +848,36 @@ export default function PlayedMatchDetailScreen({
     });
   }, [isVotingOpen, matchPlayerNumbers, summaryMap, playerById, playerByNumber]);
 
+  const scoreFor = editEvents.filter((event) => event.type === "goal_for").length;
+  const scoreAgainst = editEvents.filter((event) => event.type === "goal_against").length;
+  const computedScore = `${scoreFor}:${scoreAgainst}`;
+
+  const getEventPlayerName = (event: EditableEvent) => {
+    if (event.type === "goal_for") {
+      return getPlayerNameByIdOrNumber(event.scorerPlayerId, event.scorer);
+    }
+
+    if (event.type === "yellow_card" || event.type === "red_card") {
+      return getPlayerNameByIdOrNumber(event.playerId, event.playerNumber);
+    }
+
+    return "Inkasovaný gól";
+  };
+
   const playerHasEvent = (stat: PlayerStatWithId) => {
     const playerId = getStatPlayerId(stat);
 
-    return (localMatch.events as FinishedMatchEventWithIds[]).some((event) => {
+    return editEvents.some((event) => {
       if (event.type === "goal_for") {
-        const scorerPlayerId = getGoalScorerPlayerId(event);
-        const assistPlayerId = getGoalAssistPlayerId(event);
-
-        if (playerId && (scorerPlayerId || assistPlayerId)) {
-          return scorerPlayerId === playerId || assistPlayerId === playerId;
+        if (playerId && (event.scorerPlayerId || event.assistPlayerId)) {
+          return event.scorerPlayerId === playerId || event.assistPlayerId === playerId;
         }
 
         return event.scorer === stat.playerNumber || event.assist === stat.playerNumber;
       }
 
       if (event.type === "yellow_card" || event.type === "red_card") {
-        const cardPlayerId = getCardPlayerId(event);
-
-        if (playerId && cardPlayerId) return cardPlayerId === playerId;
+        if (playerId && event.playerId) return event.playerId === playerId;
         return event.playerNumber === stat.playerNumber;
       }
 
@@ -538,9 +885,17 @@ export default function PlayedMatchDetailScreen({
     });
   };
 
+  const playerHasGoalkeeperSegment = (stat: PlayerStatWithId) => {
+    const playerId = getStatPlayerId(stat);
+
+    return goalkeeperSegments.some((segment) => {
+      if (playerId && segment.playerId) return segment.playerId === playerId;
+      return segment.playerNumber === stat.playerNumber;
+    });
+  };
+
   const canRemovePlayer = (stat: PlayerStatWithId) => {
     if (!isAdmin) return false;
-    if (localMatch.goalkeeperNumber === stat.playerNumber) return false;
 
     const hasAnyStat =
       stat.goals > 0 ||
@@ -550,8 +905,227 @@ export default function PlayedMatchDetailScreen({
 
     if (hasAnyStat) return false;
     if (playerHasEvent(stat)) return false;
+    if (playerHasGoalkeeperSegment(stat)) return false;
 
     return true;
+  };
+
+  const updateEventPlayer = (
+    localId: string,
+    role: "scorer" | "assist" | "card",
+    value: string
+  ) => {
+    setEditEvents((prev) =>
+      prev.map((event) => {
+        if (event.localId !== localId) return event;
+
+        if (role === "assist" && value === "none") {
+          return {
+            ...event,
+            assist: null,
+            assistPlayerId: null,
+          };
+        }
+
+        const player = players.find((item) => item.id === value);
+        const stat = (localMatch.playerStats as PlayerStatWithId[]).find(
+          (item) => getStatPlayerId(item) === value
+        );
+
+        if (!player || !stat) return event;
+
+        if (role === "scorer") {
+          return {
+            ...event,
+            scorer: stat.playerNumber,
+            scorerPlayerId: player.id,
+          };
+        }
+
+        if (role === "assist") {
+          return {
+            ...event,
+            assist: stat.playerNumber,
+            assistPlayerId: player.id,
+          };
+        }
+
+        return {
+          ...event,
+          playerNumber: stat.playerNumber,
+          playerId: player.id,
+        };
+      })
+    );
+  };
+
+  const updateEventField = (
+    localId: string,
+    key: "type" | "period" | "minute",
+    value: string
+  ) => {
+    setEditEvents((prev) =>
+      prev.map((event) => {
+        if (event.localId !== localId) return event;
+
+        if (key === "type") {
+          const nextType = value as EventType;
+
+          if (nextType === "goal_for") {
+            const firstPlayer = selectablePlayers[0];
+
+            return {
+              localId: event.localId,
+              id: event.id,
+              type: "goal_for",
+              scorer: firstPlayer?.playerNumber ?? null,
+              scorerPlayerId: firstPlayer?.playerId ?? null,
+              assist: null,
+              assistPlayerId: null,
+              period: event.period,
+              minute: event.minute,
+            };
+          }
+
+          if (nextType === "yellow_card" || nextType === "red_card") {
+            const firstPlayer = selectablePlayers[0];
+
+            return {
+              localId: event.localId,
+              id: event.id,
+              type: nextType,
+              playerNumber: firstPlayer?.playerNumber ?? null,
+              playerId: firstPlayer?.playerId ?? null,
+              period: event.period,
+              minute: event.minute,
+            };
+          }
+
+          return {
+            localId: event.localId,
+            id: event.id,
+            type: "goal_against",
+            period: event.period,
+            minute: event.minute,
+          };
+        }
+
+        return {
+          ...event,
+          [key]: parseNumber(value),
+        };
+      })
+    );
+  };
+
+  const addNewEvent = (type: EventType) => {
+    const firstPlayer = selectablePlayers[0];
+
+    const base = {
+      localId: createLocalId("event-new"),
+      id: null,
+      period: 1,
+      minute: 0,
+    };
+
+    if (type === "goal_for") {
+      setEditEvents((prev) => [
+        ...prev,
+        {
+          ...base,
+          type,
+          scorer: firstPlayer?.playerNumber ?? null,
+          scorerPlayerId: firstPlayer?.playerId ?? null,
+          assist: null,
+          assistPlayerId: null,
+        },
+      ]);
+      return;
+    }
+
+    if (type === "yellow_card" || type === "red_card") {
+      setEditEvents((prev) => [
+        ...prev,
+        {
+          ...base,
+          type,
+          playerNumber: firstPlayer?.playerNumber ?? null,
+          playerId: firstPlayer?.playerId ?? null,
+        },
+      ]);
+      return;
+    }
+
+    setEditEvents((prev) => [...prev, { ...base, type }]);
+  };
+
+  const deleteEvent = (localId: string) => {
+    const confirmed = window.confirm("Opravdu chceš smazat tuto událost?");
+    if (!confirmed) return;
+
+    setEditEvents((prev) => prev.filter((event) => event.localId !== localId));
+  };
+
+  const updateGoalkeeperSegment = (
+    localId: string,
+    key: "playerId" | "startMinute" | "endMinute",
+    value: string
+  ) => {
+    setGoalkeeperSegments((prev) =>
+      prev.map((segment) => {
+        if (segment.localId !== localId) return segment;
+
+        if (key === "playerId") {
+          const player = players.find((item) => item.id === value);
+          const stat = (localMatch.playerStats as PlayerStatWithId[]).find(
+            (item) => getStatPlayerId(item) === value
+          );
+
+          if (!player || !stat) return segment;
+
+          return {
+            ...segment,
+            playerId: player.id,
+            playerNumber: stat.playerNumber,
+          };
+        }
+
+        return {
+          ...segment,
+          [key]: parseNumber(value),
+        };
+      })
+    );
+  };
+
+  const addGoalkeeperSegment = () => {
+  const firstPlayer = selectablePlayers.find((player) => !!player.playerId);
+
+  if (!firstPlayer || !firstPlayer.playerId) {
+    setMessage("Nejdřív musí být v sestavě hráč s player_id.");
+    return;
+  }
+
+  const playerId: string = firstPlayer.playerId;
+
+  setGoalkeeperSegments((prev): GoalkeeperSegment[] => [
+    ...prev,
+    {
+      localId: createLocalId("gk-new"),
+      playerId,
+      playerNumber: firstPlayer.playerNumber,
+      startMinute: 0,
+      endMinute: DEFAULT_MATCH_END_MINUTE,
+      goalsAgainst: 0,
+    },
+  ]);
+};
+
+  const deleteGoalkeeperSegment = (localId: string) => {
+    const confirmed = window.confirm("Opravdu chceš smazat tento brankářský úsek?");
+    if (!confirmed) return;
+
+    setGoalkeeperSegments((prev) => prev.filter((segment) => segment.localId !== localId));
   };
 
   const handleRemovePlayer = async (stat: PlayerStatWithId) => {
@@ -574,6 +1148,7 @@ export default function PlayedMatchDetailScreen({
     const result = await removePlayerFromFinishedMatch({
       finishedMatchId: localMatch.id,
       playerNumber: stat.playerNumber,
+      playerId: getStatPlayerId(stat),
       goalkeeperNumber: localMatch.goalkeeperNumber,
       events: localMatch.events,
       playerStats: localMatch.playerStats,
@@ -591,6 +1166,10 @@ export default function PlayedMatchDetailScreen({
         (player) => getStatKey(player) !== statKey
       ),
     }));
+
+    setEditPlayerStats((prev) =>
+      (prev as PlayerStatWithId[]).filter((player) => getStatKey(player) !== statKey)
+    );
 
     setRatings((prev) =>
       prev.filter((rating) => {
@@ -612,25 +1191,6 @@ export default function PlayedMatchDetailScreen({
     setRemovingPlayerKey(null);
   };
 
-  const updateEditStat = (
-    statKey: string,
-    key: "goals" | "assists" | "yellowCards" | "redCards",
-    value: string
-  ) => {
-    const parsed = parseNumber(value);
-
-    setEditPlayerStats((prev) =>
-      (prev as PlayerStatWithId[]).map((stat) =>
-        getStatKey(stat) === statKey
-          ? {
-              ...stat,
-              [key]: parsed,
-            }
-          : stat
-      )
-    );
-  };
-
   const handleStartEdit = () => {
     if (!isAdmin) {
       setMessage("Editace zápasu je dostupná jen pro admina.");
@@ -639,7 +1199,9 @@ export default function PlayedMatchDetailScreen({
 
     setEditScore(localMatch.score);
     setEditPlayerStats(localMatch.playerStats);
+    setEventsOpen(true);
     setLineupOpen(true);
+    setGoalkeepersOpen(true);
     setEditMode(true);
     setMessage("");
   };
@@ -647,6 +1209,11 @@ export default function PlayedMatchDetailScreen({
   const handleCancelEdit = () => {
     setEditScore(localMatch.score);
     setEditPlayerStats(localMatch.playerStats);
+    setEditEvents(
+      (localMatch.events ?? []).map((event, index) =>
+        eventFromFinishedMatchEvent(event, index, localMatch.playerStats as PlayerStatWithId[])
+      )
+    );
     setEditMode(false);
     setMessage("");
   };
@@ -657,29 +1224,31 @@ export default function PlayedMatchDetailScreen({
       return;
     }
 
-    if (!editScore.trim()) {
-      setMessage("Vyplň skóre zápasu.");
-      return;
-    }
-
     setSavingEdit(true);
     setMessage("");
 
-    const nextEvents = rebuildCardEventsFromStats(localMatch.events, editPlayerStats);
+    const recalculatedPlayerStats = recalculateStatsFromEvents(
+      editPlayerStats,
+      editEvents
+    );
 
-    const nextMatch: FinishedMatch = {
-      ...localMatch,
-      score: editScore.trim(),
-      playerStats: editPlayerStats,
-      events: nextEvents,
-    };
+    const nextGoalkeeperSegments = computeGoalkeeperSegmentsWithGoals(
+      goalkeeperSegments,
+      editEvents
+    );
+
+    const nextEvents = editEvents.map(eventToFinishedMatchEvent);
+
+    const nextScore = editScore.trim() || computedScore;
+    const nextGoalsAgainst = editEvents.filter((event) => event.type === "goal_against").length;
 
     const { error: matchError } = await supabase
       .from("finished_matches")
       .update({
-        score: nextMatch.score,
+        score: nextScore,
+        goals_against: nextGoalsAgainst,
       })
-      .eq("id", nextMatch.id);
+      .eq("id", localMatch.id);
 
     if (matchError) {
       console.error("Nepodařilo se uložit editaci odehraného zápasu:", matchError);
@@ -688,24 +1257,120 @@ export default function PlayedMatchDetailScreen({
       return;
     }
 
-    for (const stat of editPlayerStats as PlayerStatWithId[]) {
-      const { error: statError } = await supabase
+    for (const rawStat of recalculatedPlayerStats as PlayerStatWithId[]) {
+      const statPlayerId = getStatPlayerId(rawStat);
+
+      let query = supabase
         .from("finished_match_player_stats")
         .update({
-          goals: stat.goals,
-          assists: stat.assists,
-          yellow_cards: stat.yellowCards ?? 0,
-          red_cards: stat.redCards ?? 0,
+          goals: rawStat.goals,
+          assists: rawStat.assists,
+          yellow_cards: rawStat.yellowCards ?? 0,
+          red_cards: rawStat.redCards ?? 0,
         })
-        .eq("finished_match_id", nextMatch.id)
-        .eq("player_number", stat.playerNumber);
+        .eq("finished_match_id", localMatch.id);
+
+      query = statPlayerId
+        ? query.eq("player_id", statPlayerId)
+        : query.eq("player_number", rawStat.playerNumber);
+
+      const { error: statError } = await query;
 
       if (statError) {
         console.error("Nepodařilo se uložit statistiky hráče:", statError);
       }
     }
 
-    setLocalMatch(nextMatch);
+    const { error: deleteEventsError } = await supabase
+      .from("finished_match_events")
+      .delete()
+      .eq("finished_match_id", localMatch.id);
+
+    if (deleteEventsError) {
+      console.error("Nepodařilo se smazat původní události:", deleteEventsError);
+      setMessage("Nepodařilo se přepsat události zápasu.");
+      setSavingEdit(false);
+      return;
+    }
+
+    if (editEvents.length > 0) {
+      const { error: insertEventsError } = await supabase
+        .from("finished_match_events")
+        .insert(
+          editEvents.map((event) => ({
+            finished_match_id: localMatch.id,
+            type: event.type,
+            period: event.period,
+            minute: event.minute,
+            scorer: event.type === "goal_for" ? event.scorer : null,
+            assist: event.type === "goal_for" ? event.assist : null,
+            scorer_player_id:
+              event.type === "goal_for" ? event.scorerPlayerId ?? null : null,
+            assist_player_id:
+              event.type === "goal_for" ? event.assistPlayerId ?? null : null,
+            card_player_number:
+              event.type === "yellow_card" || event.type === "red_card"
+                ? event.playerNumber
+                : null,
+            card_player_id:
+              event.type === "yellow_card" || event.type === "red_card"
+                ? event.playerId ?? null
+                : null,
+          }))
+        );
+
+      if (insertEventsError) {
+        console.error("Nepodařilo se uložit nové události:", insertEventsError);
+        setMessage("Nepodařilo se uložit události zápasu.");
+        setSavingEdit(false);
+        return;
+      }
+    }
+
+    const { error: deleteGoalkeepersError } = await supabase
+      .from("finished_match_goalkeeper_segments")
+      .delete()
+      .eq("finished_match_id", localMatch.id);
+
+    if (deleteGoalkeepersError) {
+      console.warn(
+        "Nepodařilo se smazat původní brankářské úseky:",
+        deleteGoalkeepersError
+      );
+    }
+
+    if (nextGoalkeeperSegments.length > 0) {
+      const { error: insertGoalkeepersError } = await supabase
+        .from("finished_match_goalkeeper_segments")
+        .insert(
+          nextGoalkeeperSegments.map((segment) => ({
+            finished_match_id: localMatch.id,
+            player_id: segment.playerId,
+            player_number: segment.playerNumber,
+            start_minute: segment.startMinute,
+            end_minute: segment.endMinute,
+            goals_against: segment.goalsAgainst,
+          }))
+        );
+
+      if (insertGoalkeepersError) {
+        console.warn(
+          "Nepodařilo se uložit brankářské úseky:",
+          insertGoalkeepersError
+        );
+      }
+    }
+
+    setLocalMatch((prev) => ({
+      ...prev,
+      score: nextScore,
+      goalsAgainst: nextGoalsAgainst,
+      playerStats: recalculatedPlayerStats,
+      events: nextEvents,
+    }));
+
+    setEditPlayerStats(recalculatedPlayerStats);
+    setGoalkeeperSegments(nextGoalkeeperSegments);
     setEditMode(false);
     setMessage("Změny zápasu byly uloženy.");
     setSavingEdit(false);
@@ -761,19 +1426,6 @@ export default function PlayedMatchDetailScreen({
     setRatings(loadedRatings);
     setMessage("Hodnocení bylo uloženo.");
     setSavingPlayerKey(null);
-  };
-
-  const getEventPlayerName = (
-    event: FinishedMatchEventWithIds,
-    playerNumber?: number | null,
-    playerId?: string | null
-  ) => {
-    const stat = getStatByPlayerIdOrNumber(playerId, playerNumber);
-
-    return getPlayerNameByIdOrNumber(
-      playerId ?? getStatPlayerId(stat),
-      playerNumber ?? stat?.playerNumber ?? null
-    );
   };
 
   const renderCollapsibleHeader = (
@@ -962,6 +1614,19 @@ export default function PlayedMatchDetailScreen({
                 {localMatch.score}
               </div>
             )}
+
+            {editMode && (
+              <div
+                style={{
+                  marginTop: "8px",
+                  color: "#b8b8b8",
+                  fontSize: "12px",
+                  fontWeight: 800,
+                }}
+              >
+                Přepočtené skóre z událostí: {computedScore}
+              </div>
+            )}
           </div>
 
           {isAdmin && (
@@ -1097,14 +1762,47 @@ export default function PlayedMatchDetailScreen({
       <div style={{ ...glassCardStyle, padding: "14px" }}>
         {renderCollapsibleHeader(
           "Průběh zápasu",
-          `${localMatch.events.length} událostí`,
+          `${editEvents.length} událostí`,
           eventsOpen,
           () => setEventsOpen((prev) => !prev)
         )}
 
         {eventsOpen && (
-          <div style={{ display: "grid", gap: "8px", marginTop: "12px" }}>
-            {localMatch.events.length === 0 ? (
+          <div style={{ display: "grid", gap: "10px", marginTop: "12px" }}>
+            {editMode && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                <button
+                  type="button"
+                  style={smallButtonStyle}
+                  onClick={() => addNewEvent("goal_for")}
+                >
+                  + Gól
+                </button>
+                <button
+                  type="button"
+                  style={smallButtonStyle}
+                  onClick={() => addNewEvent("goal_against")}
+                >
+                  + Inkasovaný
+                </button>
+                <button
+                  type="button"
+                  style={smallButtonStyle}
+                  onClick={() => addNewEvent("yellow_card")}
+                >
+                  + ŽK
+                </button>
+                <button
+                  type="button"
+                  style={smallButtonStyle}
+                  onClick={() => addNewEvent("red_card")}
+                >
+                  + ČK
+                </button>
+              </div>
+            )}
+
+            {editEvents.length === 0 ? (
               <div
                 style={{
                   padding: "12px",
@@ -1116,9 +1814,9 @@ export default function PlayedMatchDetailScreen({
                 Bez zapsaných událostí.
               </div>
             ) : (
-              (localMatch.events as FinishedMatchEventWithIds[]).map((event, index) => (
+              editEvents.map((event) => (
                 <div
-                  key={index}
+                  key={event.localId}
                   style={{
                     padding: "12px",
                     borderRadius: "16px",
@@ -1140,33 +1838,282 @@ export default function PlayedMatchDetailScreen({
                         : "1px solid rgba(185, 28, 28, 0.35)",
                   }}
                 >
-                  {event.type === "goal_for" ? (
+                  {!editMode ? (
                     <div style={{ fontWeight: 900 }}>
-                      ⚽ {getEventPlayerName(event, event.scorer, getGoalScorerPlayerId(event))}
-                      {event.assist !== null
-                        ? ` (asistence ${getEventPlayerName(
-                            event,
-                            event.assist,
-                            getGoalAssistPlayerId(event)
-                          )})`
-                        : ""}
-                    </div>
-                  ) : event.type === "goal_against" ? (
-                    <div style={{ fontWeight: 900 }}>🥅 Inkasovaný gól</div>
-                  ) : event.type === "yellow_card" ? (
-                    <div style={{ fontWeight: 900 }}>
-                      🟨 Žlutá karta:{" "}
-                      {getEventPlayerName(event, event.playerNumber, getCardPlayerId(event))}
+                      {event.type === "goal_for" &&
+                        `⚽ ${getPlayerNameByIdOrNumber(
+                          event.scorerPlayerId,
+                          event.scorer
+                        )}${
+                          event.assist !== null && event.assist !== undefined
+                            ? ` (asistence ${getPlayerNameByIdOrNumber(
+                                event.assistPlayerId,
+                                event.assist
+                              )})`
+                            : ""
+                        }`}
+                      {event.type === "goal_against" && "🥅 Inkasovaný gól"}
+                      {event.type === "yellow_card" &&
+                        `🟨 Žlutá karta: ${getPlayerNameByIdOrNumber(
+                          event.playerId,
+                          event.playerNumber
+                        )}`}
+                      {event.type === "red_card" &&
+                        `🟥 Červená karta: ${getPlayerNameByIdOrNumber(
+                          event.playerId,
+                          event.playerNumber
+                        )}`}
+                      <div style={{ fontSize: "12px", color: "#b8b8b8", marginTop: "4px" }}>
+                        {event.period}. poločas • {event.minute}. minuta
+                      </div>
                     </div>
                   ) : (
-                    <div style={{ fontWeight: 900 }}>
-                      🟥 Červená karta:{" "}
-                      {getEventPlayerName(event, event.playerNumber, getCardPlayerId(event))}
+                    <div style={{ display: "grid", gap: "8px" }}>
+                      <select
+                        value={event.type}
+                        onChange={(e) =>
+                          updateEventField(event.localId, "type", e.target.value)
+                        }
+                        style={inputStyle}
+                      >
+                        <option value="goal_for" style={{ color: "black" }}>
+                          Gól
+                        </option>
+                        <option value="goal_against" style={{ color: "black" }}>
+                          Inkasovaný gól
+                        </option>
+                        <option value="yellow_card" style={{ color: "black" }}>
+                          Žlutá karta
+                        </option>
+                        <option value="red_card" style={{ color: "black" }}>
+                          Červená karta
+                        </option>
+                      </select>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                        <input
+                          type="number"
+                          min={1}
+                          value={event.period}
+                          onChange={(e) =>
+                            updateEventField(event.localId, "period", e.target.value)
+                          }
+                          placeholder="Poločas"
+                          style={inputStyle}
+                        />
+
+                        <input
+                          type="number"
+                          min={0}
+                          value={event.minute}
+                          onChange={(e) =>
+                            updateEventField(event.localId, "minute", e.target.value)
+                          }
+                          placeholder="Minuta"
+                          style={inputStyle}
+                        />
+                      </div>
+
+                      {event.type === "goal_for" && (
+                        <>
+                          <select
+                            value={event.scorerPlayerId ?? ""}
+                            onChange={(e) =>
+                              updateEventPlayer(event.localId, "scorer", e.target.value)
+                            }
+                            style={inputStyle}
+                          >
+                            {selectablePlayers.map((player) => (
+                              <option
+                                key={`scorer-${player.playerId ?? player.playerNumber}`}
+                                value={player.playerId ?? ""}
+                                style={{ color: "black" }}
+                              >
+                                #{player.currentNumber} — {player.name}
+                              </option>
+                            ))}
+                          </select>
+
+                          <select
+                            value={event.assistPlayerId ?? "none"}
+                            onChange={(e) =>
+                              updateEventPlayer(event.localId, "assist", e.target.value)
+                            }
+                            style={inputStyle}
+                          >
+                            <option value="none" style={{ color: "black" }}>
+                              Bez asistence
+                            </option>
+                            {selectablePlayers.map((player) => (
+                              <option
+                                key={`assist-${player.playerId ?? player.playerNumber}`}
+                                value={player.playerId ?? ""}
+                                style={{ color: "black" }}
+                              >
+                                #{player.currentNumber} — {player.name}
+                              </option>
+                            ))}
+                          </select>
+                        </>
+                      )}
+
+                      {(event.type === "yellow_card" || event.type === "red_card") && (
+                        <select
+                          value={event.playerId ?? ""}
+                          onChange={(e) =>
+                            updateEventPlayer(event.localId, "card", e.target.value)
+                          }
+                          style={inputStyle}
+                        >
+                          {selectablePlayers.map((player) => (
+                            <option
+                              key={`card-${player.playerId ?? player.playerNumber}`}
+                              value={player.playerId ?? ""}
+                              style={{ color: "black" }}
+                            >
+                              #{player.currentNumber} — {player.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                      <button
+                        type="button"
+                        style={dangerButtonStyle}
+                        onClick={() => deleteEvent(event.localId)}
+                      >
+                        Smazat událost
+                      </button>
                     </div>
                   )}
                 </div>
               ))
             )}
+          </div>
+        )}
+      </div>
+
+      <div style={{ ...glassCardStyle, padding: "14px" }}>
+        {renderCollapsibleHeader(
+          "Brankáři",
+          `${goalkeeperSegments.length} úseků`,
+          goalkeepersOpen,
+          () => setGoalkeepersOpen((prev) => !prev)
+        )}
+
+        {goalkeepersOpen && (
+          <div style={{ display: "grid", gap: "10px", marginTop: "12px" }}>
+            {editMode && (
+              <button type="button" style={smallButtonStyle} onClick={addGoalkeeperSegment}>
+                + Přidat brankářský úsek
+              </button>
+            )}
+
+            {goalkeeperSegments.length === 0 && (
+              <div
+                style={{
+                  padding: "12px",
+                  borderRadius: "16px",
+                  background: "rgba(255,255,255,0.04)",
+                  color: "#b8b8b8",
+                }}
+              >
+                Zatím nejsou nastavené brankářské úseky.
+              </div>
+            )}
+
+            {goalkeeperSegments.map((segment) => {
+              const player = getPlayerByIdOrNumber(segment.playerId, segment.playerNumber);
+
+              return (
+                <div
+                  key={segment.localId}
+                  style={{
+                    padding: "12px",
+                    borderRadius: "16px",
+                    background: "rgba(255,216,107,0.10)",
+                    border: "1px solid rgba(255,216,107,0.28)",
+                  }}
+                >
+                  {!editMode ? (
+                    <div>
+                      <div style={{ fontWeight: 950, color: "#ffd86b" }}>
+                        {player?.name ?? `#${segment.playerNumber}`}
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#b8b8b8", marginTop: "4px" }}>
+                        {segment.startMinute}.–{segment.endMinute}. minuta • inkasované góly:{" "}
+                        {segment.goalsAgainst}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gap: "8px" }}>
+                      <select
+                        value={segment.playerId}
+                        onChange={(e) =>
+                          updateGoalkeeperSegment(segment.localId, "playerId", e.target.value)
+                        }
+                        style={inputStyle}
+                      >
+                        {selectablePlayers.map((item) => (
+                          <option
+                            key={`gk-${item.playerId ?? item.playerNumber}`}
+                            value={item.playerId ?? ""}
+                            style={{ color: "black" }}
+                          >
+                            #{item.currentNumber} — {item.name}
+                          </option>
+                        ))}
+                      </select>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                        <input
+                          type="number"
+                          min={0}
+                          value={segment.startMinute}
+                          onChange={(e) =>
+                            updateGoalkeeperSegment(
+                              segment.localId,
+                              "startMinute",
+                              e.target.value
+                            )
+                          }
+                          placeholder="Od minuty"
+                          style={inputStyle}
+                        />
+
+                        <input
+                          type="number"
+                          min={0}
+                          value={segment.endMinute}
+                          onChange={(e) =>
+                            updateGoalkeeperSegment(
+                              segment.localId,
+                              "endMinute",
+                              e.target.value
+                            )
+                          }
+                          placeholder="Do minuty"
+                          style={inputStyle}
+                        />
+                      </div>
+
+                      <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
+                        Inkasované góly v úseku se po uložení dopočítají podle minut
+                        inkasovaných gólů.
+                      </div>
+
+                      <button
+                        type="button"
+                        style={dangerButtonStyle}
+                        onClick={() => deleteGoalkeeperSegment(segment.localId)}
+                      >
+                        Smazat úsek
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1186,16 +2133,10 @@ export default function PlayedMatchDetailScreen({
               const statKey = getStatKey(stat);
               const removable = canRemovePlayer(stat);
               const isRemoving = removingPlayerKey === statKey;
-              const isGoalkeeper = localMatch.goalkeeperNumber === stat.playerNumber;
               const currentNumber = getPlayerCurrentNumberByIdOrNumber(
                 statPlayerId,
                 stat.playerNumber
               );
-
-              const editStat =
-                (editPlayerStats as PlayerStatWithId[]).find(
-                  (item) => getStatKey(item) === statKey
-                ) ?? stat;
 
               return (
                 <div
@@ -1205,28 +2146,10 @@ export default function PlayedMatchDetailScreen({
                     overflow: "hidden",
                     padding: "12px",
                     borderRadius: "18px",
-                    background: isGoalkeeper
-                      ? "rgba(255,216,107,0.10)"
-                      : "rgba(255,255,255,0.04)",
-                    border: isGoalkeeper
-                      ? "1px solid rgba(255,216,107,0.28)"
-                      : "1px solid rgba(255,255,255,0.06)",
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.06)",
                   }}
                 >
-                  {isGoalkeeper && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: 0,
-                        top: 0,
-                        bottom: 0,
-                        width: "4px",
-                        background: "#ffd86b",
-                        boxShadow: "0 0 16px rgba(255,216,107,0.45)",
-                      }}
-                    />
-                  )}
-
                   <div
                     style={{
                       display: "flex",
@@ -1240,78 +2163,22 @@ export default function PlayedMatchDetailScreen({
                         {getPlayerNameByIdOrNumber(statPlayerId, stat.playerNumber)}
                       </div>
 
-                      {!editMode ? (
-                        <div
-                          style={{
-                            fontSize: "12px",
-                            color: isGoalkeeper ? "#ffd86b" : "#b8b8b8",
-                            marginTop: "4px",
-                            lineHeight: 1.5,
-                            fontWeight: isGoalkeeper ? 900 : 600,
-                          }}
-                        >
-                          #{currentNumber ?? stat.playerNumber} • {stat.goals}G /{" "}
-                          {stat.assists}A • ŽK: {stat.yellowCards ?? 0} • ČK:{" "}
-                          {stat.redCards ?? 0}
-                          {isGoalkeeper ? " • BR" : ""}
-                        </div>
-                      ) : (
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr 1fr",
-                            gap: "8px",
-                            marginTop: "10px",
-                          }}
-                        >
-                          <input
-                            type="number"
-                            min={0}
-                            value={editStat.goals}
-                            onChange={(event) =>
-                              updateEditStat(statKey, "goals", event.target.value)
-                            }
-                            placeholder="Góly"
-                            style={styles.input}
-                          />
-
-                          <input
-                            type="number"
-                            min={0}
-                            value={editStat.assists}
-                            onChange={(event) =>
-                              updateEditStat(statKey, "assists", event.target.value)
-                            }
-                            placeholder="Asistence"
-                            style={styles.input}
-                          />
-
-                          <input
-                            type="number"
-                            min={0}
-                            value={editStat.yellowCards ?? 0}
-                            onChange={(event) =>
-                              updateEditStat(statKey, "yellowCards", event.target.value)
-                            }
-                            placeholder="ŽK"
-                            style={styles.input}
-                          />
-
-                          <input
-                            type="number"
-                            min={0}
-                            value={editStat.redCards ?? 0}
-                            onChange={(event) =>
-                              updateEditStat(statKey, "redCards", event.target.value)
-                            }
-                            placeholder="ČK"
-                            style={styles.input}
-                          />
-                        </div>
-                      )}
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          color: "#b8b8b8",
+                          marginTop: "4px",
+                          lineHeight: 1.5,
+                          fontWeight: 600,
+                        }}
+                      >
+                        #{currentNumber ?? stat.playerNumber} • {stat.goals}G /{" "}
+                        {stat.assists}A • ŽK: {stat.yellowCards ?? 0} • ČK:{" "}
+                        {stat.redCards ?? 0}
+                      </div>
                     </div>
 
-                    {!editMode && (
+                    {isAdmin && !editMode && (
                       <>
                         {removable ? (
                           <button
@@ -1336,12 +2203,12 @@ export default function PlayedMatchDetailScreen({
                           <div
                             style={{
                               fontSize: "12px",
-                              color: isGoalkeeper ? "#ffd86b" : "#8f8f8f",
+                              color: "#8f8f8f",
                               fontWeight: 900,
                               whiteSpace: "nowrap",
                             }}
                           >
-                            {isGoalkeeper ? "BR" : "Zásah"}
+                            Zásah
                           </div>
                         )}
                       </>
@@ -1368,208 +2235,205 @@ export default function PlayedMatchDetailScreen({
       </div>
 
       <div style={{ ...glassCardStyle, padding: "14px" }}>
-        <div style={{ fontWeight: 950, marginBottom: "10px", fontSize: "15px" }}>
-          Hodnocení hráčů
-        </div>
+        {renderCollapsibleHeader(
+          "Hodnocení hráčů",
+          isVotingOpen ? "hlasování otevřené" : "hlasování uzavřené",
+          ratingsOpen,
+          () => setRatingsOpen((prev) => !prev)
+        )}
 
-        <div
-          style={{
-            marginBottom: "12px",
-            padding: "12px",
-            borderRadius: "16px",
-            background: isVotingOpen
-              ? "rgba(61, 214, 140, 0.10)"
-              : "rgba(255,120,120,0.08)",
-            border: isVotingOpen
-              ? "1px solid rgba(61, 214, 140, 0.24)"
-              : "1px solid rgba(255,120,120,0.22)",
-            color: isVotingOpen ? "#bff5d8" : "#ffbdbd",
-            fontSize: "13px",
-            lineHeight: 1.5,
-          }}
-        >
-          <div style={{ fontWeight: 950, marginBottom: "4px" }}>
-            {isVotingOpen ? "Hodnocení je otevřené" : "Hodnocení je uzavřené"}
-          </div>
+        {ratingsOpen && (
+          <div style={{ display: "grid", gap: "10px", marginTop: "12px" }}>
+            <div
+              style={{
+                padding: "12px",
+                borderRadius: "16px",
+                background: isVotingOpen
+                  ? "rgba(61, 214, 140, 0.10)"
+                  : "rgba(255,120,120,0.08)",
+                border: isVotingOpen
+                  ? "1px solid rgba(61, 214, 140, 0.24)"
+                  : "1px solid rgba(255,120,120,0.22)",
+                color: isVotingOpen ? "#bff5d8" : "#ffbdbd",
+                fontSize: "13px",
+                lineHeight: 1.5,
+              }}
+            >
+              <div style={{ fontWeight: 950, marginBottom: "4px" }}>
+                {isVotingOpen ? "Hodnocení je otevřené" : "Hodnocení je uzavřené"}
+              </div>
 
-          {votingStatus?.text && <div>{votingStatus.text}</div>}
+              {votingStatus?.text && <div>{votingStatus.text}</div>}
 
-          {localMatch.finished_at && (
-            <div style={{ marginTop: "4px", opacity: 0.9 }}>
-              Ukončení zápasu: {formatDateTime(localMatch.finished_at)}
+              {localMatch.finished_at && (
+                <div style={{ marginTop: "4px", opacity: 0.9 }}>
+                  Ukončení zápasu: {formatDateTime(localMatch.finished_at)}
+                </div>
+              )}
+
+              {votingDeadline && (
+                <div style={{ marginTop: "4px", opacity: 0.9 }}>
+                  Konec hlasování: {formatDateTime(votingDeadline.toISOString())}
+                </div>
+              )}
             </div>
-          )}
 
-          {votingDeadline && (
-            <div style={{ marginTop: "4px", opacity: 0.9 }}>
-              Konec hlasování: {formatDateTime(votingDeadline.toISOString())}
-            </div>
-          )}
+            {sortedRatingPlayerNumbers.map((playerNumber, index) => {
+              const stat = getStatByNumber(playerNumber);
+              const statPlayerId = getStatPlayerId(stat);
+              const statKey = stat ? getStatKey(stat) : `number:${playerNumber}`;
+              const summary = summaryMap.get(playerNumber);
+              const badgeStyles = getRatingBadgeStyles(summary?.color ?? "neutral");
+              const selectedValue = selectedRatings[statKey];
+              const player = getPlayerByIdOrNumber(statPlayerId, playerNumber);
+              const isSelf = player?.profile_id === currentUserId;
 
-          {!localMatch.finished_at && (
-            <div>
-              U tohoto zápasu zatím není uložený čas ukončení, proto je hodnocení
-              uzavřené.
-            </div>
-          )}
-        </div>
-
-        <div style={{ display: "grid", gap: "10px" }}>
-          {sortedRatingPlayerNumbers.map((playerNumber, index) => {
-            const stat = getStatByNumber(playerNumber);
-            const statPlayerId = getStatPlayerId(stat);
-            const statKey = stat ? getStatKey(stat) : `number:${playerNumber}`;
-            const summary = summaryMap.get(playerNumber);
-            const badgeStyles = getRatingBadgeStyles(summary?.color ?? "neutral");
-            const selectedValue = selectedRatings[statKey];
-            const player = getPlayerByIdOrNumber(statPlayerId, playerNumber);
-            const isSelf = player?.profile_id === currentUserId;
-
-            return (
-              <div
-                key={statKey}
-                style={{
-                  padding: "12px",
-                  borderRadius: "18px",
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                }}
-              >
+              return (
                 <div
+                  key={statKey}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "12px",
-                    marginBottom: isVotingOpen ? "10px" : 0,
+                    padding: "12px",
+                    borderRadius: "18px",
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.06)",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    {!isVotingOpen && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "12px",
+                      marginBottom: isVotingOpen ? "10px" : 0,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      {!isVotingOpen && (
+                        <div
+                          style={{
+                            width: "34px",
+                            height: "34px",
+                            borderRadius: "12px",
+                            background:
+                              index === 0
+                                ? "rgba(52, 152, 219, 0.22)"
+                                : "rgba(255,255,255,0.08)",
+                            color: index === 0 ? "#9fd3ff" : "#ffffff",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontWeight: 950,
+                          }}
+                        >
+                          {index + 1}
+                        </div>
+                      )}
+
+                      <div>
+                        <div style={{ fontWeight: 950 }}>
+                          {getPlayerNameByIdOrNumber(statPlayerId, playerNumber)}
+                        </div>
+                        {isVotingOpen && (
+                          <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
+                            Hlasů: {summary?.votes ?? 0}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                       <div
                         style={{
-                          width: "34px",
-                          height: "34px",
+                          minWidth: "56px",
+                          padding: "8px 10px",
                           borderRadius: "12px",
-                          background:
-                            index === 0
-                              ? "rgba(52, 152, 219, 0.22)"
-                              : "rgba(255,255,255,0.08)",
-                          color: index === 0 ? "#9fd3ff" : "#ffffff",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
                           fontWeight: 950,
+                          textAlign: "center",
+                          ...badgeStyles,
                         }}
                       >
-                        {index + 1}
+                        {summary && summary.averageRating !== null
+                          ? summary.averageRating.toFixed(1)
+                          : "--"}
                       </div>
-                    )}
 
-                    <div>
-                      <div style={{ fontWeight: 950 }}>
-                        {getPlayerNameByIdOrNumber(statPlayerId, playerNumber)}
-                      </div>
-                      {isVotingOpen && (
-                        <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
-                          Hlasů: {summary?.votes ?? 0}
+                      {summary?.isBest && (
+                        <div
+                          style={{
+                            minWidth: "52px",
+                            padding: "8px 10px",
+                            borderRadius: "12px",
+                            fontWeight: 950,
+                            textAlign: "center",
+                            ...getRatingBadgeStyles("blue"),
+                          }}
+                        >
+                          HZ
                         </div>
                       )}
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                    <div
-                      style={{
-                        minWidth: "56px",
-                        padding: "8px 10px",
-                        borderRadius: "12px",
-                        fontWeight: 950,
-                        textAlign: "center",
-                        ...badgeStyles,
-                      }}
-                    >
-                      {summary && summary.averageRating !== null
-                        ? summary.averageRating.toFixed(1)
-                        : "--"}
-                    </div>
+                  {isVotingOpen && stat && (
+                    <>
+                      {isSelf ? (
+                        <div
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: "12px",
+                            background: "rgba(255,255,255,0.06)",
+                            color: "#9f9f9f",
+                            fontSize: "12px",
+                            fontWeight: 900,
+                            textAlign: "center",
+                            border: "1px solid rgba(255,255,255,0.08)",
+                          }}
+                        >
+                          Nelze hodnotit sám sebe
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                          {ratingOptions.map((ratingValue) => {
+                            const isSelected = selectedValue === ratingValue;
+                            const isSaving = savingPlayerKey === statKey;
 
-                    {summary?.isBest && (
-                      <div
-                        style={{
-                          minWidth: "52px",
-                          padding: "8px 10px",
-                          borderRadius: "12px",
-                          fontWeight: 950,
-                          textAlign: "center",
-                          ...getRatingBadgeStyles("blue"),
-                        }}
-                      >
-                        HZ
-                      </div>
-                    )}
-                  </div>
+                            return (
+                              <button
+                                key={`${statKey}-${ratingValue}`}
+                                type="button"
+                                onClick={() => void handleSaveRating(stat, ratingValue)}
+                                disabled={isSaving || !isVotingOpen}
+                                style={{
+                                  minWidth: "48px",
+                                  height: "36px",
+                                  padding: "0 8px",
+                                  borderRadius: "12px",
+                                  border: isSelected
+                                    ? "1px solid rgba(255,255,255,0.32)"
+                                    : "1px solid rgba(255,255,255,0.08)",
+                                  background: isSelected
+                                    ? "rgba(255,255,255,0.18)"
+                                    : "rgba(255,255,255,0.08)",
+                                  color: "white",
+                                  fontWeight: 900,
+                                  fontSize: "13px",
+                                  cursor: isSaving ? "default" : "pointer",
+                                  opacity: isSaving ? 0.7 : 1,
+                                }}
+                              >
+                                {formatRatingValue(ratingValue)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
-
-                {isVotingOpen && stat && (
-                  <>
-                    {isSelf ? (
-                      <div
-                        style={{
-                          padding: "10px 12px",
-                          borderRadius: "12px",
-                          background: "rgba(255,255,255,0.06)",
-                          color: "#9f9f9f",
-                          fontSize: "12px",
-                          fontWeight: 900,
-                          textAlign: "center",
-                          border: "1px solid rgba(255,255,255,0.08)",
-                        }}
-                      >
-                        Nelze hodnotit sám sebe
-                      </div>
-                    ) : (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                        {ratingOptions.map((ratingValue) => {
-                          const isSelected = selectedValue === ratingValue;
-                          const isSaving = savingPlayerKey === statKey;
-
-                          return (
-                            <button
-                              key={`${statKey}-${ratingValue}`}
-                              type="button"
-                              onClick={() => void handleSaveRating(stat, ratingValue)}
-                              disabled={isSaving || !isVotingOpen}
-                              style={{
-                                minWidth: "48px",
-                                height: "36px",
-                                padding: "0 8px",
-                                borderRadius: "12px",
-                                border: isSelected
-                                  ? "1px solid rgba(255,255,255,0.32)"
-                                  : "1px solid rgba(255,255,255,0.08)",
-                                background: isSelected
-                                  ? "rgba(255,255,255,0.18)"
-                                  : "rgba(255,255,255,0.08)",
-                                color: "white",
-                                fontWeight: 900,
-                                fontSize: "13px",
-                                cursor: isSaving ? "default" : "pointer",
-                                opacity: isSaving ? 0.7 : 1,
-                              }}
-                            >
-                              {formatRatingValue(ratingValue)}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

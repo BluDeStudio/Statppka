@@ -2468,7 +2468,8 @@ export default function Home() {
               clubId={currentClub.id}
               match={selectedPlayedMatch}
               onBack={() => setSelectedPlayedMatchId(null)}
-            />
+              isAdmin={isCurrentUserAdmin}
+           />
           )}
         </div>
 
