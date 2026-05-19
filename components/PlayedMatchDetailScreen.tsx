@@ -451,30 +451,27 @@ export default function PlayedMatchDetailScreen({
   const [removingPlayerKey, setRemovingPlayerKey] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(Date.now());
 
-  const [editMode, setEditMode] = useState(false);
-  const [editScore, setEditScore] = useState(match.score);
-  const [editPlayerStats, setEditPlayerStats] = useState<FinishedMatch["playerStats"]>(
-    match.playerStats
-  );
   const [editEvents, setEditEvents] = useState<EditableEvent[]>([]);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [savingEventId, setSavingEventId] = useState<string | null>(null);
+
   const [goalkeeperSegments, setGoalkeeperSegments] = useState<GoalkeeperSegment[]>([]);
-  const [savingEdit, setSavingEdit] = useState(false);
+  const [goalkeepersEditMode, setGoalkeepersEditMode] = useState(false);
+  const [savingGoalkeepers, setSavingGoalkeepers] = useState(false);
 
   const [eventsOpen, setEventsOpen] = useState(false);
   const [lineupOpen, setLineupOpen] = useState(false);
-  const [goalkeepersOpen, setGoalkeepersOpen] = useState(false);
   const [ratingsOpen, setRatingsOpen] = useState(false);
 
   useEffect(() => {
     setLocalMatch(match);
-    setEditScore(match.score);
-    setEditPlayerStats(match.playerStats);
     setEditEvents(
       (match.events ?? []).map((event, index) =>
         eventFromFinishedMatchEvent(event, index, match.playerStats as PlayerStatWithId[])
       )
     );
-    setEditMode(false);
+    setEditingEventId(null);
+    setGoalkeepersEditMode(false);
   }, [match]);
 
   useEffect(() => {
@@ -593,7 +590,6 @@ export default function PlayedMatchDetailScreen({
         playerStats: mergedPlayerStats,
         events: nextEvents.map(eventToFinishedMatchEvent),
       }));
-      setEditPlayerStats(mergedPlayerStats);
       setEditEvents(nextEvents);
       setGoalkeeperSegments(loadedGoalkeeperSegments);
       setPlayers(loadedPlayers);
@@ -1010,52 +1006,282 @@ export default function PlayedMatchDetailScreen({
     );
   };
 
+  const persistMatchChanges = async (
+    eventsToSave: EditableEvent[],
+    segmentsToSave: GoalkeeperSegment[]
+  ) => {
+    const recalculatedPlayerStats = recalculateStatsFromEvents(
+      localMatch.playerStats,
+      eventsToSave
+    );
+
+    const nextGoalkeeperSegments = computeGoalkeeperSegmentsWithGoals(
+      segmentsToSave,
+      eventsToSave
+    );
+
+    const nextEvents = eventsToSave.map(eventToFinishedMatchEvent);
+    const nextScore = `${eventsToSave.filter((event) => event.type === "goal_for").length}:${
+      eventsToSave.filter((event) => event.type === "goal_against").length
+    }`;
+    const nextGoalsAgainst = eventsToSave.filter(
+      (event) => event.type === "goal_against"
+    ).length;
+
+    const { error: matchError } = await supabase
+      .from("finished_matches")
+      .update({
+        score: nextScore,
+        goals_against: nextGoalsAgainst,
+      })
+      .eq("id", localMatch.id);
+
+    if (matchError) {
+      console.error("Nepodařilo se uložit zápas:", matchError);
+      return {
+        success: false,
+        errorMessage: "Nepodařilo se uložit změny zápasu.",
+      };
+    }
+
+    for (const rawStat of recalculatedPlayerStats as PlayerStatWithId[]) {
+      const statPlayerId = getStatPlayerId(rawStat);
+
+      let query = supabase
+        .from("finished_match_player_stats")
+        .update({
+          goals: rawStat.goals,
+          assists: rawStat.assists,
+          yellow_cards: rawStat.yellowCards ?? 0,
+          red_cards: rawStat.redCards ?? 0,
+        })
+        .eq("finished_match_id", localMatch.id);
+
+      query = statPlayerId
+        ? query.eq("player_id", statPlayerId)
+        : query.eq("player_number", rawStat.playerNumber);
+
+      const { error: statError } = await query;
+
+      if (statError) {
+        console.error("Nepodařilo se uložit statistiky hráče:", statError);
+      }
+    }
+
+    const { error: deleteEventsError } = await supabase
+      .from("finished_match_events")
+      .delete()
+      .eq("finished_match_id", localMatch.id);
+
+    if (deleteEventsError) {
+      console.error("Nepodařilo se smazat původní události:", deleteEventsError);
+      return {
+        success: false,
+        errorMessage: "Nepodařilo se přepsat události zápasu.",
+      };
+    }
+
+    if (eventsToSave.length > 0) {
+      const { error: insertEventsError } = await supabase
+        .from("finished_match_events")
+        .insert(
+          eventsToSave.map((event) => ({
+            finished_match_id: localMatch.id,
+            type: event.type,
+            period: event.period,
+            minute: event.minute,
+            scorer: event.type === "goal_for" ? event.scorer : null,
+            assist: event.type === "goal_for" ? event.assist : null,
+            scorer_player_id:
+              event.type === "goal_for" ? event.scorerPlayerId ?? null : null,
+            assist_player_id:
+              event.type === "goal_for" ? event.assistPlayerId ?? null : null,
+            card_player_number:
+              event.type === "yellow_card" || event.type === "red_card"
+                ? event.playerNumber
+                : null,
+            card_player_id:
+              event.type === "yellow_card" || event.type === "red_card"
+                ? event.playerId ?? null
+                : null,
+          }))
+        );
+
+      if (insertEventsError) {
+        console.error("Nepodařilo se uložit nové události:", insertEventsError);
+        return {
+          success: false,
+          errorMessage: "Nepodařilo se uložit události zápasu.",
+        };
+      }
+    }
+
+    const { error: deleteGoalkeepersError } = await supabase
+      .from("finished_match_goalkeeper_segments")
+      .delete()
+      .eq("finished_match_id", localMatch.id);
+
+    if (deleteGoalkeepersError) {
+      console.warn(
+        "Nepodařilo se smazat původní brankářské úseky:",
+        deleteGoalkeepersError
+      );
+    }
+
+    if (nextGoalkeeperSegments.length > 0) {
+      const { error: insertGoalkeepersError } = await supabase
+        .from("finished_match_goalkeeper_segments")
+        .insert(
+          nextGoalkeeperSegments.map((segment) => ({
+            finished_match_id: localMatch.id,
+            player_id: segment.playerId,
+            player_number: segment.playerNumber,
+            start_minute: segment.startMinute,
+            end_minute: segment.endMinute,
+            goals_against: segment.goalsAgainst,
+          }))
+        );
+
+      if (insertGoalkeepersError) {
+        console.warn("Nepodařilo se uložit brankářské úseky:", insertGoalkeepersError);
+      }
+    }
+
+    setLocalMatch((prev) => ({
+      ...prev,
+      score: nextScore,
+      goalsAgainst: nextGoalsAgainst,
+      playerStats: recalculatedPlayerStats,
+      events: nextEvents,
+    }));
+
+    setEditEvents(eventsToSave);
+    setGoalkeeperSegments(nextGoalkeeperSegments);
+
+    return {
+      success: true,
+    };
+  };
+
   const addNewEvent = (type: EventType) => {
     const firstPlayer = selectablePlayers[0];
+    const lastMinute =
+      editEvents.length > 0
+        ? Math.max(...editEvents.map((event) => normalizeMinute(event.minute)))
+        : 0;
 
     const base = {
       localId: createLocalId("event-new"),
       id: null,
-      period: 1,
-      minute: 0,
+      period: lastMinute > 30 ? 2 : 1,
+      minute: lastMinute,
     };
 
+    let newEvent: EditableEvent;
+
     if (type === "goal_for") {
-      setEditEvents((prev) => [
-        ...prev,
-        {
-          ...base,
-          type,
-          scorer: firstPlayer?.playerNumber ?? null,
-          scorerPlayerId: firstPlayer?.playerId ?? null,
-          assist: null,
-          assistPlayerId: null,
-        },
-      ]);
-      return;
+      newEvent = {
+        ...base,
+        type,
+        scorer: firstPlayer?.playerNumber ?? null,
+        scorerPlayerId: firstPlayer?.playerId ?? null,
+        assist: null,
+        assistPlayerId: null,
+      };
+    } else if (type === "yellow_card" || type === "red_card") {
+      newEvent = {
+        ...base,
+        type,
+        playerNumber: firstPlayer?.playerNumber ?? null,
+        playerId: firstPlayer?.playerId ?? null,
+      };
+    } else {
+      newEvent = {
+        ...base,
+        type,
+      };
     }
 
-    if (type === "yellow_card" || type === "red_card") {
-      setEditEvents((prev) => [
-        ...prev,
-        {
-          ...base,
-          type,
-          playerNumber: firstPlayer?.playerNumber ?? null,
-          playerId: firstPlayer?.playerId ?? null,
-        },
-      ]);
-      return;
-    }
-
-    setEditEvents((prev) => [...prev, { ...base, type }]);
+    setEventsOpen(true);
+    setEditEvents((prev) => [...prev, newEvent]);
+    setEditingEventId(newEvent.localId);
   };
 
-  const deleteEvent = (localId: string) => {
+  const handleSaveSingleEvent = async (localId: string) => {
+    const event = editEvents.find((item) => item.localId === localId);
+
+    if (!event) return;
+
+    if (event.type === "goal_for" && !event.scorerPlayerId) {
+      setMessage("Vyber střelce gólu.");
+      return;
+    }
+
+    if (
+      (event.type === "yellow_card" || event.type === "red_card") &&
+      !event.playerId
+    ) {
+      setMessage("Vyber hráče ke kartě.");
+      return;
+    }
+
+    setSavingEventId(localId);
+    setMessage("");
+
+    const result = await persistMatchChanges(editEvents, goalkeeperSegments);
+
+    if (!result.success) {
+      setMessage(result.errorMessage ?? "Nepodařilo se uložit událost.");
+      setSavingEventId(null);
+      return;
+    }
+
+    setEditingEventId(null);
+    setMessage("Událost byla uložena.");
+    setSavingEventId(null);
+  };
+
+  const handleCancelSingleEvent = (localId: string) => {
+    const event = editEvents.find((item) => item.localId === localId);
+
+    if (event?.id === null) {
+      setEditEvents((prev) => prev.filter((item) => item.localId !== localId));
+    } else {
+      setEditEvents(
+        (localMatch.events ?? []).map((item, index) =>
+          eventFromFinishedMatchEvent(
+            item,
+            index,
+            localMatch.playerStats as PlayerStatWithId[]
+          )
+        )
+      );
+    }
+
+    setEditingEventId(null);
+    setMessage("");
+  };
+
+  const deleteEvent = async (localId: string) => {
     const confirmed = window.confirm("Opravdu chceš smazat tuto událost?");
     if (!confirmed) return;
 
-    setEditEvents((prev) => prev.filter((event) => event.localId !== localId));
+    const nextEvents = editEvents.filter((event) => event.localId !== localId);
+
+    setSavingEventId(localId);
+    setMessage("");
+
+    const result = await persistMatchChanges(nextEvents, goalkeeperSegments);
+
+    if (!result.success) {
+      setMessage(result.errorMessage ?? "Nepodařilo se smazat událost.");
+      setSavingEventId(null);
+      return;
+    }
+
+    setEditingEventId(null);
+    setMessage("Událost byla smazána.");
+    setSavingEventId(null);
   };
 
   const updateGoalkeeperSegment = (
@@ -1120,6 +1346,31 @@ export default function PlayedMatchDetailScreen({
     setGoalkeeperSegments((prev) => prev.filter((segment) => segment.localId !== localId));
   };
 
+  const handleSaveGoalkeepers = async () => {
+    setSavingGoalkeepers(true);
+    setMessage("");
+
+    const result = await persistMatchChanges(editEvents, goalkeeperSegments);
+
+    if (!result.success) {
+      setMessage(result.errorMessage ?? "Nepodařilo se uložit brankáře.");
+      setSavingGoalkeepers(false);
+      return;
+    }
+
+    setGoalkeepersEditMode(false);
+    setMessage("Brankářské úseky byly uloženy.");
+    setSavingGoalkeepers(false);
+  };
+
+  const handleCancelGoalkeepers = () => {
+    setGoalkeeperSegments(
+      computeGoalkeeperSegmentsWithGoals(goalkeeperSegments, editEvents)
+    );
+    setGoalkeepersEditMode(false);
+    setMessage("");
+  };
+
   const handleRemovePlayer = async (stat: PlayerStatWithId) => {
     if (!isAdmin) {
       setMessage("Editace zápasu je dostupná jen pro admina.");
@@ -1159,10 +1410,6 @@ export default function PlayedMatchDetailScreen({
       ),
     }));
 
-    setEditPlayerStats((prev) =>
-      (prev as PlayerStatWithId[]).filter((player) => getStatKey(player) !== statKey)
-    );
-
     setRatings((prev) =>
       prev.filter((rating) => {
         const ratingPlayerId = getRatingPlayerId(rating as RatingRowWithId);
@@ -1181,191 +1428,6 @@ export default function PlayedMatchDetailScreen({
 
     setMessage(`Hráč ${playerName} byl odebrán ze zápasu.`);
     setRemovingPlayerKey(null);
-  };
-
-  const handleStartEdit = () => {
-    if (!isAdmin) {
-      setMessage("Editace zápasu je dostupná jen pro admina.");
-      return;
-    }
-
-    setEditScore(localMatch.score);
-    setEditPlayerStats(localMatch.playerStats);
-    setEventsOpen(true);
-    setLineupOpen(true);
-    setGoalkeepersOpen(true);
-    setEditMode(true);
-    setMessage("");
-  };
-
-  const handleCancelEdit = () => {
-    setEditScore(localMatch.score);
-    setEditPlayerStats(localMatch.playerStats);
-    setEditEvents(
-      (localMatch.events ?? []).map((event, index) =>
-        eventFromFinishedMatchEvent(event, index, localMatch.playerStats as PlayerStatWithId[])
-      )
-    );
-    setEditMode(false);
-    setMessage("");
-  };
-
-  const handleSaveEdit = async () => {
-    if (!isAdmin) {
-      setMessage("Editace zápasu je dostupná jen pro admina.");
-      return;
-    }
-
-    setSavingEdit(true);
-    setMessage("");
-
-    const recalculatedPlayerStats = recalculateStatsFromEvents(
-      editPlayerStats,
-      editEvents
-    );
-
-    const nextGoalkeeperSegments = computeGoalkeeperSegmentsWithGoals(
-      goalkeeperSegments,
-      editEvents
-    );
-
-    const nextEvents = editEvents.map(eventToFinishedMatchEvent);
-
-    const nextScore = editScore.trim() || computedScore;
-    const nextGoalsAgainst = editEvents.filter((event) => event.type === "goal_against").length;
-
-    const { error: matchError } = await supabase
-      .from("finished_matches")
-      .update({
-        score: nextScore,
-        goals_against: nextGoalsAgainst,
-      })
-      .eq("id", localMatch.id);
-
-    if (matchError) {
-      console.error("Nepodařilo se uložit editaci odehraného zápasu:", matchError);
-      setMessage("Nepodařilo se uložit změny zápasu.");
-      setSavingEdit(false);
-      return;
-    }
-
-    for (const rawStat of recalculatedPlayerStats as PlayerStatWithId[]) {
-      const statPlayerId = getStatPlayerId(rawStat);
-
-      let query = supabase
-        .from("finished_match_player_stats")
-        .update({
-          goals: rawStat.goals,
-          assists: rawStat.assists,
-          yellow_cards: rawStat.yellowCards ?? 0,
-          red_cards: rawStat.redCards ?? 0,
-        })
-        .eq("finished_match_id", localMatch.id);
-
-      query = statPlayerId
-        ? query.eq("player_id", statPlayerId)
-        : query.eq("player_number", rawStat.playerNumber);
-
-      const { error: statError } = await query;
-
-      if (statError) {
-        console.error("Nepodařilo se uložit statistiky hráče:", statError);
-      }
-    }
-
-    const { error: deleteEventsError } = await supabase
-      .from("finished_match_events")
-      .delete()
-      .eq("finished_match_id", localMatch.id);
-
-    if (deleteEventsError) {
-      console.error("Nepodařilo se smazat původní události:", deleteEventsError);
-      setMessage("Nepodařilo se přepsat události zápasu.");
-      setSavingEdit(false);
-      return;
-    }
-
-    if (editEvents.length > 0) {
-      const { error: insertEventsError } = await supabase
-        .from("finished_match_events")
-        .insert(
-          editEvents.map((event) => ({
-            finished_match_id: localMatch.id,
-            type: event.type,
-            period: event.period,
-            minute: event.minute,
-            scorer: event.type === "goal_for" ? event.scorer : null,
-            assist: event.type === "goal_for" ? event.assist : null,
-            scorer_player_id:
-              event.type === "goal_for" ? event.scorerPlayerId ?? null : null,
-            assist_player_id:
-              event.type === "goal_for" ? event.assistPlayerId ?? null : null,
-            card_player_number:
-              event.type === "yellow_card" || event.type === "red_card"
-                ? event.playerNumber
-                : null,
-            card_player_id:
-              event.type === "yellow_card" || event.type === "red_card"
-                ? event.playerId ?? null
-                : null,
-          }))
-        );
-
-      if (insertEventsError) {
-        console.error("Nepodařilo se uložit nové události:", insertEventsError);
-        setMessage("Nepodařilo se uložit události zápasu.");
-        setSavingEdit(false);
-        return;
-      }
-    }
-
-    const { error: deleteGoalkeepersError } = await supabase
-      .from("finished_match_goalkeeper_segments")
-      .delete()
-      .eq("finished_match_id", localMatch.id);
-
-    if (deleteGoalkeepersError) {
-      console.warn(
-        "Nepodařilo se smazat původní brankářské úseky:",
-        deleteGoalkeepersError
-      );
-    }
-
-    if (nextGoalkeeperSegments.length > 0) {
-      const { error: insertGoalkeepersError } = await supabase
-        .from("finished_match_goalkeeper_segments")
-        .insert(
-          nextGoalkeeperSegments.map((segment) => ({
-            finished_match_id: localMatch.id,
-            player_id: segment.playerId,
-            player_number: segment.playerNumber,
-            start_minute: segment.startMinute,
-            end_minute: segment.endMinute,
-            goals_against: segment.goalsAgainst,
-          }))
-        );
-
-      if (insertGoalkeepersError) {
-        console.warn(
-          "Nepodařilo se uložit brankářské úseky:",
-          insertGoalkeepersError
-        );
-      }
-    }
-
-    setLocalMatch((prev) => ({
-      ...prev,
-      score: nextScore,
-      goalsAgainst: nextGoalsAgainst,
-      playerStats: recalculatedPlayerStats,
-      events: nextEvents,
-    }));
-
-    setEditPlayerStats(recalculatedPlayerStats);
-    setGoalkeeperSegments(nextGoalkeeperSegments);
-    setEditMode(false);
-    setMessage("Změny zápasu byly uloženy.");
-    setSavingEdit(false);
   };
 
   const handleSaveRating = async (stat: PlayerStatWithId, ratingValue: number) => {
@@ -1580,76 +1642,28 @@ export default function PlayedMatchDetailScreen({
               border: "1px solid rgba(255,255,255,0.08)",
             }}
           >
-            {editMode ? (
-              <input
-                type="text"
-                value={editScore}
-                onChange={(event) => setEditScore(event.target.value)}
-                style={{
-                  ...styles.input,
-                  textAlign: "center",
-                  fontSize: "36px",
-                  fontWeight: 950,
-                  letterSpacing: "2px",
-                  padding: "12px",
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  fontSize: "46px",
-                  lineHeight: 1,
-                  fontWeight: 950,
-                  letterSpacing: "2px",
-                }}
-              >
-                {localMatch.score}
-              </div>
-            )}
-
-            {editMode && (
-              <div
-                style={{
-                  marginTop: "8px",
-                  color: "#b8b8b8",
-                  fontSize: "12px",
-                  fontWeight: 800,
-                }}
-              >
-                Přepočtené skóre z událostí: {computedScore}
-              </div>
-            )}
-          </div>
-
-          {isAdmin && (
-            <div style={{ display: "grid", gap: "10px", marginTop: "14px" }}>
-              {!editMode ? (
-                <button type="button" style={primaryButtonStyle} onClick={handleStartEdit}>
-                  Upravit zápas
-                </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    style={{ ...primaryButtonStyle, opacity: savingEdit ? 0.7 : 1 }}
-                    onClick={() => void handleSaveEdit()}
-                    disabled={savingEdit}
-                  >
-                    {savingEdit ? "Ukládám..." : "Uložit změny"}
-                  </button>
-
-                  <button
-                    type="button"
-                    style={softButtonStyle}
-                    onClick={handleCancelEdit}
-                    disabled={savingEdit}
-                  >
-                    Zrušit editaci
-                  </button>
-                </>
-              )}
+            <div
+              style={{
+                fontSize: "46px",
+                lineHeight: 1,
+                fontWeight: 950,
+                letterSpacing: "2px",
+              }}
+            >
+              {localMatch.score}
             </div>
-          )}
+
+            <div
+              style={{
+                marginTop: "8px",
+                color: "#b8b8b8",
+                fontSize: "12px",
+                fontWeight: 800,
+              }}
+            >
+              Skóre podle událostí: {computedScore}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1761,7 +1775,7 @@ export default function PlayedMatchDetailScreen({
 
         {eventsOpen && (
           <div style={{ display: "grid", gap: "10px", marginTop: "12px" }}>
-            {editMode && (
+            {isAdmin && (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
                 <button
                   type="button"
@@ -1806,306 +1820,230 @@ export default function PlayedMatchDetailScreen({
                 Bez zapsaných událostí.
               </div>
             ) : (
-              editEvents.map((event) => (
-                <div
-                  key={event.localId}
-                  style={{
-                    padding: "12px",
-                    borderRadius: "16px",
-                    background:
-                      event.type === "goal_for"
-                        ? "rgba(34,197,94,0.10)"
-                        : event.type === "goal_against"
-                        ? "rgba(198,40,40,0.14)"
-                        : event.type === "yellow_card"
-                        ? "rgba(245, 158, 11, 0.16)"
-                        : "rgba(185, 28, 28, 0.18)",
-                    border:
-                      event.type === "goal_for"
-                        ? "1px solid rgba(34,197,94,0.22)"
-                        : event.type === "goal_against"
-                        ? "1px solid rgba(198,40,40,0.35)"
-                        : event.type === "yellow_card"
-                        ? "1px solid rgba(245, 158, 11, 0.30)"
-                        : "1px solid rgba(185, 28, 28, 0.35)",
-                  }}
-                >
-                  {!editMode ? (
-                    <div style={{ fontWeight: 900 }}>
-                      {event.type === "goal_for" &&
-                        `⚽ ${getPlayerNameByIdOrNumber(
-                          event.scorerPlayerId,
-                          event.scorer
-                        )}${
-                          event.assist !== null && event.assist !== undefined
-                            ? ` (asistence ${getPlayerNameByIdOrNumber(
-                                event.assistPlayerId,
-                                event.assist
-                              )})`
-                            : ""
-                        }`}
-                      {event.type === "goal_against" && "🥅 Inkasovaný gól"}
-                      {event.type === "yellow_card" &&
-                        `🟨 Žlutá karta: ${getPlayerNameByIdOrNumber(
-                          event.playerId,
-                          event.playerNumber
-                        )}`}
-                      {event.type === "red_card" &&
-                        `🟥 Červená karta: ${getPlayerNameByIdOrNumber(
-                          event.playerId,
-                          event.playerNumber
-                        )}`}
-                      <div style={{ fontSize: "12px", color: "#b8b8b8", marginTop: "4px" }}>
-                        {event.period}. poločas • {event.minute}. minuta
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ display: "grid", gap: "8px" }}>
-                      <select
-                        value={event.type}
-                        onChange={(e) =>
-                          updateEventField(event.localId, "type", e.target.value)
-                        }
-                        style={inputStyle}
-                      >
-                        <option value="goal_for" style={{ color: "black" }}>
-                          Gól
-                        </option>
-                        <option value="goal_against" style={{ color: "black" }}>
-                          Inkasovaný gól
-                        </option>
-                        <option value="yellow_card" style={{ color: "black" }}>
-                          Žlutá karta
-                        </option>
-                        <option value="red_card" style={{ color: "black" }}>
-                          Červená karta
-                        </option>
-                      </select>
+              editEvents.map((event) => {
+                const isEditing = editingEventId === event.localId;
+                const isSaving = savingEventId === event.localId;
 
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                        <input
-                          type="number"
-                          min={1}
-                          value={event.period}
-                          onChange={(e) =>
-                            updateEventField(event.localId, "period", e.target.value)
-                          }
-                          placeholder="Poločas"
-                          style={inputStyle}
-                        />
-
-                        <input
-                          type="number"
-                          min={0}
-                          value={event.minute}
-                          onChange={(e) =>
-                            updateEventField(event.localId, "minute", e.target.value)
-                          }
-                          placeholder="Minuta"
-                          style={inputStyle}
-                        />
-                      </div>
-
-                      {event.type === "goal_for" && (
-                        <>
-                          <select
-                            value={event.scorerPlayerId ?? ""}
-                            onChange={(e) =>
-                              updateEventPlayer(event.localId, "scorer", e.target.value)
-                            }
-                            style={inputStyle}
+                return (
+                  <div
+                    key={event.localId}
+                    style={{
+                      padding: "12px",
+                      borderRadius: "16px",
+                      background:
+                        event.type === "goal_for"
+                          ? "rgba(34,197,94,0.10)"
+                          : event.type === "goal_against"
+                          ? "rgba(198,40,40,0.14)"
+                          : event.type === "yellow_card"
+                          ? "rgba(245, 158, 11, 0.16)"
+                          : "rgba(185, 28, 28, 0.18)",
+                      border:
+                        event.type === "goal_for"
+                          ? "1px solid rgba(34,197,94,0.22)"
+                          : event.type === "goal_against"
+                          ? "1px solid rgba(198,40,40,0.35)"
+                          : event.type === "yellow_card"
+                          ? "1px solid rgba(245, 158, 11, 0.30)"
+                          : "1px solid rgba(185, 28, 28, 0.35)",
+                    }}
+                  >
+                    {!isEditing ? (
+                      <div style={{ display: "grid", gap: "10px" }}>
+                        <div style={{ fontWeight: 900 }}>
+                          {event.type === "goal_for" &&
+                            `⚽ ${getPlayerNameByIdOrNumber(
+                              event.scorerPlayerId,
+                              event.scorer
+                            )}${
+                              event.assist !== null && event.assist !== undefined
+                                ? ` (asistence ${getPlayerNameByIdOrNumber(
+                                    event.assistPlayerId,
+                                    event.assist
+                                  )})`
+                                : ""
+                            }`}
+                          {event.type === "goal_against" && "🥅 Inkasovaný gól"}
+                          {event.type === "yellow_card" &&
+                            `🟨 Žlutá karta: ${getPlayerNameByIdOrNumber(
+                              event.playerId,
+                              event.playerNumber
+                            )}`}
+                          {event.type === "red_card" &&
+                            `🟥 Červená karta: ${getPlayerNameByIdOrNumber(
+                              event.playerId,
+                              event.playerNumber
+                            )}`}
+                          <div
+                            style={{
+                              fontSize: "12px",
+                              color: "#b8b8b8",
+                              marginTop: "4px",
+                            }}
                           >
-                            {selectablePlayers.map((player) => (
-                              <option
-                                key={`scorer-${player.playerId ?? player.playerNumber}`}
-                                value={player.playerId ?? ""}
-                                style={{ color: "black" }}
-                              >
-                                #{player.currentNumber} — {player.name}
-                              </option>
-                            ))}
-                          </select>
+                            {event.period}. poločas • {event.minute}. minuta
+                          </div>
+                        </div>
 
-                          <select
-                            value={event.assistPlayerId ?? "none"}
-                            onChange={(e) =>
-                              updateEventPlayer(event.localId, "assist", e.target.value)
-                            }
-                            style={inputStyle}
-                          >
-                            <option value="none" style={{ color: "black" }}>
-                              Bez asistence
-                            </option>
-                            {selectablePlayers.map((player) => (
-                              <option
-                                key={`assist-${player.playerId ?? player.playerNumber}`}
-                                value={player.playerId ?? ""}
-                                style={{ color: "black" }}
-                              >
-                                #{player.currentNumber} — {player.name}
-                              </option>
-                            ))}
-                          </select>
-                        </>
-                      )}
+                        {isAdmin && (
+                          <div style={{ display: "flex", gap: "8px" }}>
+                            <button
+                              type="button"
+                              style={smallButtonStyle}
+                              onClick={() => setEditingEventId(event.localId)}
+                            >
+                              Upravit
+                            </button>
 
-                      {(event.type === "yellow_card" || event.type === "red_card") && (
+                            <button
+                              type="button"
+                              style={dangerButtonStyle}
+                              onClick={() => void deleteEvent(event.localId)}
+                              disabled={isSaving}
+                            >
+                              {isSaving ? "Mažu..." : "Smazat"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ display: "grid", gap: "8px" }}>
                         <select
-                          value={event.playerId ?? ""}
+                          value={event.type}
                           onChange={(e) =>
-                            updateEventPlayer(event.localId, "card", e.target.value)
+                            updateEventField(event.localId, "type", e.target.value)
                           }
                           style={inputStyle}
                         >
-                          {selectablePlayers.map((player) => (
-                            <option
-                              key={`card-${player.playerId ?? player.playerNumber}`}
-                              value={player.playerId ?? ""}
-                              style={{ color: "black" }}
-                            >
-                              #{player.currentNumber} — {player.name}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-
-                      <button
-                        type="button"
-                        style={dangerButtonStyle}
-                        onClick={() => deleteEvent(event.localId)}
-                      >
-                        Smazat událost
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
-
-      <div style={{ ...glassCardStyle, padding: "14px" }}>
-        {renderCollapsibleHeader(
-          "Brankáři",
-          `${goalkeeperSegments.length} úseků`,
-          goalkeepersOpen,
-          () => setGoalkeepersOpen((prev) => !prev)
-        )}
-
-        {goalkeepersOpen && (
-          <div style={{ display: "grid", gap: "10px", marginTop: "12px" }}>
-            {editMode && (
-              <button type="button" style={smallButtonStyle} onClick={addGoalkeeperSegment}>
-                + Přidat brankářský úsek
-              </button>
-            )}
-
-            {goalkeeperSegments.length === 0 && (
-              <div
-                style={{
-                  padding: "12px",
-                  borderRadius: "16px",
-                  background: "rgba(255,255,255,0.04)",
-                  color: "#b8b8b8",
-                }}
-              >
-                Zatím nejsou nastavené brankářské úseky.
-              </div>
-            )}
-
-            {goalkeeperSegments.map((segment) => {
-              const player = getPlayerByIdOrNumber(segment.playerId, segment.playerNumber);
-
-              return (
-                <div
-                  key={segment.localId}
-                  style={{
-                    padding: "12px",
-                    borderRadius: "16px",
-                    background: "rgba(255,216,107,0.10)",
-                    border: "1px solid rgba(255,216,107,0.28)",
-                  }}
-                >
-                  {!editMode ? (
-                    <div>
-                      <div style={{ fontWeight: 950, color: "#ffd86b" }}>
-                        {player?.name ?? `#${segment.playerNumber}`}
-                      </div>
-                      <div style={{ fontSize: "12px", color: "#b8b8b8", marginTop: "4px" }}>
-                        {segment.startMinute}.–{segment.endMinute}. minuta • inkasované góly:{" "}
-                        {segment.goalsAgainst}
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ display: "grid", gap: "8px" }}>
-                      <select
-                        value={segment.playerId}
-                        onChange={(e) =>
-                          updateGoalkeeperSegment(segment.localId, "playerId", e.target.value)
-                        }
-                        style={inputStyle}
-                      >
-                        {selectablePlayers.map((item) => (
-                          <option
-                            key={`gk-${item.playerId ?? item.playerNumber}`}
-                            value={item.playerId ?? ""}
-                            style={{ color: "black" }}
-                          >
-                            #{item.currentNumber} — {item.name}
+                          <option value="goal_for" style={{ color: "black" }}>
+                            Gól
                           </option>
-                        ))}
-                      </select>
+                          <option value="goal_against" style={{ color: "black" }}>
+                            Inkasovaný gól
+                          </option>
+                          <option value="yellow_card" style={{ color: "black" }}>
+                            Žlutá karta
+                          </option>
+                          <option value="red_card" style={{ color: "black" }}>
+                            Červená karta
+                          </option>
+                        </select>
 
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                        <input
-                          type="number"
-                          min={0}
-                          value={segment.startMinute}
-                          onChange={(e) =>
-                            updateGoalkeeperSegment(
-                              segment.localId,
-                              "startMinute",
-                              e.target.value
-                            )
-                          }
-                          placeholder="Od minuty"
-                          style={inputStyle}
-                        />
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                          <input
+                            type="number"
+                            min={1}
+                            value={event.period}
+                            onChange={(e) =>
+                              updateEventField(event.localId, "period", e.target.value)
+                            }
+                            placeholder="Poločas"
+                            style={inputStyle}
+                          />
 
-                        <input
-                          type="number"
-                          min={0}
-                          value={segment.endMinute}
-                          onChange={(e) =>
-                            updateGoalkeeperSegment(
-                              segment.localId,
-                              "endMinute",
-                              e.target.value
-                            )
-                          }
-                          placeholder="Do minuty"
-                          style={inputStyle}
-                        />
+                          <input
+                            type="number"
+                            min={0}
+                            value={event.minute}
+                            onChange={(e) =>
+                              updateEventField(event.localId, "minute", e.target.value)
+                            }
+                            placeholder="Minuta"
+                            style={inputStyle}
+                          />
+                        </div>
+
+                        {event.type === "goal_for" && (
+                          <>
+                            <select
+                              value={event.scorerPlayerId ?? ""}
+                              onChange={(e) =>
+                                updateEventPlayer(event.localId, "scorer", e.target.value)
+                              }
+                              style={inputStyle}
+                            >
+                              {selectablePlayers.map((player) => (
+                                <option
+                                  key={`scorer-${player.playerId ?? player.playerNumber}`}
+                                  value={player.playerId ?? ""}
+                                  style={{ color: "black" }}
+                                >
+                                  #{player.currentNumber} — {player.name}
+                                </option>
+                              ))}
+                            </select>
+
+                            <select
+                              value={event.assistPlayerId ?? "none"}
+                              onChange={(e) =>
+                                updateEventPlayer(event.localId, "assist", e.target.value)
+                              }
+                              style={inputStyle}
+                            >
+                              <option value="none" style={{ color: "black" }}>
+                                Bez asistence
+                              </option>
+                              {selectablePlayers.map((player) => (
+                                <option
+                                  key={`assist-${player.playerId ?? player.playerNumber}`}
+                                  value={player.playerId ?? ""}
+                                  style={{ color: "black" }}
+                                >
+                                  #{player.currentNumber} — {player.name}
+                                </option>
+                              ))}
+                            </select>
+                          </>
+                        )}
+
+                        {(event.type === "yellow_card" || event.type === "red_card") && (
+                          <select
+                            value={event.playerId ?? ""}
+                            onChange={(e) =>
+                              updateEventPlayer(event.localId, "card", e.target.value)
+                            }
+                            style={inputStyle}
+                          >
+                            {selectablePlayers.map((player) => (
+                              <option
+                                key={`card-${player.playerId ?? player.playerNumber}`}
+                                value={player.playerId ?? ""}
+                                style={{ color: "black" }}
+                              >
+                                #{player.currentNumber} — {player.name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                          <button
+                            type="button"
+                            style={{
+                              ...primaryButtonStyle,
+                              opacity: isSaving ? 0.7 : 1,
+                            }}
+                            onClick={() => void handleSaveSingleEvent(event.localId)}
+                            disabled={isSaving}
+                          >
+                            {isSaving ? "Ukládám..." : "Uložit"}
+                          </button>
+
+                          <button
+                            type="button"
+                            style={softButtonStyle}
+                            onClick={() => handleCancelSingleEvent(event.localId)}
+                            disabled={isSaving}
+                          >
+                            Zrušit
+                          </button>
+                        </div>
                       </div>
-
-                      <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
-                        Inkasované góly v úseku se po uložení dopočítají podle minut
-                        inkasovaných gólů.
-                      </div>
-
-                      <button
-                        type="button"
-                        style={dangerButtonStyle}
-                        onClick={() => deleteGoalkeeperSegment(segment.localId)}
-                      >
-                        Smazat úsek
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         )}
       </div>
@@ -2113,115 +2051,285 @@ export default function PlayedMatchDetailScreen({
       <div style={{ ...glassCardStyle, padding: "14px" }}>
         {renderCollapsibleHeader(
           "SESTAVA",
-          `${lineupPlayers.length} hráčů v zápase`,
+          `${lineupPlayers.length} hráčů • ${goalkeeperSegments.length} brankářských úseků`,
           lineupOpen,
           () => setLineupOpen((prev) => !prev)
         )}
 
         {lineupOpen && (
-          <div style={{ display: "grid", gap: "8px", marginTop: "12px" }}>
-            {lineupPlayers.map((stat) => {
-              const statPlayerId = getStatPlayerId(stat);
-              const statKey = getStatKey(stat);
-              const removable = canRemovePlayer(stat);
-              const isRemoving = removingPlayerKey === statKey;
-              const currentNumber = getPlayerCurrentNumberByIdOrNumber(
-                statPlayerId,
-                stat.playerNumber
-              );
+          <div style={{ display: "grid", gap: "10px", marginTop: "12px" }}>
+            <div style={{ display: "grid", gap: "8px" }}>
+              {lineupPlayers.map((stat) => {
+                const statPlayerId = getStatPlayerId(stat);
+                const statKey = getStatKey(stat);
+                const removable = canRemovePlayer(stat);
+                const isRemoving = removingPlayerKey === statKey;
+                const currentNumber = getPlayerCurrentNumberByIdOrNumber(
+                  statPlayerId,
+                  stat.playerNumber
+                );
 
-              return (
-                <div
-                  key={statKey}
-                  style={{
-                    position: "relative",
-                    overflow: "hidden",
-                    padding: "12px",
-                    borderRadius: "18px",
-                    background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                  }}
-                >
+                return (
                   <div
+                    key={statKey}
                     style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: "12px",
-                      alignItems: "center",
+                      position: "relative",
+                      overflow: "hidden",
+                      padding: "12px",
+                      borderRadius: "18px",
+                      background: "rgba(255,255,255,0.04)",
+                      border: "1px solid rgba(255,255,255,0.06)",
                     }}
                   >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 950 }}>
-                        {getPlayerNameByIdOrNumber(statPlayerId, stat.playerNumber)}
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 950 }}>
+                          {getPlayerNameByIdOrNumber(statPlayerId, stat.playerNumber)}
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: "12px",
+                            color: "#b8b8b8",
+                            marginTop: "4px",
+                            lineHeight: 1.5,
+                            fontWeight: 600,
+                          }}
+                        >
+                          #{currentNumber ?? stat.playerNumber} • {stat.goals}G /{" "}
+                          {stat.assists}A • ŽK: {stat.yellowCards ?? 0} • ČK:{" "}
+                          {stat.redCards ?? 0}
+                        </div>
                       </div>
 
-                      <div
-                        style={{
-                          fontSize: "12px",
-                          color: "#b8b8b8",
-                          marginTop: "4px",
-                          lineHeight: 1.5,
-                          fontWeight: 600,
-                        }}
-                      >
-                        #{currentNumber ?? stat.playerNumber} • {stat.goals}G /{" "}
-                        {stat.assists}A • ŽK: {stat.yellowCards ?? 0} • ČK:{" "}
-                        {stat.redCards ?? 0}
-                      </div>
+                      {isAdmin && (
+                        <>
+                          {removable ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleRemovePlayer(stat)}
+                              disabled={isRemoving}
+                              style={{
+                                border: "none",
+                                borderRadius: "12px",
+                                padding: "10px 12px",
+                                background: "rgba(198,40,40,0.95)",
+                                color: "white",
+                                fontWeight: 900,
+                                cursor: isRemoving ? "default" : "pointer",
+                                opacity: isRemoving ? 0.7 : 1,
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {isRemoving ? "..." : "Odebrat"}
+                            </button>
+                          ) : (
+                            <div
+                              style={{
+                                fontSize: "12px",
+                                color: "#8f8f8f",
+                                fontWeight: 900,
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              Zásah
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
-
-                    {isAdmin && !editMode && (
-                      <>
-                        {removable ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleRemovePlayer(stat)}
-                            disabled={isRemoving}
-                            style={{
-                              border: "none",
-                              borderRadius: "12px",
-                              padding: "10px 12px",
-                              background: "rgba(198,40,40,0.95)",
-                              color: "white",
-                              fontWeight: 900,
-                              cursor: isRemoving ? "default" : "pointer",
-                              opacity: isRemoving ? 0.7 : 1,
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {isRemoving ? "..." : "Odebrat"}
-                          </button>
-                        ) : (
-                          <div
-                            style={{
-                              fontSize: "12px",
-                              color: "#8f8f8f",
-                              fontWeight: 900,
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            Zásah
-                          </div>
-                        )}
-                      </>
-                    )}
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
 
-            {lineupPlayers.length === 0 && (
+              {lineupPlayers.length === 0 && (
+                <div
+                  style={{
+                    padding: "12px",
+                    borderRadius: "16px",
+                    background: "rgba(255,255,255,0.04)",
+                    color: "#b8b8b8",
+                  }}
+                >
+                  V zápase zatím nejsou zapsaní žádní hráči.
+                </div>
+              )}
+            </div>
+
+            <div
+              style={{
+                height: "1px",
+                background: "rgba(255,255,255,0.08)",
+                margin: "4px 0",
+              }}
+            />
+
+            <div style={{ display: "grid", gap: "10px" }}>
               <div
                 style={{
-                  padding: "12px",
-                  borderRadius: "16px",
-                  background: "rgba(255,255,255,0.04)",
-                  color: "#b8b8b8",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "10px",
+                  alignItems: "center",
                 }}
               >
-                V zápase zatím nejsou zapsaní žádní hráči.
+                <div>
+                  <div style={{ fontWeight: 950 }}>Brankáři</div>
+                  <div style={{ fontSize: "12px", color: "#b8b8b8", marginTop: "3px" }}>
+                    Nastavení úseků podle minut
+                  </div>
+                </div>
+
+                {isAdmin && (
+                  <button
+                    type="button"
+                    style={smallButtonStyle}
+                    onClick={() => setGoalkeepersEditMode((prev) => !prev)}
+                  >
+                    {goalkeepersEditMode ? "Zavřít" : "Upravit"}
+                  </button>
+                )}
               </div>
-            )}
+
+              {goalkeepersEditMode && isAdmin && (
+                <div style={{ display: "grid", gap: "8px" }}>
+                  <button type="button" style={smallButtonStyle} onClick={addGoalkeeperSegment}>
+                    + Přidat brankářský úsek
+                  </button>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                    <button
+                      type="button"
+                      style={{
+                        ...primaryButtonStyle,
+                        opacity: savingGoalkeepers ? 0.7 : 1,
+                      }}
+                      onClick={() => void handleSaveGoalkeepers()}
+                      disabled={savingGoalkeepers}
+                    >
+                      {savingGoalkeepers ? "Ukládám..." : "Uložit brankáře"}
+                    </button>
+
+                    <button
+                      type="button"
+                      style={softButtonStyle}
+                      onClick={handleCancelGoalkeepers}
+                      disabled={savingGoalkeepers}
+                    >
+                      Zrušit
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {goalkeeperSegments.length === 0 && (
+                <div
+                  style={{
+                    padding: "12px",
+                    borderRadius: "16px",
+                    background: "rgba(255,255,255,0.04)",
+                    color: "#b8b8b8",
+                  }}
+                >
+                  Zatím nejsou nastavené brankářské úseky.
+                </div>
+              )}
+
+              {goalkeeperSegments.map((segment) => {
+                const player = getPlayerByIdOrNumber(segment.playerId, segment.playerNumber);
+
+                return (
+                  <div
+                    key={segment.localId}
+                    style={{
+                      padding: "12px",
+                      borderRadius: "16px",
+                      background: "rgba(255,216,107,0.10)",
+                      border: "1px solid rgba(255,216,107,0.28)",
+                    }}
+                  >
+                    {!goalkeepersEditMode ? (
+                      <div>
+                        <div style={{ fontWeight: 950, color: "#ffd86b" }}>
+                          {player?.name ?? `#${segment.playerNumber}`}
+                        </div>
+                        <div style={{ fontSize: "12px", color: "#b8b8b8", marginTop: "4px" }}>
+                          {segment.startMinute}.–{segment.endMinute}. minuta • inkasované góly:{" "}
+                          {segment.goalsAgainst}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: "grid", gap: "8px" }}>
+                        <select
+                          value={segment.playerId}
+                          onChange={(e) =>
+                            updateGoalkeeperSegment(segment.localId, "playerId", e.target.value)
+                          }
+                          style={inputStyle}
+                        >
+                          {selectablePlayers.map((item) => (
+                            <option
+                              key={`gk-${item.playerId ?? item.playerNumber}`}
+                              value={item.playerId ?? ""}
+                              style={{ color: "black" }}
+                            >
+                              #{item.currentNumber} — {item.name}
+                            </option>
+                          ))}
+                        </select>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                          <input
+                            type="number"
+                            min={0}
+                            value={segment.startMinute}
+                            onChange={(e) =>
+                              updateGoalkeeperSegment(
+                                segment.localId,
+                                "startMinute",
+                                e.target.value
+                              )
+                            }
+                            placeholder="Od minuty"
+                            style={inputStyle}
+                          />
+
+                          <input
+                            type="number"
+                            min={0}
+                            value={segment.endMinute}
+                            onChange={(e) =>
+                              updateGoalkeeperSegment(
+                                segment.localId,
+                                "endMinute",
+                                e.target.value
+                              )
+                            }
+                            placeholder="Do minuty"
+                            style={inputStyle}
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          style={dangerButtonStyle}
+                          onClick={() => deleteGoalkeeperSegment(segment.localId)}
+                        >
+                          Smazat úsek
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
