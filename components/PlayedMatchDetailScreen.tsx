@@ -1957,7 +1957,7 @@ const updateEventPlayer = (
                         {event.type === "goal_for" && (
                           <>
                             <select
-                              value={event.scorerPlayerId ?? ""}
+                              value={event.scorerPlayerId ?? `number:${event.scorer}`}
                               onChange={(e) =>
                                 updateEventPlayer(event.localId, "scorer", e.target.value)
                               }
@@ -1965,9 +1965,8 @@ const updateEventPlayer = (
                             >
                               {selectablePlayers.map((player) => (
                                 <option
-                                  key={`scorer-${player.playerId ?? player.playerNumber}`}
-                                  value={player.playerId ?? `number:${player.playerNumber}`}
-                                  style={{ color: "black" }}
+                                key={`scorer-${player.playerId ?? player.playerNumber}`}
+                                value={player.playerId ?? `number:${player.playerNumber}`}
                                 >
                                   #{player.currentNumber} — {player.name}
                                 </option>
@@ -1975,7 +1974,10 @@ const updateEventPlayer = (
                             </select>
 
                             <select
-                              value={event.assistPlayerId ?? "none"}
+                              value={
+                              event.assistPlayerId ??
+                              (typeof event.assist === "number" ? `number:${event.assist}` : "none")
+                              }
                               onChange={(e) =>
                                 updateEventPlayer(event.localId, "assist", e.target.value)
                               }
@@ -1999,7 +2001,7 @@ const updateEventPlayer = (
 
                         {(event.type === "yellow_card" || event.type === "red_card") && (
                           <select
-                            value={event.playerId ?? ""}
+                            value={event.playerId ?? `number:${event.playerNumber}`}
                             onChange={(e) =>
                               updateEventPlayer(event.localId, "card", e.target.value)
                             }
