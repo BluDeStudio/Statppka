@@ -36,6 +36,19 @@ function getInviteTokenFromUrl() {
 function isNativeApp() {
   if (typeof window === "undefined") return false;
 
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+
+  if (protocol === "capacitor:" || protocol === "ionic:") return true;
+
+  if (
+    hostname === "localhost" &&
+    protocol !== "http:" &&
+    protocol !== "https:"
+  ) {
+    return true;
+  }
+
   const capacitor = (window as unknown as {
     Capacitor?: {
       isNativePlatform?: () => boolean;
@@ -99,6 +112,8 @@ export default function LoginScreen() {
     setMessageType("info");
 
     const redirectUrl = buildRedirectUrl();
+
+    console.log("Magic link redirect URL:", redirectUrl);
 
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
