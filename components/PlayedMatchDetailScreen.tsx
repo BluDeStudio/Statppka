@@ -273,28 +273,48 @@ function eventFromFinishedMatchEvent(
   };
 }
 
-function eventFromDbRow(row: EventRowFromDb, index: number): EditableEvent {
+function eventFromDbRow(
+  row: EventRowFromDb,
+  index: number,
+  stats: PlayerStatWithId[]
+): EditableEvent {
   if (row.type === "goal_for") {
+    const scorerStat = row.scorer_player_id
+      ? stats.find((stat) => getStatPlayerId(stat) === row.scorer_player_id)
+      : stats.find((stat) => Number(stat.playerNumber) === Number(row.scorer));
+
+    const assistStat = row.assist_player_id
+      ? stats.find((stat) => getStatPlayerId(stat) === row.assist_player_id)
+      : row.assist !== null && row.assist !== undefined
+      ? stats.find((stat) => Number(stat.playerNumber) === Number(row.assist))
+      : null;
+
     return {
       localId: row.id ?? createLocalId(`db-event-${index}`),
       id: row.id ?? null,
       type: "goal_for",
-      scorer: row.scorer ?? null,
-      assist: row.assist ?? null,
-      scorerPlayerId: row.scorer_player_id ?? null,
-      assistPlayerId: row.assist_player_id ?? null,
+      scorer: row.scorer ?? scorerStat?.playerNumber ?? null,
+      assist: row.assist ?? assistStat?.playerNumber ?? null,
+      scorerPlayerId: row.scorer_player_id ?? getStatPlayerId(scorerStat) ?? null,
+      assistPlayerId: row.assist_player_id ?? getStatPlayerId(assistStat) ?? null,
       period: row.period ?? 1,
       minute: normalizeMinute(row.minute ?? row.match_minute ?? null),
     };
   }
 
   if (row.type === "yellow_card" || row.type === "red_card") {
+    const cardStat = row.card_player_id
+      ? stats.find((stat) => getStatPlayerId(stat) === row.card_player_id)
+      : stats.find(
+          (stat) => Number(stat.playerNumber) === Number(row.card_player_number)
+        );
+
     return {
       localId: row.id ?? createLocalId(`db-event-${index}`),
       id: row.id ?? null,
       type: row.type,
-      playerNumber: row.card_player_number ?? null,
-      playerId: row.card_player_id ?? row.player_id ?? null,
+      playerNumber: row.card_player_number ?? cardStat?.playerNumber ?? null,
+      playerId: row.card_player_id ?? row.player_id ?? getStatPlayerId(cardStat) ?? null,
       period: row.period ?? 1,
       minute: normalizeMinute(row.minute ?? row.match_minute ?? null),
     };
@@ -507,7 +527,9 @@ export default function PlayedMatchDetailScreen({
       const dbEvents =
         eventsResponse.error || !eventsResponse.data
           ? []
-          : ((eventsResponse.data as EventRowFromDb[]) ?? []).map(eventFromDbRow);
+          : ((eventsResponse.data as EventRowFromDb[]) ?? []).map((row, index) =>
+              eventFromDbRow(row, index, mergedPlayerStats as PlayerStatWithId[])
+            );
 
       if (eventsResponse.error) {
         console.error("Nepodařilo se načíst události zápasu:", eventsResponse.error);
@@ -719,24 +741,6 @@ export default function PlayedMatchDetailScreen({
     );
   };
 
-  const getStatByPlayerIdOrNumber = (
-    playerId?: string | null,
-    playerNumber?: number | null
-  ) => {
-    if (playerId) {
-      const foundById = (localMatch.playerStats as PlayerStatWithId[]).find(
-        (stat) => getStatPlayerId(stat) === playerId
-      );
-      if (foundById) return foundById;
-    }
-
-    if (typeof playerNumber === "number") {
-      return getStatByNumber(playerNumber);
-    }
-
-    return null;
-  };
-
   const selectablePlayers = useMemo(() => {
     return (localMatch.playerStats as PlayerStatWithId[])
       .map((stat) => {
@@ -851,18 +855,6 @@ export default function PlayedMatchDetailScreen({
   const scoreFor = editEvents.filter((event) => event.type === "goal_for").length;
   const scoreAgainst = editEvents.filter((event) => event.type === "goal_against").length;
   const computedScore = `${scoreFor}:${scoreAgainst}`;
-
-  const getEventPlayerName = (event: EditableEvent) => {
-    if (event.type === "goal_for") {
-      return getPlayerNameByIdOrNumber(event.scorerPlayerId, event.scorer);
-    }
-
-    if (event.type === "yellow_card" || event.type === "red_card") {
-      return getPlayerNameByIdOrNumber(event.playerId, event.playerNumber);
-    }
-
-    return "Inkasovaný gól";
-  };
 
   const playerHasEvent = (stat: PlayerStatWithId) => {
     const playerId = getStatPlayerId(stat);
@@ -1099,27 +1091,27 @@ export default function PlayedMatchDetailScreen({
   };
 
   const addGoalkeeperSegment = () => {
-  const firstPlayer = selectablePlayers.find((player) => !!player.playerId);
+    const firstPlayer = selectablePlayers.find((player) => !!player.playerId);
 
-  if (!firstPlayer || !firstPlayer.playerId) {
-    setMessage("Nejdřív musí být v sestavě hráč s player_id.");
-    return;
-  }
+    if (!firstPlayer || !firstPlayer.playerId) {
+      setMessage("Nejdřív musí být v sestavě hráč s player_id.");
+      return;
+    }
 
-  const playerId: string = firstPlayer.playerId;
+    const playerId: string = firstPlayer.playerId;
 
-  setGoalkeeperSegments((prev): GoalkeeperSegment[] => [
-    ...prev,
-    {
-      localId: createLocalId("gk-new"),
-      playerId,
-      playerNumber: firstPlayer.playerNumber,
-      startMinute: 0,
-      endMinute: DEFAULT_MATCH_END_MINUTE,
-      goalsAgainst: 0,
-    },
-  ]);
-};
+    setGoalkeeperSegments((prev): GoalkeeperSegment[] => [
+      ...prev,
+      {
+        localId: createLocalId("gk-new"),
+        playerId,
+        playerNumber: firstPlayer.playerNumber,
+        startMinute: 0,
+        endMinute: DEFAULT_MATCH_END_MINUTE,
+        goalsAgainst: 0,
+      },
+    ]);
+  };
 
   const deleteGoalkeeperSegment = (localId: string) => {
     const confirmed = window.confirm("Opravdu chceš smazat tento brankářský úsek?");
