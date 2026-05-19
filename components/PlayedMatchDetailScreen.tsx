@@ -898,54 +898,54 @@ export default function PlayedMatchDetailScreen({
     return true;
   };
 
-  const updateEventPlayer = (
-    localId: string,
-    role: "scorer" | "assist" | "card",
-    value: string
-  ) => {
-    setEditEvents((prev) =>
-      prev.map((event) => {
-        if (event.localId !== localId) return event;
+const updateEventPlayer = (
+  localId: string,
+  role: "scorer" | "assist" | "card",
+  value: string
+) => {
+  setEditEvents((prev) =>
+    prev.map((event) => {
+      if (event.localId !== localId) return event;
 
-        if (role === "assist" && value === "none") {
-          return {
-            ...event,
-            assist: null,
-            assistPlayerId: null,
-          };
-        }
-
-        const player = players.find((item) => item.id === value);
-        const stat = (localMatch.playerStats as PlayerStatWithId[]).find(
-          (item) => getStatPlayerId(item) === value
-        );
-
-        if (!player || !stat) return event;
-
-        if (role === "scorer") {
-          return {
-            ...event,
-            scorer: stat.playerNumber,
-            scorerPlayerId: player.id,
-          };
-        }
-
-        if (role === "assist") {
-          return {
-            ...event,
-            assist: stat.playerNumber,
-            assistPlayerId: player.id,
-          };
-        }
-
+      if (role === "assist" && value === "none") {
         return {
           ...event,
-          playerNumber: stat.playerNumber,
-          playerId: player.id,
+          assist: null,
+          assistPlayerId: null,
         };
-      })
-    );
-  };
+      }
+
+      const selectedPlayer = selectablePlayers.find((item) => {
+        const itemValue = item.playerId ?? `number:${item.playerNumber}`;
+        return itemValue === value;
+      });
+
+      if (!selectedPlayer) return event;
+
+      if (role === "scorer") {
+        return {
+          ...event,
+          scorer: selectedPlayer.playerNumber,
+          scorerPlayerId: selectedPlayer.playerId ?? null,
+        };
+      }
+
+      if (role === "assist") {
+        return {
+          ...event,
+          assist: selectedPlayer.playerNumber,
+          assistPlayerId: selectedPlayer.playerId ?? null,
+        };
+      }
+
+      return {
+        ...event,
+        playerNumber: selectedPlayer.playerNumber,
+        playerId: selectedPlayer.playerId ?? null,
+      };
+    })
+  );
+};
 
   const updateEventField = (
     localId: string,
@@ -1203,7 +1203,7 @@ export default function PlayedMatchDetailScreen({
     }
 
     setEventsOpen(true);
-    setEditEvents((prev) => [...prev, newEvent]);
+    setEditEvents((prev) => [newEvent, ...prev]);
     setEditingEventId(newEvent.localId);
   };
 
@@ -1219,7 +1219,8 @@ export default function PlayedMatchDetailScreen({
 
     if (
       (event.type === "yellow_card" || event.type === "red_card") &&
-      !event.playerId
+    !event.playerId &&
+    typeof event.playerNumber !== "number"
     ) {
       setMessage("Vyber hráče ke kartě.");
       return;
@@ -1965,7 +1966,7 @@ export default function PlayedMatchDetailScreen({
                               {selectablePlayers.map((player) => (
                                 <option
                                   key={`scorer-${player.playerId ?? player.playerNumber}`}
-                                  value={player.playerId ?? ""}
+                                  value={player.playerId ?? `number:${player.playerNumber}`}
                                   style={{ color: "black" }}
                                 >
                                   #{player.currentNumber} — {player.name}
@@ -1986,7 +1987,7 @@ export default function PlayedMatchDetailScreen({
                               {selectablePlayers.map((player) => (
                                 <option
                                   key={`assist-${player.playerId ?? player.playerNumber}`}
-                                  value={player.playerId ?? ""}
+                                  value={player.playerId ?? `number:${player.playerNumber}`}
                                   style={{ color: "black" }}
                                 >
                                   #{player.currentNumber} — {player.name}
@@ -2007,7 +2008,7 @@ export default function PlayedMatchDetailScreen({
                             {selectablePlayers.map((player) => (
                               <option
                                 key={`card-${player.playerId ?? player.playerNumber}`}
-                                value={player.playerId ?? ""}
+                                value={player.playerId ?? `number:${player.playerNumber}`}
                                 style={{ color: "black" }}
                               >
                                 #{player.currentNumber} — {player.name}
