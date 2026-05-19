@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Session } from "@supabase/supabase-js";
+import type { EmailOtpType, Session } from "@supabase/supabase-js";
+import { App as CapacitorApp } from "@capacitor/app";
 import {
   FaCalendarAlt,
   FaChartBar,
@@ -45,6 +46,8 @@ import {
 } from "@/lib/matches";
 import { getPlayersByClubId, type Player } from "@/lib/players";
 import { getTrainingsByClubId, type TrainingRow } from "@/lib/trainings";
+
+const INVITE_STORAGE_KEY = "statppka_invite_token";
 
 type Screen =
   | "home"
@@ -158,6 +161,43 @@ function clearSupabaseStorage() {
   }
 
   keys.forEach((key) => window.localStorage.removeItem(key));
+}
+
+function saveInviteFromUrl(url: string) {
+  if (typeof window === "undefined") return;
+
+  try {
+    const parsedUrl = new URL(url);
+    const inviteToken = parsedUrl.searchParams.get("invite");
+
+    if (inviteToken) {
+      window.localStorage.setItem(INVITE_STORAGE_KEY, inviteToken);
+    }
+  } catch (error) {
+    console.warn("Nepodařilo se uložit invite token z URL:", error);
+  }
+}
+
+function getAuthParamsFromUrl(url: string) {
+  const parsedUrl = new URL(url);
+  const params = new URLSearchParams();
+
+  parsedUrl.searchParams.forEach((value, key) => {
+    params.set(key, value);
+  });
+
+  const hash = parsedUrl.hash.startsWith("#")
+    ? parsedUrl.hash.slice(1)
+    : parsedUrl.hash;
+
+  if (hash) {
+    const hashParams = new URLSearchParams(hash);
+    hashParams.forEach((value, key) => {
+      params.set(key, value);
+    });
+  }
+
+  return params;
 }
 
 function getScreenTitle(screen: Screen) {
@@ -572,6 +612,118 @@ export default function Home() {
     },
     [loadLinkedPlayerState]
   );
+
+  const handleNativeAuthUrl = useCallback(
+    async (url: string) => {
+      try {
+        saveInviteFromUrl(url);
+
+        const authParams = getAuthParamsFromUrl(url);
+
+        const code = authParams.get("code");
+        const accessToken = authParams.get("access_token");
+        const refreshToken = authParams.get("refresh_token");
+        const tokenHash = authParams.get("token_hash");
+        const type = (authParams.get("type") ?? "email") as EmailOtpType;
+        const errorDescription =
+          authParams.get("error_description") ?? authParams.get("error");
+
+        setBootLoading(true);
+        setAppError("");
+
+        if (errorDescription) {
+          console.error("Native auth URL error:", errorDescription);
+          setAppError("Přihlašovací odkaz je neplatný nebo vypršel.");
+          return;
+        }
+
+        if (code) {
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+          if (error) {
+            console.error("Native auth code exchange error:", error);
+            setAppError("Přihlašovací odkaz se nepodařilo ověřit.");
+            return;
+          }
+
+          await loadAppState(data.session ?? null);
+          return;
+        }
+
+        if (accessToken && refreshToken) {
+          const { data, error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+
+          if (error) {
+            console.error("Native auth setSession error:", error);
+            setAppError("Přihlášení se nepodařilo dokončit.");
+            return;
+          }
+
+          await loadAppState(data.session ?? null);
+          return;
+        }
+
+        if (tokenHash) {
+          const { data, error } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type,
+          });
+
+          if (error) {
+            console.error("Native auth verifyOtp error:", error);
+            setAppError("Přihlašovací odkaz se nepodařilo ověřit.");
+            return;
+          }
+
+          await loadAppState(data.session ?? null);
+          return;
+        }
+
+        console.warn("Odkaz neobsahuje auth code ani tokeny:", url);
+        setAppError("Přihlašovací odkaz neobsahuje potřebná data.");
+      } catch (error) {
+        console.error("Chyba při zpracování odkazu do aplikace:", error);
+        setAppError("Přihlašovací odkaz se nepodařilo zpracovat.");
+      } finally {
+        setBootLoading(false);
+      }
+    },
+    [loadAppState]
+  );
+
+  useEffect(() => {
+    let removeListener: (() => void) | null = null;
+    let isMounted = true;
+
+    void CapacitorApp.getLaunchUrl().then((launchUrl) => {
+      if (!isMounted) return;
+      if (!launchUrl?.url) return;
+
+      void handleNativeAuthUrl(launchUrl.url);
+    });
+
+    void CapacitorApp.addListener("appUrlOpen", (event) => {
+      if (!event.url) return;
+      void handleNativeAuthUrl(event.url);
+    }).then((listener) => {
+      if (!isMounted) {
+        void listener.remove();
+        return;
+      }
+
+      removeListener = () => {
+        void listener.remove();
+      };
+    });
+
+    return () => {
+      isMounted = false;
+      removeListener?.();
+    };
+  }, [handleNativeAuthUrl]);
 
   useEffect(() => {
     let mounted = true;
