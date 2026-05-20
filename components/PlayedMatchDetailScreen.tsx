@@ -184,23 +184,58 @@ function getStatKey(stat: PlayerStatWithId) {
 function dedupePlayerStats(
   playerStats: FinishedMatch["playerStats"]
 ): FinishedMatch["playerStats"] {
+  const rows = (playerStats as PlayerStatWithId[]).filter(Boolean);
   const map = new Map<string, PlayerStatWithId>();
+  const idToKey = new Map<string, string>();
+  const numberToKey = new Map<number, string>();
 
-  (playerStats as PlayerStatWithId[]).forEach((rawStat) => {
+  rows.forEach((rawStat) => {
     const stat = rawStat as PlayerStatWithId;
-    const key = getStatKey(stat);
+    const playerId = getStatPlayerId(stat);
+    const playerNumber = Number(stat.playerNumber);
+
+    let key: string;
+
+    if (playerId && idToKey.has(playerId)) {
+      key = idToKey.get(playerId)!;
+    } else if (Number.isFinite(playerNumber) && numberToKey.has(playerNumber)) {
+      key = numberToKey.get(playerNumber)!;
+    } else {
+      key = playerId ? `id:${playerId}` : `number:${playerNumber}`;
+    }
+
     const existing = map.get(key);
 
     if (!existing) {
-      map.set(key, { ...stat });
+      const nextStat: PlayerStatWithId = {
+        ...stat,
+        playerId: playerId ?? null,
+        player_id: playerId ?? null,
+        playerNumber,
+        goals: stat.goals ?? 0,
+        assists: stat.assists ?? 0,
+        yellowCards: stat.yellowCards ?? 0,
+        redCards: stat.redCards ?? 0,
+        playedSeconds: stat.playedSeconds ?? 0,
+        shotsOnTarget: stat.shotsOnTarget ?? 0,
+        shotsOffTarget: stat.shotsOffTarget ?? 0,
+      };
+
+      map.set(key, nextStat);
+
+      if (playerId) idToKey.set(playerId, key);
+      if (Number.isFinite(playerNumber)) numberToKey.set(playerNumber, key);
+
       return;
     }
 
-    map.set(key, {
+    const mergedPlayerId = getStatPlayerId(existing) ?? playerId ?? null;
+
+    const merged: PlayerStatWithId = {
       ...existing,
-      playerId: getStatPlayerId(existing) ?? getStatPlayerId(stat),
-      player_id: existing.player_id ?? stat.player_id ?? null,
-      playerNumber: existing.playerNumber ?? stat.playerNumber,
+      playerId: mergedPlayerId,
+      player_id: mergedPlayerId,
+      playerNumber: existing.playerNumber ?? playerNumber,
       goals: (existing.goals ?? 0) + (stat.goals ?? 0),
       assists: (existing.assists ?? 0) + (stat.assists ?? 0),
       yellowCards: (existing.yellowCards ?? 0) + (stat.yellowCards ?? 0),
@@ -208,7 +243,14 @@ function dedupePlayerStats(
       playedSeconds: Math.max(existing.playedSeconds ?? 0, stat.playedSeconds ?? 0),
       shotsOnTarget: Math.max(existing.shotsOnTarget ?? 0, stat.shotsOnTarget ?? 0),
       shotsOffTarget: Math.max(existing.shotsOffTarget ?? 0, stat.shotsOffTarget ?? 0),
-    });
+    };
+
+    map.set(key, merged);
+
+    if (mergedPlayerId) idToKey.set(mergedPlayerId, key);
+    if (Number.isFinite(merged.playerNumber)) {
+      numberToKey.set(merged.playerNumber, key);
+    }
   });
 
   return Array.from(map.values());
@@ -218,25 +260,27 @@ function mergePlayerIdsIntoStats(
   playerStats: FinishedMatch["playerStats"],
   playerIdRows: FinishedMatchPlayerStatIdRow[]
 ): FinishedMatch["playerStats"] {
+  const idByNumber = new Map<number, string>();
+
+  playerIdRows.forEach((row) => {
+    if (row.player_id) {
+      idByNumber.set(Number(row.player_number), row.player_id);
+    }
+  });
+
   return dedupePlayerStats(
     playerStats.map((rawStat) => {
       const stat = rawStat as PlayerStatWithId;
       const existingPlayerId = getStatPlayerId(stat);
-
-      if (existingPlayerId) {
-        return {
-          ...stat,
-          playerId: existingPlayerId,
-        };
-      }
-
-      const row = playerIdRows.find(
-        (item) => Number(item.player_number) === Number(stat.playerNumber)
-      );
+      const playerNumber = Number(stat.playerNumber);
+      const dbPlayerId = idByNumber.get(playerNumber) ?? null;
+      const finalPlayerId = existingPlayerId ?? dbPlayerId ?? null;
 
       return {
         ...stat,
-        playerId: row?.player_id ?? null,
+        playerId: finalPlayerId,
+        player_id: finalPlayerId,
+        playerNumber,
       };
     })
   );
@@ -1138,6 +1182,7 @@ export default function PlayedMatchDetailScreen({
             type: event.type,
             period: event.period,
             minute: event.minute,
+            match_minute: event.minute,
             scorer: event.type === "goal_for" ? event.scorer : null,
             assist: event.type === "goal_for" ? event.assist : null,
             scorer_player_id:
