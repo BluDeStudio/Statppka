@@ -506,6 +506,75 @@ function recalculateStatsFromEvents(
   return nextStats;
 }
 
+function ensureGoalkeepersInPlayerStats(
+  playerStats: FinishedMatch["playerStats"],
+  segments: GoalkeeperSegment[]
+): FinishedMatch["playerStats"] {
+  const nextStats = dedupePlayerStats(playerStats) as PlayerStatWithId[];
+
+  segments.forEach((segment) => {
+    const segmentPlayerId = segment.playerId ?? null;
+    const segmentPlayerNumber = Number(segment.playerNumber);
+
+    if (!Number.isFinite(segmentPlayerNumber) || segmentPlayerNumber <= 0) {
+      return;
+    }
+
+    const alreadyExists = nextStats.some((stat) => {
+      const statPlayerId = getStatPlayerId(stat);
+
+      if (segmentPlayerId && statPlayerId) {
+        return statPlayerId === segmentPlayerId;
+      }
+
+      return Number(stat.playerNumber) === segmentPlayerNumber;
+    });
+
+    if (alreadyExists) return;
+
+    nextStats.push({
+      playerId: segmentPlayerId,
+      player_id: segmentPlayerId,
+      playerNumber: segmentPlayerNumber,
+      goals: 0,
+      assists: 0,
+      yellowCards: 0,
+      redCards: 0,
+      playedSeconds: 0,
+      shotsOnTarget: 0,
+      shotsOffTarget: 0,
+    });
+  });
+
+  return dedupePlayerStats(nextStats);
+}
+
+function normalizeGoalkeeperSegments(
+  segments: GoalkeeperSegment[]
+): GoalkeeperSegment[] {
+  return segments
+    .map((segment) => ({
+      ...segment,
+      playerId: segment.playerId ?? null,
+      playerNumber: Number(segment.playerNumber),
+      startMinute: normalizeMinute(segment.startMinute),
+      endMinute: normalizeMinute(segment.endMinute),
+      goalsAgainst: parseNumber(String(segment.goalsAgainst ?? 0)),
+    }))
+    .filter((segment) => Number.isFinite(segment.playerNumber) && segment.playerNumber > 0)
+    .map((segment) => ({
+      ...segment,
+      endMinute:
+        segment.endMinute < segment.startMinute
+          ? segment.startMinute
+          : segment.endMinute,
+    }))
+    .sort((a, b) => {
+      if (a.startMinute !== b.startMinute) return a.startMinute - b.startMinute;
+      return a.endMinute - b.endMinute;
+    });
+}
+
 export default function PlayedMatchDetailScreen({
   clubId,
   match,
@@ -1079,13 +1148,19 @@ export default function PlayedMatchDetailScreen({
     eventsToSave: EditableEvent[],
     segmentsToSave: GoalkeeperSegment[]
   ) => {
+    const normalizedGoalkeeperSegments = normalizeGoalkeeperSegments(segmentsToSave);
+    const playerStatsWithGoalkeepers = ensureGoalkeepersInPlayerStats(
+      localMatch.playerStats,
+      normalizedGoalkeeperSegments
+    );
+
     const recalculatedPlayerStats = recalculateStatsFromEvents(
-      dedupePlayerStats(localMatch.playerStats),
+      playerStatsWithGoalkeepers,
       eventsToSave
     );
 
     const nextGoalkeeperSegments = computeGoalkeeperSegmentsWithGoals(
-      segmentsToSave,
+      normalizedGoalkeeperSegments,
       eventsToSave
     );
 
@@ -1231,11 +1306,11 @@ export default function PlayedMatchDetailScreen({
         .insert(
           nextGoalkeeperSegments.map((segment) => ({
             finished_match_id: localMatch.id,
-            player_id: segment.playerId,
-            player_number: segment.playerNumber,
-            start_minute: segment.startMinute,
-            end_minute: segment.endMinute,
-            goals_against: segment.goalsAgainst,
+            player_id: segment.playerId ?? null,
+            player_number: Number(segment.playerNumber),
+            start_minute: normalizeMinute(segment.startMinute),
+            end_minute: normalizeMinute(segment.endMinute),
+            goals_against: parseNumber(String(segment.goalsAgainst ?? 0)),
           }))
         );
 
@@ -1252,6 +1327,10 @@ export default function PlayedMatchDetailScreen({
       ...prev,
       score: nextScore,
       goalsAgainst: nextGoalsAgainst,
+      goalkeeperNumber:
+        nextGoalkeeperSegments.length > 0
+          ? nextGoalkeeperSegments[0].playerNumber
+          : prev.goalkeeperNumber,
       playerStats: recalculatedPlayerStats,
       events: nextEvents,
     }));
@@ -1440,17 +1519,31 @@ export default function PlayedMatchDetailScreen({
       return;
     }
 
-    setGoalkeeperSegments((prev): GoalkeeperSegment[] => [
-      ...prev,
-      {
-        localId: createLocalId("gk-new"),
-        playerId: firstPlayer.playerId ?? null,
-        playerNumber: firstPlayer.playerNumber,
-        startMinute: 0,
-        endMinute: DEFAULT_MATCH_END_MINUTE,
-        goalsAgainst: 0,
-      },
-    ]);
+    setGoalkeeperSegments((prev): GoalkeeperSegment[] => {
+      const normalizedPrev = normalizeGoalkeeperSegments(prev);
+      const lastEndMinute =
+        normalizedPrev.length > 0
+          ? Math.max(...normalizedPrev.map((segment) => segment.endMinute))
+          : 0;
+      const startMinute =
+        normalizedPrev.length === 0 ? 0 : Math.min(lastEndMinute, DEFAULT_MATCH_END_MINUTE);
+      const endMinute =
+        startMinute >= DEFAULT_MATCH_END_MINUTE
+          ? DEFAULT_MATCH_END_MINUTE
+          : DEFAULT_MATCH_END_MINUTE;
+
+      return [
+        ...prev,
+        {
+          localId: createLocalId("gk-new"),
+          playerId: firstPlayer.playerId ?? null,
+          playerNumber: firstPlayer.playerNumber,
+          startMinute,
+          endMinute,
+          goalsAgainst: 0,
+        },
+      ];
+    });
   };
 
   const deleteGoalkeeperSegment = (localId: string) => {
