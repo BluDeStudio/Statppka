@@ -181,30 +181,65 @@ function getStatKey(stat: PlayerStatWithId) {
   return playerId ? `id:${playerId}` : `number:${stat.playerNumber}`;
 }
 
+function dedupePlayerStats(
+  playerStats: FinishedMatch["playerStats"]
+): FinishedMatch["playerStats"] {
+  const map = new Map<string, PlayerStatWithId>();
+
+  (playerStats as PlayerStatWithId[]).forEach((rawStat) => {
+    const stat = rawStat as PlayerStatWithId;
+    const key = getStatKey(stat);
+    const existing = map.get(key);
+
+    if (!existing) {
+      map.set(key, { ...stat });
+      return;
+    }
+
+    map.set(key, {
+      ...existing,
+      playerId: getStatPlayerId(existing) ?? getStatPlayerId(stat),
+      player_id: existing.player_id ?? stat.player_id ?? null,
+      playerNumber: existing.playerNumber ?? stat.playerNumber,
+      goals: Math.max(existing.goals ?? 0, stat.goals ?? 0),
+      assists: Math.max(existing.assists ?? 0, stat.assists ?? 0),
+      yellowCards: Math.max(existing.yellowCards ?? 0, stat.yellowCards ?? 0),
+      redCards: Math.max(existing.redCards ?? 0, stat.redCards ?? 0),
+      playedSeconds: Math.max(existing.playedSeconds ?? 0, stat.playedSeconds ?? 0),
+      shotsOnTarget: Math.max(existing.shotsOnTarget ?? 0, stat.shotsOnTarget ?? 0),
+      shotsOffTarget: Math.max(existing.shotsOffTarget ?? 0, stat.shotsOffTarget ?? 0),
+    });
+  });
+
+  return Array.from(map.values());
+}
+
 function mergePlayerIdsIntoStats(
   playerStats: FinishedMatch["playerStats"],
   playerIdRows: FinishedMatchPlayerStatIdRow[]
 ): FinishedMatch["playerStats"] {
-  return playerStats.map((rawStat) => {
-    const stat = rawStat as PlayerStatWithId;
-    const existingPlayerId = getStatPlayerId(stat);
+  return dedupePlayerStats(
+    playerStats.map((rawStat) => {
+      const stat = rawStat as PlayerStatWithId;
+      const existingPlayerId = getStatPlayerId(stat);
 
-    if (existingPlayerId) {
+      if (existingPlayerId) {
+        return {
+          ...stat,
+          playerId: existingPlayerId,
+        };
+      }
+
+      const row = playerIdRows.find(
+        (item) => Number(item.player_number) === Number(stat.playerNumber)
+      );
+
       return {
         ...stat,
-        playerId: existingPlayerId,
+        playerId: row?.player_id ?? null,
       };
-    }
-
-    const row = playerIdRows.find(
-      (item) => Number(item.player_number) === Number(stat.playerNumber)
-    );
-
-    return {
-      ...stat,
-      playerId: row?.player_id ?? null,
-    };
-  });
+    })
+  );
 }
 
 function eventFromFinishedMatchEvent(
@@ -371,27 +406,19 @@ function eventToFinishedMatchEvent(event: EditableEvent): FinishedMatchEvent {
 
 function computeGoalkeeperSegmentsWithGoals(
   segments: GoalkeeperSegment[],
-  events: EditableEvent[]
+  _events: EditableEvent[]
 ) {
-  return segments.map((segment) => {
-    const goalsAgainst = events.filter((event) => {
-      if (event.type !== "goal_against") return false;
-      const minute = normalizeMinute(event.minute);
-      return minute >= segment.startMinute && minute <= segment.endMinute;
-    }).length;
-
-    return {
-      ...segment,
-      goalsAgainst,
-    };
-  });
+  return segments.map((segment) => ({
+    ...segment,
+    goalsAgainst: parseNumber(String(segment.goalsAgainst ?? 0)),
+  }));
 }
 
 function recalculateStatsFromEvents(
   playerStats: FinishedMatch["playerStats"],
   events: EditableEvent[]
 ): FinishedMatch["playerStats"] {
-  const nextStats = (playerStats as PlayerStatWithId[]).map((rawStat) => ({
+  const nextStats = (dedupePlayerStats(playerStats) as PlayerStatWithId[]).map((rawStat) => ({
     ...rawStat,
     goals: 0,
     assists: 0,
@@ -1019,12 +1046,19 @@ export default function PlayedMatchDetailScreen({
     );
 
     const nextEvents = eventsToSave.map(eventToFinishedMatchEvent);
-    const nextScore = `${eventsToSave.filter((event) => event.type === "goal_for").length}:${
-      eventsToSave.filter((event) => event.type === "goal_against").length
-    }`;
-    const nextGoalsAgainst = eventsToSave.filter(
+    const nextGoalsFor = eventsToSave.filter((event) => event.type === "goal_for").length;
+    const eventGoalsAgainst = eventsToSave.filter(
       (event) => event.type === "goal_against"
     ).length;
+    const manualGoalkeeperGoalsAgainst = nextGoalkeeperSegments.reduce(
+      (sum, segment) => sum + Number(segment.goalsAgainst ?? 0),
+      0
+    );
+    const nextGoalsAgainst =
+      nextGoalkeeperSegments.length > 0
+        ? manualGoalkeeperGoalsAgainst
+        : eventGoalsAgainst;
+    const nextScore = `${nextGoalsFor}:${nextGoalsAgainst}`;
 
     const { error: matchError } = await supabase
       .from("finished_matches")
@@ -1315,7 +1349,7 @@ export default function PlayedMatchDetailScreen({
 
   const updateGoalkeeperSegment = (
     localId: string,
-    key: "playerId" | "startMinute" | "endMinute",
+    key: "playerId" | "startMinute" | "endMinute" | "goalsAgainst",
     value: string
   ) => {
     setGoalkeeperSegments((prev) =>
@@ -2347,6 +2381,25 @@ export default function PlayedMatchDetailScreen({
                             placeholder="Do minuty"
                             style={inputStyle}
                           />
+                        </div>
+
+                        <input
+                          type="number"
+                          min={0}
+                          value={segment.goalsAgainst}
+                          onChange={(e) =>
+                            updateGoalkeeperSegment(
+                              segment.localId,
+                              "goalsAgainst",
+                              e.target.value
+                            )
+                          }
+                          placeholder="Obdržené góly"
+                          style={inputStyle}
+                        />
+
+                        <div style={{ fontSize: "12px", color: "#b8b8b8" }}>
+                          Obdržené góly u brankáře vyplň ručně. Tyto góly se započítají do skóre zápasu.
                         </div>
 
                         <button
