@@ -880,12 +880,14 @@ export default function PlayedMatchDetailScreen({
       .map((stat) => {
         const playerId = getStatPlayerId(stat);
         const player = getPlayerByIdOrNumber(playerId, stat.playerNumber);
+        const finalPlayerId = playerId ?? player?.id ?? null;
+        const finalPlayerNumber = player?.number ?? stat.playerNumber;
 
         return {
           stat,
-          playerId,
-          playerNumber: stat.playerNumber,
-          currentNumber: player?.number ?? stat.playerNumber,
+          playerId: finalPlayerId,
+          playerNumber: finalPlayerNumber,
+          currentNumber: finalPlayerNumber,
           name: player?.name ?? `#${stat.playerNumber}`,
         };
       })
@@ -1148,7 +1150,30 @@ export default function PlayedMatchDetailScreen({
     eventsToSave: EditableEvent[],
     segmentsToSave: GoalkeeperSegment[]
   ) => {
-    const normalizedGoalkeeperSegments = normalizeGoalkeeperSegments(segmentsToSave);
+    const normalizedGoalkeeperSegments = normalizeGoalkeeperSegments(segmentsToSave).map(
+      (segment) => {
+        const player = getPlayerByIdOrNumber(segment.playerId, segment.playerNumber);
+
+        return {
+          ...segment,
+          playerId: segment.playerId ?? player?.id ?? null,
+          playerNumber: player?.number ?? segment.playerNumber,
+        };
+      }
+    );
+
+    const invalidGoalkeeperSegment = normalizedGoalkeeperSegments.find(
+      (segment) => !segment.playerId
+    );
+
+    if (invalidGoalkeeperSegment) {
+      return {
+        success: false,
+        errorMessage:
+          "Vyber brankáře ze soupisky. Brankář nemá player_id, proto ho nejde uložit.",
+      };
+    }
+
     const playerStatsWithGoalkeepers = ensureGoalkeepersInPlayerStats(
       localMatch.playerStats,
       normalizedGoalkeeperSegments
@@ -1304,14 +1329,19 @@ export default function PlayedMatchDetailScreen({
       const { error: insertGoalkeepersError } = await supabase
         .from("finished_match_goalkeeper_segments")
         .insert(
-          nextGoalkeeperSegments.map((segment) => ({
-            finished_match_id: localMatch.id,
-            player_id: segment.playerId ?? null,
-            player_number: Number(segment.playerNumber),
-            start_minute: normalizeMinute(segment.startMinute),
-            end_minute: normalizeMinute(segment.endMinute),
-            goals_against: parseNumber(String(segment.goalsAgainst ?? 0)),
-          }))
+          nextGoalkeeperSegments.map((segment) => {
+            const player = getPlayerByIdOrNumber(segment.playerId, segment.playerNumber);
+            const finalPlayerId = segment.playerId ?? player?.id ?? null;
+
+            return {
+              finished_match_id: localMatch.id,
+              player_id: finalPlayerId,
+              player_number: Number(player?.number ?? segment.playerNumber),
+              start_minute: normalizeMinute(segment.startMinute),
+              end_minute: normalizeMinute(segment.endMinute),
+              goals_against: parseNumber(String(segment.goalsAgainst ?? 0)),
+            };
+          })
         );
 
       if (insertGoalkeepersError) {
@@ -1496,10 +1526,15 @@ export default function PlayedMatchDetailScreen({
 
           if (!selectedPlayer) return segment;
 
+          const player = getPlayerByIdOrNumber(
+            selectedPlayer.playerId,
+            selectedPlayer.playerNumber
+          );
+
           return {
             ...segment,
-            playerId: selectedPlayer.playerId ?? null,
-            playerNumber: selectedPlayer.playerNumber,
+            playerId: selectedPlayer.playerId ?? player?.id ?? null,
+            playerNumber: player?.number ?? selectedPlayer.playerNumber,
           };
         }
 
@@ -1536,8 +1571,13 @@ export default function PlayedMatchDetailScreen({
         ...prev,
         {
           localId: createLocalId("gk-new"),
-          playerId: firstPlayer.playerId ?? null,
-          playerNumber: firstPlayer.playerNumber,
+          playerId:
+            firstPlayer.playerId ??
+            getPlayerByIdOrNumber(null, firstPlayer.playerNumber)?.id ??
+            null,
+          playerNumber:
+            getPlayerByIdOrNumber(null, firstPlayer.playerNumber)?.number ??
+            firstPlayer.playerNumber,
           startMinute,
           endMinute,
           goalsAgainst: 0,
