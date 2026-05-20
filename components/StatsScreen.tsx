@@ -146,6 +146,54 @@ function getRatingPlayerId(rating: PlayerRatingRow) {
   );
 }
 
+function makeNumberKey(matchId: string, playerNumber: number) {
+  return `${matchId}:${playerNumber}`;
+}
+
+function makePlayerKey(playerNumber: number, playerId?: string | null) {
+  return playerId ? `id:${playerId}` : `number:${playerNumber}`;
+}
+
+type AggregatedMatchStat = {
+  playerId: string | null;
+  playerNumber: number;
+  matches: number;
+  goals: number;
+  assists: number;
+  yellowCards: number;
+  redCards: number;
+};
+
+function mergeStatIntoMatchMap(
+  map: Map<string, AggregatedMatchStat>,
+  stat: FinishedMatch["playerStats"][number],
+  playerId: string | null,
+  playerNumber: number
+) {
+  const key = makePlayerKey(playerNumber, playerId);
+  const existing = map.get(key);
+
+  if (!existing) {
+    map.set(key, {
+      playerId,
+      playerNumber,
+      matches: 1,
+      goals: stat.goals ?? 0,
+      assists: stat.assists ?? 0,
+      yellowCards: stat.yellowCards ?? 0,
+      redCards: stat.redCards ?? 0,
+    });
+    return;
+  }
+
+  existing.playerId = existing.playerId ?? playerId;
+  existing.playerNumber = existing.playerNumber || playerNumber;
+  existing.goals += stat.goals ?? 0;
+  existing.assists += stat.assists ?? 0;
+  existing.yellowCards += stat.yellowCards ?? 0;
+  existing.redCards += stat.redCards ?? 0;
+}
+
 export default function StatsScreen({
   clubId,
   finishedMatches,
@@ -294,11 +342,13 @@ export default function StatsScreen({
     matchId: string,
     stat: FinishedMatch["playerStats"][number]
   ) => {
-    return getStatPlayerId(
-      stat,
-      statPlayerIdByMatchAndNumber.get(`${matchId}:${stat.playerNumber}`) ??
-        null
-    );
+    const playerNumber = Number(stat.playerNumber);
+    const directPlayerId = getStatPlayerId(stat);
+    const dbPlayerId =
+      statPlayerIdByMatchAndNumber.get(makeNumberKey(matchId, playerNumber)) ?? null;
+    const currentPlayerId = playerByNumber.get(playerNumber)?.id ?? null;
+
+    return directPlayerId ?? dbPlayerId ?? currentPlayerId ?? null;
   };
 
   const getPlayerName = (
@@ -329,7 +379,7 @@ export default function StatsScreen({
     playerNumber: number,
     playerId?: string | null
   ) => {
-    return playerId ? `id:${playerId}` : `number:${playerNumber}`;
+    return makePlayerKey(playerNumber, playerId);
   };
 
   const customSelectedPeriod = useMemo(() => {
@@ -377,18 +427,27 @@ export default function StatsScreen({
     filteredStatsMatches.forEach((match) => {
       const matchRatings = ratingsByMatchId.get(match.id) ?? [];
 
-      const matchSummary = buildMatchRatingSummary(
-        match.playerStats.map((player) => player.playerNumber),
-        matchRatings
-      );
+      const matchStatsMap = new Map<string, AggregatedMatchStat>();
+      const statsByNumber = new Map<number, string>();
+      const statsByPlayerId = new Map<string, string>();
 
       match.playerStats.forEach((stat) => {
+        const playerNumber = Number(stat.playerNumber);
         const playerId = getPlayerIdForStat(match.id, stat);
-        const playerKey = getPlayerKey(stat.playerNumber, playerId);
+        const playerKey = getPlayerKey(playerNumber, playerId);
 
+        mergeStatIntoMatchMap(matchStatsMap, stat, playerId, playerNumber);
+
+        statsByNumber.set(playerNumber, playerKey);
+        if (playerId) {
+          statsByPlayerId.set(playerId, playerKey);
+        }
+      });
+
+      Array.from(matchStatsMap.entries()).forEach(([playerKey, stat]) => {
         if (!playerMap.has(playerKey)) {
           playerMap.set(playerKey, {
-            playerId,
+            playerId: stat.playerId,
             playerNumber: stat.playerNumber,
             matches: 0,
             goals: 0,
@@ -400,41 +459,46 @@ export default function StatsScreen({
         }
 
         const current = playerMap.get(playerKey)!;
+        current.playerId = current.playerId ?? stat.playerId;
+        current.playerNumber = current.playerNumber || stat.playerNumber;
         current.matches += 1;
         current.goals += stat.goals;
         current.assists += stat.assists;
       });
 
-      const statsByNumber = new Map<number, string>();
-      const statsByPlayerId = new Map<string, string>();
+      const ratingPlayerNumbers = Array.from(
+        new Set([
+          ...match.playerStats.map((player) => Number(player.playerNumber)),
+          ...matchRatings.map((rating) => Number(rating.player_number)),
+        ])
+      );
 
-      match.playerStats.forEach((stat) => {
-        const playerId = getPlayerIdForStat(match.id, stat);
-        const playerKey = getPlayerKey(stat.playerNumber, playerId);
-
-        statsByNumber.set(stat.playerNumber, playerKey);
-        if (playerId) {
-          statsByPlayerId.set(playerId, playerKey);
-        }
-      });
+      const matchSummary = buildMatchRatingSummary(
+        ratingPlayerNumbers,
+        matchRatings
+      );
 
       const ratingsByPlayerKey = new Map<string, PlayerRatingRow[]>();
 
       matchRatings.forEach((rating) => {
         const ratingPlayerId = getRatingPlayerId(rating);
+        const ratingNumber = Number(rating.player_number);
         const playerKey =
           (ratingPlayerId ? statsByPlayerId.get(ratingPlayerId) : null) ??
-          statsByNumber.get(rating.player_number) ??
-          getPlayerKey(rating.player_number, ratingPlayerId);
+          statsByNumber.get(ratingNumber) ??
+          getPlayerKey(ratingNumber, ratingPlayerId ?? playerByNumber.get(ratingNumber)?.id ?? null);
 
         const rows = ratingsByPlayerKey.get(playerKey) ?? [];
         rows.push(rating);
         ratingsByPlayerKey.set(playerKey, rows);
 
         if (!playerMap.has(playerKey)) {
+          const fallbackPlayerId =
+            ratingPlayerId ?? playerByNumber.get(ratingNumber)?.id ?? null;
+
           playerMap.set(playerKey, {
-            playerId: ratingPlayerId,
-            playerNumber: rating.player_number,
+            playerId: fallbackPlayerId,
+            playerNumber: ratingNumber,
             matches: 0,
             goals: 0,
             assists: 0,
@@ -446,14 +510,16 @@ export default function StatsScreen({
       });
 
       matchSummary.forEach((summary) => {
+        const summaryNumber = Number(summary.playerNumber);
+        const fallbackPlayerId = playerByNumber.get(summaryNumber)?.id ?? null;
         const playerKey =
-          statsByNumber.get(summary.playerNumber) ??
-          getPlayerKey(summary.playerNumber, null);
+          statsByNumber.get(summaryNumber) ??
+          getPlayerKey(summaryNumber, fallbackPlayerId);
 
         if (!playerMap.has(playerKey)) {
           playerMap.set(playerKey, {
-            playerId: null,
-            playerNumber: summary.playerNumber,
+            playerId: fallbackPlayerId,
+            playerNumber: summaryNumber,
             matches: 0,
             goals: 0,
             assists: 0,
