@@ -201,10 +201,10 @@ function dedupePlayerStats(
       playerId: getStatPlayerId(existing) ?? getStatPlayerId(stat),
       player_id: existing.player_id ?? stat.player_id ?? null,
       playerNumber: existing.playerNumber ?? stat.playerNumber,
-      goals: Math.max(existing.goals ?? 0, stat.goals ?? 0),
-      assists: Math.max(existing.assists ?? 0, stat.assists ?? 0),
-      yellowCards: Math.max(existing.yellowCards ?? 0, stat.yellowCards ?? 0),
-      redCards: Math.max(existing.redCards ?? 0, stat.redCards ?? 0),
+      goals: (existing.goals ?? 0) + (stat.goals ?? 0),
+      assists: (existing.assists ?? 0) + (stat.assists ?? 0),
+      yellowCards: (existing.yellowCards ?? 0) + (stat.yellowCards ?? 0),
+      redCards: (existing.redCards ?? 0) + (stat.redCards ?? 0),
       playedSeconds: Math.max(existing.playedSeconds ?? 0, stat.playedSeconds ?? 0),
       shotsOnTarget: Math.max(existing.shotsOnTarget ?? 0, stat.shotsOnTarget ?? 0),
       shotsOffTarget: Math.max(existing.shotsOffTarget ?? 0, stat.shotsOffTarget ?? 0),
@@ -1036,7 +1036,7 @@ export default function PlayedMatchDetailScreen({
     segmentsToSave: GoalkeeperSegment[]
   ) => {
     const recalculatedPlayerStats = recalculateStatsFromEvents(
-      localMatch.playerStats,
+      dedupePlayerStats(localMatch.playerStats),
       eventsToSave
     );
 
@@ -1170,10 +1170,14 @@ export default function PlayedMatchDetailScreen({
       .eq("finished_match_id", localMatch.id);
 
     if (deleteGoalkeepersError) {
-      console.warn(
+      console.error(
         "Nepodařilo se smazat původní brankářské úseky:",
         deleteGoalkeepersError
       );
+      return {
+        success: false,
+        errorMessage: `Nepodařilo se uložit brankáře: ${deleteGoalkeepersError.message}`,
+      };
     }
 
     if (nextGoalkeeperSegments.length > 0) {
@@ -1191,7 +1195,11 @@ export default function PlayedMatchDetailScreen({
         );
 
       if (insertGoalkeepersError) {
-        console.warn("Nepodařilo se uložit brankářské úseky:", insertGoalkeepersError);
+        console.error("Nepodařilo se uložit brankářské úseky:", insertGoalkeepersError);
+        return {
+          success: false,
+          errorMessage: `Nepodařilo se uložit brankáře: ${insertGoalkeepersError.message}`,
+        };
       }
     }
 
@@ -1424,10 +1432,31 @@ export default function PlayedMatchDetailScreen({
     setSavingGoalkeepers(false);
   };
 
-  const handleCancelGoalkeepers = () => {
+  const handleCancelGoalkeepers = async () => {
+    const { data, error } = await supabase
+      .from("finished_match_goalkeeper_segments")
+      .select("*")
+      .eq("finished_match_id", localMatch.id)
+      .order("start_minute", { ascending: true });
+
+    if (error) {
+      console.error("Nepodařilo se znovu načíst brankářské úseky:", error);
+      setMessage("Nepodařilo se obnovit původní brankáře.");
+      return;
+    }
+
     setGoalkeeperSegments(
-      computeGoalkeeperSegmentsWithGoals(goalkeeperSegments, editEvents)
+      ((data as GoalkeeperSegmentDbRow[]) ?? []).map((row) => ({
+        localId: row.id ?? createLocalId("gk-db"),
+        id: row.id ?? null,
+        playerId: row.player_id ?? null,
+        playerNumber: row.player_number ?? 0,
+        startMinute: normalizeMinute(row.start_minute),
+        endMinute: normalizeMinute(row.end_minute),
+        goalsAgainst: row.goals_against ?? 0,
+      }))
     );
+
     setGoalkeepersEditMode(false);
     setMessage("");
   };
