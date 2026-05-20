@@ -32,7 +32,7 @@ import {
   type LiveMatchPlayerDetailRow,
 } from "@/lib/liveMatchDetails";
 import { styles } from "@/styles/appStyles";
-import type { FinishedMatch, PlannedMatch } from "@/app/page";
+import type { FinishedMatch, FinishedMatchEvent, PlannedMatch } from "@/app/page";
 import LiveMatchDetailScreen from "./LiveMatchDetailScreen";
 
 type MatchLiveScreenProps = {
@@ -53,6 +53,12 @@ type MatchLiveScreenProps = {
 };
 
 type LiveView = "main" | "detail";
+
+type FinishedMatchEventWithTime = FinishedMatchEvent & {
+  period?: number | null;
+  minute?: number | null;
+  matchMinute?: number | null;
+};
 
 export default function MatchLiveScreen({
   clubId,
@@ -216,8 +222,7 @@ export default function MatchLiveScreen({
   const scoreAgainst = events.filter((event) => event.type === "goal_against").length;
 
   const canControlMatch = isAdmin;
-  const canEditEvents =
-    isAdmin && matchState?.status === "live" && !timerPaused;
+  const canEditEvents = isAdmin && matchState?.status === "live" && !timerPaused;
   const canStartMatch =
     isAdmin &&
     matchState?.status !== "live" &&
@@ -768,6 +773,10 @@ export default function MatchLiveScreen({
     });
 
     const mappedEvents: FinishedMatch["events"] = events.map((event) => {
+      const period = event.period ?? currentPeriod ?? 1;
+      const minute =
+        event.match_minute ?? Math.floor(((event.match_second ?? 0) as number) / 60);
+
       if (event.type === "goal_for") {
         const scorerPlayerId = event.scorer_player_id ?? null;
         const assistPlayerId = event.assist_player_id ?? null;
@@ -790,7 +799,10 @@ export default function MatchLiveScreen({
           assist: assistNumber,
           scorerPlayerId,
           assistPlayerId,
-        };
+          period,
+          minute,
+          matchMinute: minute,
+        } as FinishedMatchEventWithTime;
       }
 
       if (event.type === "yellow_card") {
@@ -806,7 +818,10 @@ export default function MatchLiveScreen({
           type: "yellow_card",
           playerNumber: playerNumber ?? 0,
           playerId,
-        };
+          period,
+          minute,
+          matchMinute: minute,
+        } as FinishedMatchEventWithTime;
       }
 
       if (event.type === "red_card") {
@@ -822,12 +837,18 @@ export default function MatchLiveScreen({
           type: "red_card",
           playerNumber: playerNumber ?? 0,
           playerId,
-        };
+          period,
+          minute,
+          matchMinute: minute,
+        } as FinishedMatchEventWithTime;
       }
 
       return {
         type: "goal_against",
-      };
+        period,
+        minute,
+        matchMinute: minute,
+      } as FinishedMatchEventWithTime;
     });
 
     const playerStats = Array.from(statsMap.values()).map((stats) => ({
