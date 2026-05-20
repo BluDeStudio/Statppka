@@ -72,7 +72,7 @@ type FinishedMatchPlayerStatIdRow = {
 type GoalkeeperSegment = {
   localId: string;
   id?: string | null;
-  playerId: string;
+  playerId: string | null;
   playerNumber: number;
   startMinute: number;
   endMinute: number;
@@ -82,7 +82,7 @@ type GoalkeeperSegment = {
 type GoalkeeperSegmentDbRow = {
   id?: string | null;
   finished_match_id: string;
-  player_id: string;
+  player_id: string | null;
   player_number: number | null;
   start_minute: number;
   end_minute: number;
@@ -545,7 +545,7 @@ export default function PlayedMatchDetailScreen({
           : ((goalkeeperResponse.data as GoalkeeperSegmentDbRow[]) ?? []).map((row) => ({
               localId: row.id ?? createLocalId("gk-db"),
               id: row.id ?? null,
-              playerId: row.player_id,
+              playerId: row.player_id ?? null,
               playerNumber: row.player_number ?? 0,
               startMinute: normalizeMinute(row.start_minute),
               endMinute: normalizeMinute(row.end_minute),
@@ -566,18 +566,16 @@ export default function PlayedMatchDetailScreen({
         );
         const goalkeeperPlayerId = getStatPlayerId(goalkeeperStat);
 
-        if (goalkeeperPlayerId) {
-          fallbackGoalkeeperSegments = [
-            {
-              localId: createLocalId("gk-default"),
-              playerId: goalkeeperPlayerId,
-              playerNumber: localMatch.goalkeeperNumber,
-              startMinute: 0,
-              endMinute: DEFAULT_MATCH_END_MINUTE,
-              goalsAgainst: localMatch.goalsAgainst,
-            },
-          ];
-        }
+        fallbackGoalkeeperSegments = [
+          {
+            localId: createLocalId("gk-default"),
+            playerId: goalkeeperPlayerId,
+            playerNumber: localMatch.goalkeeperNumber,
+            startMinute: 0,
+            endMinute: DEFAULT_MATCH_END_MINUTE,
+            goalsAgainst: localMatch.goalsAgainst,
+          },
+        ];
       }
 
       const loadedGoalkeeperSegments = computeGoalkeeperSegmentsWithGoals(
@@ -898,54 +896,54 @@ export default function PlayedMatchDetailScreen({
     return true;
   };
 
-const updateEventPlayer = (
-  localId: string,
-  role: "scorer" | "assist" | "card",
-  value: string
-) => {
-  setEditEvents((prev) =>
-    prev.map((event) => {
-      if (event.localId !== localId) return event;
+  const updateEventPlayer = (
+    localId: string,
+    role: "scorer" | "assist" | "card",
+    value: string
+  ) => {
+    setEditEvents((prev) =>
+      prev.map((event) => {
+        if (event.localId !== localId) return event;
 
-      if (role === "assist" && value === "none") {
+        if (role === "assist" && value === "none") {
+          return {
+            ...event,
+            assist: null,
+            assistPlayerId: null,
+          };
+        }
+
+        const selectedPlayer = selectablePlayers.find((item) => {
+          const itemValue = item.playerId ?? `number:${item.playerNumber}`;
+          return itemValue === value;
+        });
+
+        if (!selectedPlayer) return event;
+
+        if (role === "scorer") {
+          return {
+            ...event,
+            scorer: selectedPlayer.playerNumber,
+            scorerPlayerId: selectedPlayer.playerId ?? null,
+          };
+        }
+
+        if (role === "assist") {
+          return {
+            ...event,
+            assist: selectedPlayer.playerNumber,
+            assistPlayerId: selectedPlayer.playerId ?? null,
+          };
+        }
+
         return {
           ...event,
-          assist: null,
-          assistPlayerId: null,
+          playerNumber: selectedPlayer.playerNumber,
+          playerId: selectedPlayer.playerId ?? null,
         };
-      }
-
-      const selectedPlayer = selectablePlayers.find((item) => {
-        const itemValue = item.playerId ?? `number:${item.playerNumber}`;
-        return itemValue === value;
-      });
-
-      if (!selectedPlayer) return event;
-
-      if (role === "scorer") {
-        return {
-          ...event,
-          scorer: selectedPlayer.playerNumber,
-          scorerPlayerId: selectedPlayer.playerId ?? null,
-        };
-      }
-
-      if (role === "assist") {
-        return {
-          ...event,
-          assist: selectedPlayer.playerNumber,
-          assistPlayerId: selectedPlayer.playerId ?? null,
-        };
-      }
-
-      return {
-        ...event,
-        playerNumber: selectedPlayer.playerNumber,
-        playerId: selectedPlayer.playerId ?? null,
-      };
-    })
-  );
-};
+      })
+    );
+  };
 
   const updateEventField = (
     localId: string,
@@ -1044,27 +1042,43 @@ const updateEventPlayer = (
       };
     }
 
-    for (const rawStat of recalculatedPlayerStats as PlayerStatWithId[]) {
-      const statPlayerId = getStatPlayerId(rawStat);
+    const { error: deleteStatsError } = await supabase
+      .from("finished_match_player_stats")
+      .delete()
+      .eq("finished_match_id", localMatch.id);
 
-      let query = supabase
+    if (deleteStatsError) {
+      console.error("Nepodařilo se smazat původní statistiky hráčů:", deleteStatsError);
+      return {
+        success: false,
+        errorMessage: "Nepodařilo se přepočítat statistiky hráčů.",
+      };
+    }
+
+    if (recalculatedPlayerStats.length > 0) {
+      const { error: insertStatsError } = await supabase
         .from("finished_match_player_stats")
-        .update({
-          goals: rawStat.goals,
-          assists: rawStat.assists,
-          yellow_cards: rawStat.yellowCards ?? 0,
-          red_cards: rawStat.redCards ?? 0,
-        })
-        .eq("finished_match_id", localMatch.id);
+        .insert(
+          (recalculatedPlayerStats as PlayerStatWithId[]).map((stat) => ({
+            finished_match_id: localMatch.id,
+            player_id: getStatPlayerId(stat),
+            player_number: stat.playerNumber,
+            goals: stat.goals,
+            assists: stat.assists,
+            yellow_cards: stat.yellowCards ?? 0,
+            red_cards: stat.redCards ?? 0,
+            played_seconds: stat.playedSeconds ?? 0,
+            shots_on_target: stat.shotsOnTarget ?? 0,
+            shots_off_target: stat.shotsOffTarget ?? 0,
+          }))
+        );
 
-      query = statPlayerId
-        ? query.eq("player_id", statPlayerId)
-        : query.eq("player_number", rawStat.playerNumber);
-
-      const { error: statError } = await query;
-
-      if (statError) {
-        console.error("Nepodařilo se uložit statistiky hráče:", statError);
+      if (insertStatsError) {
+        console.error("Nepodařilo se uložit přepočítané statistiky hráčů:", insertStatsError);
+        return {
+          success: false,
+          errorMessage: "Nepodařilo se uložit přepočítané statistiky hráčů.",
+        };
       }
     }
 
@@ -1207,54 +1221,54 @@ const updateEventPlayer = (
     setEditingEventId(newEvent.localId);
   };
 
-const handleSaveSingleEvent = async (localId: string) => {
-  const event = editEvents.find((item) => item.localId === localId);
+  const handleSaveSingleEvent = async (localId: string) => {
+    const event = editEvents.find((item) => item.localId === localId);
 
-  if (!event) return;
+    if (!event) return;
 
-  if (
-    event.type === "goal_for" &&
-    !event.scorerPlayerId &&
-    typeof event.scorer !== "number"
-  ) {
-    setMessage("Vyber střelce gólu.");
-    return;
-  }
+    if (
+      event.type === "goal_for" &&
+      !event.scorerPlayerId &&
+      typeof event.scorer !== "number"
+    ) {
+      setMessage("Vyber střelce gólu.");
+      return;
+    }
 
-  if (
-    event.type === "goal_for" &&
-    event.assist !== null &&
-    !event.assistPlayerId &&
-    typeof event.assist !== "number"
-  ) {
-    setMessage("Vyber asistenci.");
-    return;
-  }
+    if (
+      event.type === "goal_for" &&
+      event.assist !== null &&
+      !event.assistPlayerId &&
+      typeof event.assist !== "number"
+    ) {
+      setMessage("Vyber asistenci.");
+      return;
+    }
 
-  if (
-    (event.type === "yellow_card" || event.type === "red_card") &&
-    !event.playerId &&
-    typeof event.playerNumber !== "number"
-  ) {
-    setMessage("Vyber hráče ke kartě.");
-    return;
-  }
+    if (
+      (event.type === "yellow_card" || event.type === "red_card") &&
+      !event.playerId &&
+      typeof event.playerNumber !== "number"
+    ) {
+      setMessage("Vyber hráče ke kartě.");
+      return;
+    }
 
-  setSavingEventId(localId);
-  setMessage("");
+    setSavingEventId(localId);
+    setMessage("");
 
-  const result = await persistMatchChanges(editEvents, goalkeeperSegments);
+    const result = await persistMatchChanges(editEvents, goalkeeperSegments);
 
-  if (!result.success) {
-    setMessage(result.errorMessage ?? "Nepodařilo se uložit událost.");
+    if (!result.success) {
+      setMessage(result.errorMessage ?? "Nepodařilo se uložit událost.");
+      setSavingEventId(null);
+      return;
+    }
+
+    setEditingEventId(null);
+    setMessage("Událost byla uložena.");
     setSavingEventId(null);
-    return;
-  }
-
-  setEditingEventId(null);
-  setMessage("Událost byla uložena.");
-  setSavingEventId(null);
-};
+  };
 
   const handleCancelSingleEvent = (localId: string) => {
     const event = editEvents.find((item) => item.localId === localId);
@@ -1309,17 +1323,17 @@ const handleSaveSingleEvent = async (localId: string) => {
         if (segment.localId !== localId) return segment;
 
         if (key === "playerId") {
-          const player = players.find((item) => item.id === value);
-          const stat = (localMatch.playerStats as PlayerStatWithId[]).find(
-            (item) => getStatPlayerId(item) === value
-          );
+          const selectedPlayer = selectablePlayers.find((item) => {
+            const itemValue = item.playerId ?? `number:${item.playerNumber}`;
+            return itemValue === value;
+          });
 
-          if (!player || !stat) return segment;
+          if (!selectedPlayer) return segment;
 
           return {
             ...segment,
-            playerId: player.id,
-            playerNumber: stat.playerNumber,
+            playerId: selectedPlayer.playerId ?? null,
+            playerNumber: selectedPlayer.playerNumber,
           };
         }
 
@@ -1332,20 +1346,18 @@ const handleSaveSingleEvent = async (localId: string) => {
   };
 
   const addGoalkeeperSegment = () => {
-    const firstPlayer = selectablePlayers.find((player) => !!player.playerId);
+    const firstPlayer = selectablePlayers[0];
 
-    if (!firstPlayer || !firstPlayer.playerId) {
-      setMessage("Nejdřív musí být v sestavě hráč s player_id.");
+    if (!firstPlayer) {
+      setMessage("Nejdřív musí být v sestavě alespoň jeden hráč.");
       return;
     }
-
-    const playerId: string = firstPlayer.playerId;
 
     setGoalkeeperSegments((prev): GoalkeeperSegment[] => [
       ...prev,
       {
         localId: createLocalId("gk-new"),
-        playerId,
+        playerId: firstPlayer.playerId ?? null,
         playerNumber: firstPlayer.playerNumber,
         startMinute: 0,
         endMinute: DEFAULT_MATCH_END_MINUTE,
@@ -1979,8 +1991,9 @@ const handleSaveSingleEvent = async (localId: string) => {
                             >
                               {selectablePlayers.map((player) => (
                                 <option
-                                key={`scorer-${player.playerId ?? player.playerNumber}`}
-                                value={player.playerId ?? `number:${player.playerNumber}`}
+                                  key={`scorer-${player.playerId ?? player.playerNumber}`}
+                                  value={player.playerId ?? `number:${player.playerNumber}`}
+                                  style={{ color: "black" }}
                                 >
                                   #{player.currentNumber} — {player.name}
                                 </option>
@@ -1989,8 +2002,10 @@ const handleSaveSingleEvent = async (localId: string) => {
 
                             <select
                               value={
-                              event.assistPlayerId ??
-                              (typeof event.assist === "number" ? `number:${event.assist}` : "none")
+                                event.assistPlayerId ??
+                                (typeof event.assist === "number"
+                                  ? `number:${event.assist}`
+                                  : "none")
                               }
                               onChange={(e) =>
                                 updateEventPlayer(event.localId, "assist", e.target.value)
@@ -2285,7 +2300,7 @@ const handleSaveSingleEvent = async (localId: string) => {
                     ) : (
                       <div style={{ display: "grid", gap: "8px" }}>
                         <select
-                          value={segment.playerId}
+                          value={segment.playerId ?? `number:${segment.playerNumber}`}
                           onChange={(e) =>
                             updateGoalkeeperSegment(segment.localId, "playerId", e.target.value)
                           }
@@ -2294,7 +2309,7 @@ const handleSaveSingleEvent = async (localId: string) => {
                           {selectablePlayers.map((item) => (
                             <option
                               key={`gk-${item.playerId ?? item.playerNumber}`}
-                              value={item.playerId ?? ""}
+                              value={item.playerId ?? `number:${item.playerNumber}`}
                               style={{ color: "black" }}
                             >
                               #{item.currentNumber} — {item.name}
