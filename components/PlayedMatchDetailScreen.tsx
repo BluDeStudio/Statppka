@@ -1207,40 +1207,54 @@ const updateEventPlayer = (
     setEditingEventId(newEvent.localId);
   };
 
-  const handleSaveSingleEvent = async (localId: string) => {
-    const event = editEvents.find((item) => item.localId === localId);
+const handleSaveSingleEvent = async (localId: string) => {
+  const event = editEvents.find((item) => item.localId === localId);
 
-    if (!event) return;
+  if (!event) return;
 
-    if (event.type === "goal_for" && !event.scorerPlayerId) {
-      setMessage("Vyber střelce gólu.");
-      return;
-    }
+  if (
+    event.type === "goal_for" &&
+    !event.scorerPlayerId &&
+    typeof event.scorer !== "number"
+  ) {
+    setMessage("Vyber střelce gólu.");
+    return;
+  }
 
-    if (
-      (event.type === "yellow_card" || event.type === "red_card") &&
+  if (
+    event.type === "goal_for" &&
+    event.assist !== null &&
+    !event.assistPlayerId &&
+    typeof event.assist !== "number"
+  ) {
+    setMessage("Vyber asistenci.");
+    return;
+  }
+
+  if (
+    (event.type === "yellow_card" || event.type === "red_card") &&
     !event.playerId &&
     typeof event.playerNumber !== "number"
-    ) {
-      setMessage("Vyber hráče ke kartě.");
-      return;
-    }
+  ) {
+    setMessage("Vyber hráče ke kartě.");
+    return;
+  }
 
-    setSavingEventId(localId);
-    setMessage("");
+  setSavingEventId(localId);
+  setMessage("");
 
-    const result = await persistMatchChanges(editEvents, goalkeeperSegments);
+  const result = await persistMatchChanges(editEvents, goalkeeperSegments);
 
-    if (!result.success) {
-      setMessage(result.errorMessage ?? "Nepodařilo se uložit událost.");
-      setSavingEventId(null);
-      return;
-    }
-
-    setEditingEventId(null);
-    setMessage("Událost byla uložena.");
+  if (!result.success) {
+    setMessage(result.errorMessage ?? "Nepodařilo se uložit událost.");
     setSavingEventId(null);
-  };
+    return;
+  }
+
+  setEditingEventId(null);
+  setMessage("Událost byla uložena.");
+  setSavingEventId(null);
+};
 
   const handleCancelSingleEvent = (localId: string) => {
     const event = editEvents.find((item) => item.localId === localId);
