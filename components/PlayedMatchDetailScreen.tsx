@@ -990,6 +990,14 @@ export default function PlayedMatchDetailScreen({
 
   const scoreFor = editEvents.filter((event) => event.type === "goal_for").length;
   const scoreAgainst = editEvents.filter((event) => event.type === "goal_against").length;
+  const goalkeeperGoalsAgainstPreview = goalkeeperSegments.reduce(
+    (sum, segment) => sum + Number(segment.goalsAgainst ?? 0),
+    0
+  );
+  const computedMainScore =
+    goalkeeperSegments.length > 0
+      ? `${scoreFor}:${goalkeeperGoalsAgainstPreview}`
+      : `${scoreFor}:${scoreAgainst}`;
   const computedScore = `${scoreFor}:${scoreAgainst}`;
 
   const playerHasEvent = (stat: PlayerStatWithId) => {
@@ -1918,7 +1926,7 @@ export default function PlayedMatchDetailScreen({
                 letterSpacing: "2px",
               }}
             >
-              {localMatch.score}
+              {computedMainScore}
             </div>
 
             <div

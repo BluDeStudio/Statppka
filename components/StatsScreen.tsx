@@ -480,6 +480,8 @@ export default function StatsScreen({
         ratingPoints: number;
         ratingVotes: number;
         motmCount: number;
+        yellowCards: number;
+        redCards: number;
       }
     >();
 
@@ -528,6 +530,8 @@ export default function StatsScreen({
             ratingPoints: 0,
             ratingVotes: 0,
             motmCount: 0,
+            yellowCards: 0,
+            redCards: 0,
           });
         }
 
@@ -537,6 +541,8 @@ export default function StatsScreen({
         current.matches += 1;
         current.goals += stat.goals;
         current.assists += stat.assists;
+        current.yellowCards += stat.yellowCards;
+        current.redCards += stat.redCards;
       });
 
       const ratingPlayerNumbers = Array.from(
@@ -578,6 +584,8 @@ export default function StatsScreen({
             ratingPoints: 0,
             ratingVotes: 0,
             motmCount: 0,
+            yellowCards: 0,
+            redCards: 0,
           });
         }
       });
@@ -599,6 +607,8 @@ export default function StatsScreen({
             ratingPoints: 0,
             ratingVotes: 0,
             motmCount: 0,
+            yellowCards: 0,
+            redCards: 0,
           });
         }
 
@@ -636,6 +646,8 @@ export default function StatsScreen({
           : null,
       ratingVotes: stats.ratingVotes,
       motmCount: stats.motmCount,
+      yellowCards: stats.yellowCards,
+      redCards: stats.redCards,
     }));
 
     return arr.sort((a, b) => {
@@ -1321,7 +1333,8 @@ export default function StatsScreen({
                                 }}
                               >
                                 Z {player.matches} • G {player.goals} • A{" "}
-                                {player.assists} • B {player.points}
+                                {player.assists} • B {player.points} • ŽK{" "}
+                                {player.yellowCards} • ČK {player.redCards}
                               </div>
 
                               <div
