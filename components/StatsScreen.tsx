@@ -30,6 +30,13 @@ type StatPlayerIdRow = {
   finished_match_id: string;
   player_number: number;
   player_id: string | null;
+  goals?: number | null;
+  assists?: number | null;
+  yellow_cards?: number | null;
+  red_cards?: number | null;
+  played_seconds?: number | null;
+  shots_on_target?: number | null;
+  shots_off_target?: number | null;
 };
 
 type GoalkeeperSegmentRow = {
@@ -240,31 +247,29 @@ export default function StatsScreen({
     const loadData = async () => {
       setLoading(true);
 
-      const [
-        loadedPlayers,
-        periodsResponse,
-        statsResponse,
-        goalkeeperResponse,
-      ] = await Promise.all([
-        getPlayersByClubId(clubId),
-        supabase
-          .from("periods")
-          .select("*")
-          .eq("club_id", clubId)
-          .order("start_date", { ascending: false }),
-        finishedMatchIds.length > 0
-          ? supabase
-              .from("finished_match_player_stats")
-              .select("finished_match_id, player_number, player_id")
-              .in("finished_match_id", finishedMatchIds)
-          : Promise.resolve({ data: [], error: null }),
-        finishedMatchIds.length > 0
-          ? supabase
-              .from("finished_match_goalkeeper_segments")
-              .select("finished_match_id, player_id, player_number, goals_against")
-              .in("finished_match_id", finishedMatchIds)
-          : Promise.resolve({ data: [], error: null }),
-      ]);
+      const [loadedPlayers, periodsResponse, statsResponse, goalkeeperResponse] =
+        await Promise.all([
+          getPlayersByClubId(clubId),
+          supabase
+            .from("periods")
+            .select("*")
+            .eq("club_id", clubId)
+            .order("start_date", { ascending: false }),
+          finishedMatchIds.length > 0
+            ? supabase
+                .from("finished_match_player_stats")
+                .select(
+                  "finished_match_id, player_number, player_id, goals, assists, yellow_cards, red_cards, played_seconds, shots_on_target, shots_off_target"
+                )
+                .in("finished_match_id", finishedMatchIds)
+            : Promise.resolve({ data: [], error: null }),
+          finishedMatchIds.length > 0
+            ? supabase
+                .from("finished_match_goalkeeper_segments")
+                .select("finished_match_id, player_id, player_number, goals_against")
+                .in("finished_match_id", finishedMatchIds)
+            : Promise.resolve({ data: [], error: null }),
+        ]);
 
       const loadedRatings =
         finishedMatchIds.length > 0
@@ -275,7 +280,7 @@ export default function StatsScreen({
 
       if (statsResponse.error) {
         console.error(
-          "Nepodařilo se načíst player_id statistik:",
+          "Nepodařilo se načíst player_id/statistiky hráčů:",
           statsResponse.error
         );
       }
@@ -355,6 +360,30 @@ export default function StatsScreen({
 
     return map;
   }, [statPlayerIdRows]);
+
+  const statRowsByMatchId = useMemo(() => {
+    const map = new Map<string, StatPlayerIdRow[]>();
+
+    statPlayerIdRows.forEach((row) => {
+      const rows = map.get(row.finished_match_id) ?? [];
+      rows.push(row);
+      map.set(row.finished_match_id, rows);
+    });
+
+    return map;
+  }, [statPlayerIdRows]);
+
+  const goalkeeperRowsByMatchId = useMemo(() => {
+    const map = new Map<string, GoalkeeperSegmentRow[]>();
+
+    goalkeeperRows.forEach((row) => {
+      const rows = map.get(row.finished_match_id) ?? [];
+      rows.push(row);
+      map.set(row.finished_match_id, rows);
+    });
+
+    return map;
+  }, [goalkeeperRows]);
 
   const ratingsByMatchId = useMemo(() => {
     const map = new Map<string, PlayerRatingRow[]>();
@@ -439,10 +468,6 @@ export default function StatsScreen({
     return matches;
   }, [finishedMatches, effectivePeriod, statsTeamFilter]);
 
-  const filteredMatchIdSet = useMemo(() => {
-    return new Set(filteredStatsMatches.map((match) => match.id));
-  }, [filteredStatsMatches]);
-
   const fieldPlayerStats = useMemo(() => {
     const playerMap = new Map<
       string,
@@ -465,7 +490,21 @@ export default function StatsScreen({
       const statsByNumber = new Map<number, string>();
       const statsByPlayerId = new Map<string, string>();
 
-      match.playerStats.forEach((stat) => {
+      const sourceStats =
+        statRowsByMatchId.get(match.id)?.map((row) => ({
+          playerId: row.player_id,
+          player_id: row.player_id,
+          playerNumber: Number(row.player_number),
+          goals: row.goals ?? 0,
+          assists: row.assists ?? 0,
+          yellowCards: row.yellow_cards ?? 0,
+          redCards: row.red_cards ?? 0,
+          playedSeconds: row.played_seconds ?? 0,
+          shotsOnTarget: row.shots_on_target ?? 0,
+          shotsOffTarget: row.shots_off_target ?? 0,
+        })) ?? match.playerStats;
+
+      sourceStats.forEach((stat) => {
         const playerNumber = Number(stat.playerNumber);
         const playerId = getPlayerIdForStat(match.id, stat);
         const playerKey = getPlayerKey(playerNumber, playerId);
@@ -502,7 +541,7 @@ export default function StatsScreen({
 
       const ratingPlayerNumbers = Array.from(
         new Set([
-          ...match.playerStats.map((player) => Number(player.playerNumber)),
+          ...sourceStats.map((player) => Number(player.playerNumber)),
           ...matchRatings.map((rating) => Number(rating.player_number)),
         ])
       );
@@ -642,6 +681,7 @@ export default function StatsScreen({
     playerById,
     playerByNumber,
     statPlayerIdByMatchAndNumber,
+    statRowsByMatchId,
   ]);
 
   const goalkeeperStats = useMemo(() => {
@@ -655,37 +695,40 @@ export default function StatsScreen({
       }
     >();
 
-    const matchesWithSavedGoalkeeperSegments = new Set<string>();
+    filteredStatsMatches.forEach((match) => {
+      const rows = goalkeeperRowsByMatchId.get(match.id) ?? [];
 
-    goalkeeperRows.forEach((row) => {
-      if (!filteredMatchIdSet.has(row.finished_match_id)) return;
+      if (rows.length > 0) {
+        rows.forEach((row) => {
+          const playerNumber = Number(row.player_number ?? 0);
+          if (!Number.isFinite(playerNumber) || playerNumber <= 0) return;
 
-      const playerNumber = Number(row.player_number ?? 0);
-      if (!Number.isFinite(playerNumber) || playerNumber <= 0) return;
+          const playerId =
+            row.player_id ??
+            statPlayerIdByMatchAndNumber.get(makeNumberKey(match.id, playerNumber)) ??
+            playerByNumber.get(playerNumber)?.id ??
+            null;
 
-      matchesWithSavedGoalkeeperSegments.add(row.finished_match_id);
+          const goalkeeperKey = getPlayerKey(playerNumber, playerId);
 
-      const playerId = row.player_id ?? playerByNumber.get(playerNumber)?.id ?? null;
-      const goalkeeperKey = getPlayerKey(playerNumber, playerId);
+          if (!gkMap.has(goalkeeperKey)) {
+            gkMap.set(goalkeeperKey, {
+              playerId,
+              playerNumber,
+              matchIds: new Set<string>(),
+              goalsAgainst: 0,
+            });
+          }
 
-      if (!gkMap.has(goalkeeperKey)) {
-        gkMap.set(goalkeeperKey, {
-          playerId,
-          playerNumber,
-          matchIds: new Set<string>(),
-          goalsAgainst: 0,
+          const current = gkMap.get(goalkeeperKey)!;
+          current.playerId = current.playerId ?? playerId;
+          current.matchIds.add(match.id);
+          current.goalsAgainst += Number(row.goals_against ?? 0);
         });
+
+        return;
       }
 
-      const current = gkMap.get(goalkeeperKey)!;
-      current.playerId = current.playerId ?? playerId;
-      current.playerNumber = current.playerNumber || playerNumber;
-      current.matchIds.add(row.finished_match_id);
-      current.goalsAgainst += Number(row.goals_against ?? 0);
-    });
-
-    filteredStatsMatches.forEach((match) => {
-      if (matchesWithSavedGoalkeeperSegments.has(match.id)) return;
       if (match.goalkeeperNumber === null) return;
 
       const goalkeeperStat =
@@ -697,7 +740,7 @@ export default function StatsScreen({
         ? getPlayerIdForStat(match.id, goalkeeperStat)
         : statPlayerIdByMatchAndNumber.get(
             `${match.id}:${match.goalkeeperNumber}`
-          ) ?? playerByNumber.get(match.goalkeeperNumber)?.id ?? null;
+          ) ?? null;
 
       const goalkeeperKey = getPlayerKey(
         match.goalkeeperNumber,
@@ -714,7 +757,6 @@ export default function StatsScreen({
       }
 
       const current = gkMap.get(goalkeeperKey)!;
-      current.playerId = current.playerId ?? goalkeeperPlayerId;
       current.matchIds.add(match.id);
       current.goalsAgainst += match.goalsAgainst;
     });
@@ -760,9 +802,8 @@ export default function StatsScreen({
     });
   }, [
     filteredStatsMatches,
-    filteredMatchIdSet,
-    goalkeeperRows,
     goalkeeperSort,
+    goalkeeperRowsByMatchId,
     playerById,
     playerByNumber,
     statPlayerIdByMatchAndNumber,
