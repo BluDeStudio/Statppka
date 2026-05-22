@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 import { styles } from "@/styles/appStyles";
 import type { FinishedMatch } from "@/app/page";
 
@@ -9,6 +10,12 @@ type PlayedMatchesScreenProps = {
   onSelectMatch: (matchId: string) => void;
   onDeleteMatch: (matchId: string) => Promise<{ success: boolean; errorMessage?: string }>;
   primaryColor?: string;
+};
+
+type LatestFinishedMatchRow = {
+  id: string;
+  score: string | null;
+  goals_against?: number | null;
 };
 
 function formatDisplayDate(date: string) {
@@ -29,6 +36,53 @@ export default function PlayedMatchesScreen({
   const [filter, setFilter] = useState<"ALL" | "A" | "B">("ALL");
   const [message, setMessage] = useState("");
   const [deletingMatchId, setDeletingMatchId] = useState<string | null>(null);
+  const [latestScoresByMatchId, setLatestScoresByMatchId] = useState<Record<string, string>>({});
+
+  const finishedMatchIdsKey = useMemo(
+    () => finishedMatches.map((match) => match.id).sort().join("|"),
+    [finishedMatches]
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    const loadLatestScores = async () => {
+      const ids = finishedMatches.map((match) => match.id);
+
+      if (ids.length === 0) {
+        setLatestScoresByMatchId({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("finished_matches")
+        .select("id, score, goals_against")
+        .in("id", ids);
+
+      if (!active) return;
+
+      if (error) {
+        console.error("Nepodařilo se načíst aktuální skóre odehraných zápasů:", error);
+        return;
+      }
+
+      const nextScores: Record<string, string> = {};
+
+      ((data as LatestFinishedMatchRow[]) ?? []).forEach((row) => {
+        if (row.id && row.score) {
+          nextScores[row.id] = row.score;
+        }
+      });
+
+      setLatestScoresByMatchId(nextScores);
+    };
+
+    void loadLatestScores();
+
+    return () => {
+      active = false;
+    };
+  }, [finishedMatchIdsKey, finishedMatches]);
 
   const filteredMatches = useMemo(() => {
     if (filter === "ALL") return finishedMatches;
@@ -50,6 +104,11 @@ export default function PlayedMatchesScreen({
       return;
     }
 
+    setLatestScoresByMatchId((prev) => {
+      const next = { ...prev };
+      delete next[matchId];
+      return next;
+    });
     setMessage("Zápas byl smazán.");
     setDeletingMatchId(null);
   };
@@ -230,7 +289,7 @@ export default function PlayedMatchesScreen({
                       letterSpacing: "0.5px",
                     }}
                   >
-                    {match.score}
+                    {latestScoresByMatchId[match.id] ?? match.score}
                   </div>
                 </button>
 
