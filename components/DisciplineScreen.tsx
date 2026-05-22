@@ -454,30 +454,24 @@ export default function DisciplineScreen({
         }
       });
 
-      const existingCounts = new Map<string, number>();
+      const automaticCounts = new Map<string, number>();
       const automaticFinesByKey = new Map<string, FineRow[]>();
 
       currentFines.forEach((fine) => {
-        if (
-          normalizeText(fine.reason) !== normalizeText(YELLOW_CARD_FINE_REASON) &&
-          normalizeText(fine.reason) !== normalizeText(RED_CARD_FINE_REASON)
-        ) {
-          return;
-        }
+        if (!isAutomaticCardFine(fine)) return;
 
         const key = buildCardFineKey(fine.player_id, fine.reason);
-        existingCounts.set(key, (existingCounts.get(key) ?? 0) + 1);
 
-        if (isAutomaticCardFine(fine)) {
-          const rows = automaticFinesByKey.get(key) ?? [];
-          rows.push(fine);
-          automaticFinesByKey.set(key, rows);
-        }
+        automaticCounts.set(key, (automaticCounts.get(key) ?? 0) + 1);
+
+        const rows = automaticFinesByKey.get(key) ?? [];
+        rows.push(fine);
+        automaticFinesByKey.set(key, rows);
       });
 
       for (const desired of desiredCounts.values()) {
         const key = buildCardFineKey(desired.playerId, desired.reason);
-        const existingCount = existingCounts.get(key) ?? 0;
+        const existingCount = automaticCounts.get(key) ?? 0;
         const missingCount = Math.max(0, desired.count - existingCount);
 
         for (let index = 0; index < missingCount; index += 1) {
@@ -496,7 +490,7 @@ export default function DisciplineScreen({
 
       for (const [key, automaticFines] of automaticFinesByKey.entries()) {
         const desiredCount = desiredCounts.get(key)?.count ?? 0;
-        const existingCount = existingCounts.get(key) ?? 0;
+        const existingCount = automaticCounts.get(key) ?? 0;
         const excessCount = Math.max(0, existingCount - desiredCount);
 
         if (excessCount === 0) continue;
