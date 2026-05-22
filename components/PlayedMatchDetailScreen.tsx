@@ -473,12 +473,36 @@ function eventToFinishedMatchEvent(event: EditableEvent): FinishedMatchEvent {
 
 function computeGoalkeeperSegmentsWithGoals(
   segments: GoalkeeperSegment[],
-  _events: EditableEvent[]
+  events: EditableEvent[]
 ) {
-  return segments.map((segment) => ({
-    ...segment,
-    goalsAgainst: parseNumber(String(segment.goalsAgainst ?? 0)),
-  }));
+  const normalizedSegments = normalizeGoalkeeperSegments(segments);
+  const goalAgainstEvents = events.filter((event) => event.type === "goal_against");
+
+  if (goalAgainstEvents.length === 0) {
+    return normalizedSegments.map((segment) => ({
+      ...segment,
+      goalsAgainst: parseNumber(String(segment.goalsAgainst ?? 0)),
+    }));
+  }
+
+  return normalizedSegments.map((segment, index) => {
+    const isLastSegment = index === normalizedSegments.length - 1;
+
+    const goalsAgainst = goalAgainstEvents.filter((event) => {
+      const minute = normalizeMinute(event.minute);
+
+      if (isLastSegment) {
+        return minute >= segment.startMinute && minute <= segment.endMinute;
+      }
+
+      return minute >= segment.startMinute && minute < segment.endMinute;
+    }).length;
+
+    return {
+      ...segment,
+      goalsAgainst,
+    };
+  });
 }
 
 function recalculateStatsFromEvents(
@@ -1019,10 +1043,9 @@ export default function PlayedMatchDetailScreen({
     (sum, segment) => sum + Number(segment.goalsAgainst ?? 0),
     0
   );
-  const computedMainScore =
-    goalkeeperSegments.length > 0
-      ? `${scoreFor}:${goalkeeperGoalsAgainstPreview}`
-      : `${scoreFor}:${scoreAgainst}`;
+  const previewGoalsAgainst =
+    scoreAgainst > 0 ? scoreAgainst : goalkeeperGoalsAgainstPreview;
+  const computedMainScore = `${scoreFor}:${previewGoalsAgainst}`;
   const computedScore = `${scoreFor}:${scoreAgainst}`;
 
   const playerHasEvent = (stat: PlayerStatWithId) => {
@@ -1342,9 +1365,7 @@ export default function PlayedMatchDetailScreen({
       0
     );
     const nextGoalsAgainst =
-      nextGoalkeeperSegments.length > 0
-        ? manualGoalkeeperGoalsAgainst
-        : eventGoalsAgainst;
+      eventGoalsAgainst > 0 ? eventGoalsAgainst : manualGoalkeeperGoalsAgainst;
     const nextScore = `${nextGoalsFor}:${nextGoalsAgainst}`;
 
     const invalidPlayerStat = (recalculatedPlayerStats as PlayerStatWithId[]).find(
