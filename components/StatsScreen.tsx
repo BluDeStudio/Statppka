@@ -490,19 +490,23 @@ export default function StatsScreen({
       const statsByNumber = new Map<number, string>();
       const statsByPlayerId = new Map<string, string>();
 
-      const sourceStats =
-        statRowsByMatchId.get(match.id)?.map((row) => ({
-          playerId: row.player_id,
-          player_id: row.player_id,
-          playerNumber: Number(row.player_number),
-          goals: row.goals ?? 0,
-          assists: row.assists ?? 0,
-          yellowCards: row.yellow_cards ?? 0,
-          redCards: row.red_cards ?? 0,
-          playedSeconds: row.played_seconds ?? 0,
-          shotsOnTarget: row.shots_on_target ?? 0,
-          shotsOffTarget: row.shots_off_target ?? 0,
-        })) ?? match.playerStats;
+      const dbRows = statRowsByMatchId.get(match.id) ?? [];
+
+const sourceStats =
+  dbRows.length > 0
+    ? dbRows.map((row) => ({
+        playerId: row.player_id,
+        player_id: row.player_id,
+        playerNumber: Number(row.player_number),
+        goals: Number(row.goals ?? 0),
+        assists: Number(row.assists ?? 0),
+        yellowCards: Number(row.yellow_cards ?? 0),
+        redCards: Number(row.red_cards ?? 0),
+        playedSeconds: Number(row.played_seconds ?? 0),
+        shotsOnTarget: Number(row.shots_on_target ?? 0),
+        shotsOffTarget: Number(row.shots_off_target ?? 0),
+      }))
+    : match.playerStats;
 
       sourceStats.forEach((stat) => {
         const playerNumber = Number(stat.playerNumber);
@@ -698,7 +702,7 @@ export default function StatsScreen({
     filteredStatsMatches.forEach((match) => {
       const rows = goalkeeperRowsByMatchId.get(match.id) ?? [];
 
-      if (rows.length > 0) {
+      if (Array.isArray(rows) && rows.length > 0) {
         rows.forEach((row) => {
           const playerNumber = Number(row.player_number ?? 0);
           if (!Number.isFinite(playerNumber) || playerNumber <= 0) return;
