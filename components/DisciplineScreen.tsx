@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import {
   getPlayersByClubId,
@@ -236,6 +236,9 @@ export default function DisciplineScreen({
 
   const [fines, setFines] = useState<FineRow[]>([]);
   const [fineTemplates, setFineTemplates] = useState<FineTemplateRow[]>([]);
+
+  const finesReloadRunningRef = useRef(false);
+  const finesReloadQueuedRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [finesLoading, setFinesLoading] = useState(false);
@@ -517,33 +520,46 @@ export default function DisciplineScreen({
   );
 
   const reloadVisibleFines = useCallback(async () => {
+    if (finesReloadRunningRef.current) {
+      finesReloadQueuedRef.current = true;
+      return;
+    }
+
+    finesReloadRunningRef.current = true;
     setFinesLoading(true);
 
-    if (periodFilterMode === "all") {
-      if (periods.length === 0) {
-        setFines([]);
-        setFinesLoading(false);
-        return;
-      }
+    try {
+      do {
+        finesReloadQueuedRef.current = false;
 
-      const finesByPeriods = await Promise.all(
-        periods.map((period) => syncCardFinesForPeriod(period))
-      );
+        if (periodFilterMode === "all") {
+          if (periods.length === 0) {
+            setFines([]);
+            continue;
+          }
 
-      setFines(finesByPeriods.flat());
+          const finesByPeriods: FineRow[][] = [];
+
+          for (const period of periods) {
+            finesByPeriods.push(await syncCardFinesForPeriod(period));
+          }
+
+          setFines(finesByPeriods.flat());
+          continue;
+        }
+
+        if (!effectivePeriod) {
+          setFines([]);
+          continue;
+        }
+
+        const data = await syncCardFinesForPeriod(effectivePeriod);
+        setFines(data);
+      } while (finesReloadQueuedRef.current);
+    } finally {
+      finesReloadRunningRef.current = false;
       setFinesLoading(false);
-      return;
     }
-
-    if (!effectivePeriod) {
-      setFines([]);
-      setFinesLoading(false);
-      return;
-    }
-
-    const data = await syncCardFinesForPeriod(effectivePeriod);
-    setFines(data);
-    setFinesLoading(false);
   }, [effectivePeriod, periodFilterMode, periods, syncCardFinesForPeriod]);
 
   useEffect(() => {
