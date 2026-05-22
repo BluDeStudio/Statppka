@@ -180,32 +180,38 @@ type AggregatedMatchStat = {
 
 function mergeStatIntoMatchMap(
   map: Map<string, AggregatedMatchStat>,
-  stat: FinishedMatch["playerStats"][number],
+  stat: FinishedMatch["playerStats"][number] & {
+    yellow_cards?: number | null;
+    red_cards?: number | null;
+  },
   playerId: string | null,
   playerNumber: number
 ) {
   const key = makePlayerKey(playerNumber, playerId);
   const existing = map.get(key);
 
+  const yellowCards = Number(stat.yellowCards ?? stat.yellow_cards ?? 0);
+  const redCards = Number(stat.redCards ?? stat.red_cards ?? 0);
+
   if (!existing) {
     map.set(key, {
       playerId,
       playerNumber,
       matches: 1,
-      goals: stat.goals ?? 0,
-      assists: stat.assists ?? 0,
-      yellowCards: stat.yellowCards ?? 0,
-      redCards: stat.redCards ?? 0,
+      goals: Number(stat.goals ?? 0),
+      assists: Number(stat.assists ?? 0),
+      yellowCards,
+      redCards,
     });
     return;
   }
 
   existing.playerId = existing.playerId ?? playerId;
   existing.playerNumber = existing.playerNumber || playerNumber;
-  existing.goals += stat.goals ?? 0;
-  existing.assists += stat.assists ?? 0;
-  existing.yellowCards += stat.yellowCards ?? 0;
-  existing.redCards += stat.redCards ?? 0;
+  existing.goals += Number(stat.goals ?? 0);
+  existing.assists += Number(stat.assists ?? 0);
+  existing.yellowCards += yellowCards;
+  existing.redCards += redCards;
 }
 
 export default function StatsScreen({
