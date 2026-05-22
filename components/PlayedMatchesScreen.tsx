@@ -18,6 +18,7 @@ type LatestFinishedMatchRow = {
   goals_against?: number | null;
 };
 
+
 function formatDisplayDate(date: string) {
   if (date.includes(".")) return date;
 
@@ -36,28 +37,26 @@ export default function PlayedMatchesScreen({
   const [filter, setFilter] = useState<"ALL" | "A" | "B">("ALL");
   const [message, setMessage] = useState("");
   const [deletingMatchId, setDeletingMatchId] = useState<string | null>(null);
-  const [latestScoresByMatchId, setLatestScoresByMatchId] = useState<Record<string, string>>({});
+  const [latestMatches, setLatestMatches] = useState<Record<string, LatestFinishedMatchRow>>({});
 
-  const finishedMatchIdsKey = useMemo(
-    () => finishedMatches.map((match) => match.id).sort().join("|"),
+  const finishedMatchIds = useMemo(
+    () => finishedMatches.map((match) => match.id),
     [finishedMatches]
   );
 
   useEffect(() => {
     let active = true;
 
-    const loadLatestScores = async () => {
-      const ids = finishedMatches.map((match) => match.id);
-
-      if (ids.length === 0) {
-        setLatestScoresByMatchId({});
+    const loadLatestMatches = async () => {
+      if (finishedMatchIds.length === 0) {
+        setLatestMatches({});
         return;
       }
 
       const { data, error } = await supabase
         .from("finished_matches")
         .select("id, score, goals_against")
-        .in("id", ids);
+        .in("id", finishedMatchIds);
 
       if (!active) return;
 
@@ -66,23 +65,20 @@ export default function PlayedMatchesScreen({
         return;
       }
 
-      const nextScores: Record<string, string> = {};
-
+      const next: Record<string, LatestFinishedMatchRow> = {};
       ((data as LatestFinishedMatchRow[]) ?? []).forEach((row) => {
-        if (row.id && row.score) {
-          nextScores[row.id] = row.score;
-        }
+        next[row.id] = row;
       });
 
-      setLatestScoresByMatchId(nextScores);
+      setLatestMatches(next);
     };
 
-    void loadLatestScores();
+    void loadLatestMatches();
 
     return () => {
       active = false;
     };
-  }, [finishedMatchIdsKey, finishedMatches]);
+  }, [finishedMatchIds.join("|")]);
 
   const filteredMatches = useMemo(() => {
     if (filter === "ALL") return finishedMatches;
@@ -104,11 +100,6 @@ export default function PlayedMatchesScreen({
       return;
     }
 
-    setLatestScoresByMatchId((prev) => {
-      const next = { ...prev };
-      delete next[matchId];
-      return next;
-    });
     setMessage("Zápas byl smazán.");
     setDeletingMatchId(null);
   };
@@ -191,7 +182,11 @@ export default function PlayedMatchesScreen({
         </div>
       ) : (
         <div style={{ display: "grid", gap: "12px" }}>
-          {filteredMatches.map((match) => (
+          {filteredMatches.map((match) => {
+            const latestMatch = latestMatches[match.id];
+            const displayScore = latestMatch?.score ?? match.score;
+
+            return (
             <div
               key={match.id}
               style={{
@@ -289,7 +284,7 @@ export default function PlayedMatchesScreen({
                       letterSpacing: "0.5px",
                     }}
                   >
-                    {latestScoresByMatchId[match.id] ?? match.score}
+                    {displayScore}
                   </div>
                 </button>
 
@@ -341,7 +336,8 @@ export default function PlayedMatchesScreen({
                 </div>
               </div>
             </div>
-          ))}
+          );
+          })}
         </div>
       )}
     </div>

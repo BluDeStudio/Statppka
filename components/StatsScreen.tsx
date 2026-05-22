@@ -480,6 +480,8 @@ export default function StatsScreen({
         ratingPoints: number;
         ratingVotes: number;
         motmCount: number;
+        yellowCards: number;
+        redCards: number;
       }
     >();
 
@@ -492,21 +494,21 @@ export default function StatsScreen({
 
       const dbRows = statRowsByMatchId.get(match.id) ?? [];
 
-const sourceStats =
-  dbRows.length > 0
-    ? dbRows.map((row) => ({
-        playerId: row.player_id,
-        player_id: row.player_id,
-        playerNumber: Number(row.player_number),
-        goals: Number(row.goals ?? 0),
-        assists: Number(row.assists ?? 0),
-        yellowCards: Number(row.yellow_cards ?? 0),
-        redCards: Number(row.red_cards ?? 0),
-        playedSeconds: Number(row.played_seconds ?? 0),
-        shotsOnTarget: Number(row.shots_on_target ?? 0),
-        shotsOffTarget: Number(row.shots_off_target ?? 0),
-      }))
-    : match.playerStats;
+      const sourceStats =
+        dbRows.length > 0
+          ? dbRows.map((row) => ({
+              playerId: row.player_id,
+              player_id: row.player_id,
+              playerNumber: Number(row.player_number),
+              goals: Number(row.goals ?? 0),
+              assists: Number(row.assists ?? 0),
+              yellowCards: Number(row.yellow_cards ?? 0),
+              redCards: Number(row.red_cards ?? 0),
+              playedSeconds: Number(row.played_seconds ?? 0),
+              shotsOnTarget: Number(row.shots_on_target ?? 0),
+              shotsOffTarget: Number(row.shots_off_target ?? 0),
+            }))
+          : match.playerStats;
 
       sourceStats.forEach((stat) => {
         const playerNumber = Number(stat.playerNumber);
@@ -532,6 +534,8 @@ const sourceStats =
             ratingPoints: 0,
             ratingVotes: 0,
             motmCount: 0,
+            yellowCards: 0,
+            redCards: 0,
           });
         }
 
@@ -541,6 +545,8 @@ const sourceStats =
         current.matches += 1;
         current.goals += stat.goals;
         current.assists += stat.assists;
+        current.yellowCards += stat.yellowCards;
+        current.redCards += stat.redCards;
       });
 
       const ratingPlayerNumbers = Array.from(
@@ -582,6 +588,8 @@ const sourceStats =
             ratingPoints: 0,
             ratingVotes: 0,
             motmCount: 0,
+            yellowCards: 0,
+            redCards: 0,
           });
         }
       });
@@ -603,6 +611,8 @@ const sourceStats =
             ratingPoints: 0,
             ratingVotes: 0,
             motmCount: 0,
+            yellowCards: 0,
+            redCards: 0,
           });
         }
 
@@ -640,6 +650,8 @@ const sourceStats =
           : null,
       ratingVotes: stats.ratingVotes,
       motmCount: stats.motmCount,
+      yellowCards: stats.yellowCards,
+      redCards: stats.redCards,
     }));
 
     return arr.sort((a, b) => {
@@ -702,7 +714,7 @@ const sourceStats =
     filteredStatsMatches.forEach((match) => {
       const rows = goalkeeperRowsByMatchId.get(match.id) ?? [];
 
-      if (Array.isArray(rows) && rows.length > 0) {
+      if (rows.length > 0) {
         rows.forEach((row) => {
           const playerNumber = Number(row.player_number ?? 0);
           if (!Number.isFinite(playerNumber) || playerNumber <= 0) return;
@@ -1325,7 +1337,8 @@ const sourceStats =
                                 }}
                               >
                                 Z {player.matches} • G {player.goals} • A{" "}
-                                {player.assists} • B {player.points}
+                                {player.assists} • B {player.points} • ŽK{" "}
+                                {player.yellowCards} • ČK {player.redCards}
                               </div>
 
                               <div

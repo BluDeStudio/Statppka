@@ -67,6 +67,13 @@ type FinishedMatchPlayerStatIdRow = {
   finished_match_id: string;
   player_number: number;
   player_id: string | null;
+  goals?: number | null;
+  assists?: number | null;
+  yellow_cards?: number | null;
+  red_cards?: number | null;
+  played_seconds?: number | null;
+  shots_on_target?: number | null;
+  shots_off_target?: number | null;
 };
 
 type GoalkeeperSegment = {
@@ -268,8 +275,24 @@ function mergePlayerIdsIntoStats(
     }
   });
 
+  const sourceStats =
+    playerIdRows.length > 0
+      ? playerIdRows.map((row) => ({
+          playerId: row.player_id ?? null,
+          player_id: row.player_id ?? null,
+          playerNumber: Number(row.player_number),
+          goals: Number(row.goals ?? 0),
+          assists: Number(row.assists ?? 0),
+          yellowCards: Number(row.yellow_cards ?? 0),
+          redCards: Number(row.red_cards ?? 0),
+          playedSeconds: Number(row.played_seconds ?? 0),
+          shotsOnTarget: Number(row.shots_on_target ?? 0),
+          shotsOffTarget: Number(row.shots_off_target ?? 0),
+        }))
+      : playerStats;
+
   return dedupePlayerStats(
-    playerStats.map((rawStat) => {
+    sourceStats.map((rawStat) => {
       const stat = rawStat as PlayerStatWithId;
       const existingPlayerId = getStatPlayerId(stat);
       const playerNumber = Number(stat.playerNumber);
@@ -632,7 +655,9 @@ export default function PlayedMatchDetailScreen({
         getMatchPlayerRatings(localMatch.id),
         supabase
           .from("finished_match_player_stats")
-          .select("finished_match_id, player_number, player_id")
+          .select(
+            "finished_match_id, player_number, player_id, goals, assists, yellow_cards, red_cards, played_seconds, shots_on_target, shots_off_target"
+          )
           .eq("finished_match_id", localMatch.id),
         supabase
           .from("finished_match_events")
@@ -1154,10 +1179,115 @@ export default function PlayedMatchDetailScreen({
     );
   };
 
+  const resolvePlayerIdentity = (
+    playerId?: string | null,
+    playerNumber?: number | null
+  ) => {
+    const player = getPlayerByIdOrNumber(playerId, playerNumber);
+
+    return {
+      playerId: playerId ?? player?.id ?? null,
+      playerNumber: player?.number ?? playerNumber ?? 0,
+    };
+  };
+
+  const normalizeEventsForSave = (events: EditableEvent[]) => {
+    return events.map((event) => {
+      if (event.type === "goal_for") {
+        const scorer = resolvePlayerIdentity(event.scorerPlayerId, event.scorer);
+        const assist =
+          event.assist !== null && event.assist !== undefined
+            ? resolvePlayerIdentity(event.assistPlayerId, event.assist)
+            : { playerId: null, playerNumber: 0 };
+
+        return {
+          ...event,
+          scorer: scorer.playerNumber || event.scorer || null,
+          scorerPlayerId: scorer.playerId,
+          assist: assist.playerNumber ? assist.playerNumber : null,
+          assistPlayerId: assist.playerId,
+        };
+      }
+
+      if (event.type === "yellow_card" || event.type === "red_card") {
+        const player = resolvePlayerIdentity(event.playerId, event.playerNumber);
+
+        return {
+          ...event,
+          playerNumber: player.playerNumber || event.playerNumber || null,
+          playerId: player.playerId,
+        };
+      }
+
+      return event;
+    });
+  };
+
+  const ensureEventPlayersInPlayerStats = (
+    playerStats: FinishedMatch["playerStats"],
+    events: EditableEvent[]
+  ): FinishedMatch["playerStats"] => {
+    const nextStats = dedupePlayerStats(playerStats) as PlayerStatWithId[];
+
+    const addPlayerIfMissing = (
+      playerId?: string | null,
+      playerNumber?: number | null
+    ) => {
+      const resolved = resolvePlayerIdentity(playerId, playerNumber);
+      const finalPlayerId = resolved.playerId;
+      const finalPlayerNumber = Number(resolved.playerNumber);
+
+      if (!Number.isFinite(finalPlayerNumber) || finalPlayerNumber <= 0) return;
+
+      const exists = nextStats.some((stat) => {
+        const statPlayerId = getStatPlayerId(stat);
+
+        if (finalPlayerId && statPlayerId) {
+          return statPlayerId === finalPlayerId;
+        }
+
+        return Number(stat.playerNumber) === finalPlayerNumber;
+      });
+
+      if (exists) return;
+
+      nextStats.push({
+        playerId: finalPlayerId,
+        player_id: finalPlayerId,
+        playerNumber: finalPlayerNumber,
+        goals: 0,
+        assists: 0,
+        yellowCards: 0,
+        redCards: 0,
+        playedSeconds: 0,
+        shotsOnTarget: 0,
+        shotsOffTarget: 0,
+      });
+    };
+
+    events.forEach((event) => {
+      if (event.type === "goal_for") {
+        addPlayerIfMissing(event.scorerPlayerId, event.scorer);
+
+        if (event.assist !== null && event.assist !== undefined) {
+          addPlayerIfMissing(event.assistPlayerId, event.assist);
+        }
+      }
+
+      if (event.type === "yellow_card" || event.type === "red_card") {
+        addPlayerIfMissing(event.playerId, event.playerNumber);
+      }
+    });
+
+    return dedupePlayerStats(nextStats);
+  };
+
   const persistMatchChanges = async (
     eventsToSave: EditableEvent[],
     segmentsToSave: GoalkeeperSegment[]
   ) => {
+    const normalizedEventsToSave = normalizeEventsForSave(eventsToSave);
+
     const normalizedGoalkeeperSegments = normalizeGoalkeeperSegments(segmentsToSave).map(
       (segment) => {
         const player = getPlayerByIdOrNumber(segment.playerId, segment.playerNumber);
@@ -1187,19 +1317,24 @@ export default function PlayedMatchDetailScreen({
       normalizedGoalkeeperSegments
     );
 
-    const recalculatedPlayerStats = recalculateStatsFromEvents(
+    const playerStatsWithEvents = ensureEventPlayersInPlayerStats(
       playerStatsWithGoalkeepers,
-      eventsToSave
+      normalizedEventsToSave
+    );
+
+    const recalculatedPlayerStats = recalculateStatsFromEvents(
+      playerStatsWithEvents,
+      normalizedEventsToSave
     );
 
     const nextGoalkeeperSegments = computeGoalkeeperSegmentsWithGoals(
       normalizedGoalkeeperSegments,
-      eventsToSave
+      normalizedEventsToSave
     );
 
-    const nextEvents = eventsToSave.map(eventToFinishedMatchEvent);
-    const nextGoalsFor = eventsToSave.filter((event) => event.type === "goal_for").length;
-    const eventGoalsAgainst = eventsToSave.filter(
+    const nextEvents = normalizedEventsToSave.map(eventToFinishedMatchEvent);
+    const nextGoalsFor = normalizedEventsToSave.filter((event) => event.type === "goal_for").length;
+    const eventGoalsAgainst = normalizedEventsToSave.filter(
       (event) => event.type === "goal_against"
     ).length;
     const manualGoalkeeperGoalsAgainst = nextGoalkeeperSegments.reduce(
@@ -1211,6 +1346,21 @@ export default function PlayedMatchDetailScreen({
         ? manualGoalkeeperGoalsAgainst
         : eventGoalsAgainst;
     const nextScore = `${nextGoalsFor}:${nextGoalsAgainst}`;
+
+    const invalidPlayerStat = (recalculatedPlayerStats as PlayerStatWithId[]).find(
+      (stat) => {
+        const player = getPlayerByIdOrNumber(getStatPlayerId(stat), stat.playerNumber);
+        return !(getStatPlayerId(stat) ?? player?.id ?? null);
+      }
+    );
+
+    if (invalidPlayerStat) {
+      return {
+        success: false,
+        errorMessage:
+          "Některý hráč nemá player_id. Vyber hráče ze soupisky a ulož znovu.",
+      };
+    }
 
     const { error: matchError } = await supabase
       .from("finished_matches")
@@ -1245,18 +1395,24 @@ export default function PlayedMatchDetailScreen({
       const { error: insertStatsError } = await supabase
         .from("finished_match_player_stats")
         .insert(
-          (recalculatedPlayerStats as PlayerStatWithId[]).map((stat) => ({
-            finished_match_id: localMatch.id,
-            player_id: getStatPlayerId(stat),
-            player_number: stat.playerNumber,
-            goals: stat.goals,
-            assists: stat.assists,
-            yellow_cards: stat.yellowCards ?? 0,
-            red_cards: stat.redCards ?? 0,
-            played_seconds: stat.playedSeconds ?? 0,
-            shots_on_target: stat.shotsOnTarget ?? 0,
-            shots_off_target: stat.shotsOffTarget ?? 0,
-          }))
+          (recalculatedPlayerStats as PlayerStatWithId[]).map((stat) => {
+            const player = getPlayerByIdOrNumber(getStatPlayerId(stat), stat.playerNumber);
+            const finalPlayerId = getStatPlayerId(stat) ?? player?.id ?? null;
+            const finalPlayerNumber = Number(player?.number ?? stat.playerNumber);
+
+            return {
+              finished_match_id: localMatch.id,
+              player_id: finalPlayerId,
+              player_number: finalPlayerNumber,
+              goals: Number(stat.goals ?? 0),
+              assists: Number(stat.assists ?? 0),
+              yellow_cards: Number(stat.yellowCards ?? 0),
+              red_cards: Number(stat.redCards ?? 0),
+              played_seconds: Number(stat.playedSeconds ?? 0),
+              shots_on_target: Number(stat.shotsOnTarget ?? 0),
+              shots_off_target: Number(stat.shotsOffTarget ?? 0),
+            };
+          })
         );
 
       if (insertStatsError) {
@@ -1281,11 +1437,11 @@ export default function PlayedMatchDetailScreen({
       };
     }
 
-    if (eventsToSave.length > 0) {
+    if (normalizedEventsToSave.length > 0) {
       const { error: insertEventsError } = await supabase
         .from("finished_match_events")
         .insert(
-          eventsToSave.map((event) => ({
+          normalizedEventsToSave.map((event) => ({
             finished_match_id: localMatch.id,
             type: event.type,
             period: event.period,
@@ -1373,7 +1529,7 @@ export default function PlayedMatchDetailScreen({
       events: nextEvents,
     }));
 
-    setEditEvents(eventsToSave);
+    setEditEvents(normalizedEventsToSave);
     setGoalkeeperSegments(nextGoalkeeperSegments);
 
     return {
