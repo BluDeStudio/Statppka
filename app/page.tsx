@@ -2464,13 +2464,22 @@ export default function Home() {
           )}
 
           {selectedPlayedMatchId !== null && selectedPlayedMatch && (
-            <PlayedMatchDetailScreen
-              clubId={currentClub.id}
-              match={selectedPlayedMatch}
-              onBack={() => setSelectedPlayedMatchId(null)}
-              isAdmin={isCurrentUserAdmin}
-           />
-          )}
+  <PlayedMatchDetailScreen
+    clubId={currentClub.id}
+    match={selectedPlayedMatch}
+    isAdmin={isCurrentUserAdmin}
+    onBack={() => {
+      setSelectedPlayedMatchId(null);
+
+      void loadClubMatchData(currentClub.id, true);
+
+      if (screen === "stats") {
+        setScreen("home");
+        setTimeout(() => setScreen("stats"), 50);
+      }
+    }}
+  />
+)}
         </div>
 
         <div
