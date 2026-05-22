@@ -46,18 +46,6 @@ type GoalkeeperSegmentRow = {
   goals_against: number | null;
 };
 
-type FinishedMatchEventRow = {
-  finished_match_id: string;
-  type: "goal_for" | "goal_against" | "yellow_card" | "red_card";
-  scorer?: number | null;
-  assist?: number | null;
-  card_player_number?: number | null;
-  scorer_player_id?: string | null;
-  assist_player_id?: string | null;
-  card_player_id?: string | null;
-  player_id?: string | null;
-};
-
 function ValueBadge({
   value,
   background,
@@ -230,7 +218,6 @@ export default function StatsScreen({
   const [statPlayerIdRows, setStatPlayerIdRows] = useState<StatPlayerIdRow[]>(
     []
   );
-  const [eventRows, setEventRows] = useState<FinishedMatchEventRow[]>([]);
   const [goalkeeperRows, setGoalkeeperRows] = useState<GoalkeeperSegmentRow[]>(
     []
   );
@@ -260,13 +247,8 @@ export default function StatsScreen({
     const loadData = async () => {
       setLoading(true);
 
-      const [
-        loadedPlayers,
-        periodsResponse,
-        statsResponse,
-        eventResponse,
-        goalkeeperResponse,
-      ] = await Promise.all([
+      const [loadedPlayers, periodsResponse, statsResponse, goalkeeperResponse] =
+        await Promise.all([
           getPlayersByClubId(clubId),
           supabase
             .from("periods")
@@ -278,14 +260,6 @@ export default function StatsScreen({
                 .from("finished_match_player_stats")
                 .select(
                   "finished_match_id, player_number, player_id, goals, assists, yellow_cards, red_cards, played_seconds, shots_on_target, shots_off_target"
-                )
-                .in("finished_match_id", finishedMatchIds)
-            : Promise.resolve({ data: [], error: null }),
-          finishedMatchIds.length > 0
-            ? supabase
-                .from("finished_match_events")
-                .select(
-                  "finished_match_id, type, scorer, assist, card_player_number, scorer_player_id, assist_player_id, card_player_id, player_id"
                 )
                 .in("finished_match_id", finishedMatchIds)
             : Promise.resolve({ data: [], error: null }),
@@ -311,13 +285,6 @@ export default function StatsScreen({
         );
       }
 
-      if (eventResponse.error) {
-        console.error(
-          "Nepodařilo se načíst události pro statistiky:",
-          eventResponse.error
-        );
-      }
-
       if (goalkeeperResponse.error) {
         console.error(
           "Nepodařilo se načíst brankářské úseky:",
@@ -329,9 +296,6 @@ export default function StatsScreen({
       setRatings(loadedRatings);
       setStatPlayerIdRows(
         ((statsResponse.data as StatPlayerIdRow[]) ?? []).filter(Boolean)
-      );
-      setEventRows(
-        ((eventResponse.data as FinishedMatchEventRow[]) ?? []).filter(Boolean)
       );
       setGoalkeeperRows(
         ((goalkeeperResponse.data as GoalkeeperSegmentRow[]) ?? []).filter(Boolean)
@@ -408,18 +372,6 @@ export default function StatsScreen({
 
     return map;
   }, [statPlayerIdRows]);
-
-  const eventRowsByMatchId = useMemo(() => {
-    const map = new Map<string, FinishedMatchEventRow[]>();
-
-    eventRows.forEach((row) => {
-      const rows = map.get(row.finished_match_id) ?? [];
-      rows.push(row);
-      map.set(row.finished_match_id, rows);
-    });
-
-    return map;
-  }, [eventRows]);
 
   const goalkeeperRowsByMatchId = useMemo(() => {
     const map = new Map<string, GoalkeeperSegmentRow[]>();
@@ -528,8 +480,6 @@ export default function StatsScreen({
         ratingPoints: number;
         ratingVotes: number;
         motmCount: number;
-        yellowCards: number;
-        redCards: number;
       }
     >();
 
@@ -545,103 +495,25 @@ export default function StatsScreen({
           playerId: row.player_id,
           player_id: row.player_id,
           playerNumber: Number(row.player_number),
-          goals: 0,
-          assists: 0,
-          yellowCards: 0,
-          redCards: 0,
+          goals: row.goals ?? 0,
+          assists: row.assists ?? 0,
+          yellowCards: row.yellow_cards ?? 0,
+          redCards: row.red_cards ?? 0,
           playedSeconds: row.played_seconds ?? 0,
           shotsOnTarget: row.shots_on_target ?? 0,
           shotsOffTarget: row.shots_off_target ?? 0,
-        })) ??
-        match.playerStats.map((stat) => ({
-          ...stat,
-          goals: 0,
-          assists: 0,
-          yellowCards: 0,
-          redCards: 0,
-        }));
-
-      const ensureMatchStat = (
-        playerNumberValue?: number | null,
-        playerIdValue?: string | null
-      ) => {
-        const playerNumber = Number(playerNumberValue ?? 0);
-        if (!Number.isFinite(playerNumber) || playerNumber <= 0) return null;
-
-        const playerId =
-          playerIdValue ??
-          statPlayerIdByMatchAndNumber.get(makeNumberKey(match.id, playerNumber)) ??
-          playerByNumber.get(playerNumber)?.id ??
-          null;
-
-        const playerKey = getPlayerKey(playerNumber, playerId);
-        let stat = matchStatsMap.get(playerKey);
-
-        if (!stat) {
-          stat = {
-            playerId,
-            playerNumber,
-            matches: 1,
-            goals: 0,
-            assists: 0,
-            yellowCards: 0,
-            redCards: 0,
-          };
-          matchStatsMap.set(playerKey, stat);
-        }
-
-        stat.playerId = stat.playerId ?? playerId;
-        stat.playerNumber = stat.playerNumber || playerNumber;
-
-        statsByNumber.set(playerNumber, playerKey);
-        if (playerId) {
-          statsByPlayerId.set(playerId, playerKey);
-        }
-
-        return stat;
-      };
+        })) ?? match.playerStats;
 
       sourceStats.forEach((stat) => {
         const playerNumber = Number(stat.playerNumber);
         const playerId = getPlayerIdForStat(match.id, stat);
+        const playerKey = getPlayerKey(playerNumber, playerId);
 
-        const matchStat = ensureMatchStat(playerNumber, playerId);
-        if (!matchStat) return;
+        mergeStatIntoMatchMap(matchStatsMap, stat, playerId, playerNumber);
 
-        // Účast v zápase se bere z řádku soupisky/statistik.
-        // Góly, asistence a karty se vždy přepočítávají až z aktuálních událostí.
-      });
-
-      const matchEventRows = eventRowsByMatchId.get(match.id) ?? [];
-
-      matchEventRows.forEach((event) => {
-        if (event.type === "goal_for") {
-          const scorerStat = ensureMatchStat(event.scorer ?? null, event.scorer_player_id ?? null);
-          if (scorerStat) scorerStat.goals += 1;
-
-          if (event.assist !== null && event.assist !== undefined) {
-            const assistStat = ensureMatchStat(
-              event.assist,
-              event.assist_player_id ?? null
-            );
-            if (assistStat) assistStat.assists += 1;
-          }
-        }
-
-        if (event.type === "yellow_card") {
-          const cardStat = ensureMatchStat(
-            event.card_player_number ?? null,
-            event.card_player_id ?? event.player_id ?? null
-          );
-          if (cardStat) cardStat.yellowCards += 1;
-        }
-
-        if (event.type === "red_card") {
-          const cardStat = ensureMatchStat(
-            event.card_player_number ?? null,
-            event.card_player_id ?? event.player_id ?? null
-          );
-          if (cardStat) cardStat.redCards += 1;
+        statsByNumber.set(playerNumber, playerKey);
+        if (playerId) {
+          statsByPlayerId.set(playerId, playerKey);
         }
       });
 
@@ -656,8 +528,6 @@ export default function StatsScreen({
             ratingPoints: 0,
             ratingVotes: 0,
             motmCount: 0,
-            yellowCards: 0,
-            redCards: 0,
           });
         }
 
@@ -667,15 +537,11 @@ export default function StatsScreen({
         current.matches += 1;
         current.goals += stat.goals;
         current.assists += stat.assists;
-        current.yellowCards += stat.yellowCards;
-        current.redCards += stat.redCards;
       });
 
       const ratingPlayerNumbers = Array.from(
         new Set([
-          ...Array.from(matchStatsMap.values()).map((player) =>
-            Number(player.playerNumber)
-          ),
+          ...sourceStats.map((player) => Number(player.playerNumber)),
           ...matchRatings.map((rating) => Number(rating.player_number)),
         ])
       );
@@ -712,8 +578,6 @@ export default function StatsScreen({
             ratingPoints: 0,
             ratingVotes: 0,
             motmCount: 0,
-            yellowCards: 0,
-            redCards: 0,
           });
         }
       });
@@ -735,8 +599,6 @@ export default function StatsScreen({
             ratingPoints: 0,
             ratingVotes: 0,
             motmCount: 0,
-            yellowCards: 0,
-            redCards: 0,
           });
         }
 
@@ -774,8 +636,6 @@ export default function StatsScreen({
           : null,
       ratingVotes: stats.ratingVotes,
       motmCount: stats.motmCount,
-      yellowCards: stats.yellowCards,
-      redCards: stats.redCards,
     }));
 
     return arr.sort((a, b) => {
@@ -822,7 +682,6 @@ export default function StatsScreen({
     playerByNumber,
     statPlayerIdByMatchAndNumber,
     statRowsByMatchId,
-    eventRowsByMatchId,
   ]);
 
   const goalkeeperStats = useMemo(() => {
@@ -1462,8 +1321,7 @@ export default function StatsScreen({
                                 }}
                               >
                                 Z {player.matches} • G {player.goals} • A{" "}
-                                {player.assists} • B {player.points} • ŽK{" "}
-                                {player.yellowCards} • ČK {player.redCards}
+                                {player.assists} • B {player.points}
                               </div>
 
                               <div
