@@ -55,6 +55,50 @@ type Props = {
 };
 
 type DisciplinePlayer = Player | ClubMemberPlayer;
+type FinishedMatchForCardsRow = {
+  id: string;
+  date: string;
+};
+
+type FinishedMatchCardStatRow = {
+  finished_match_id: string;
+  player_id: string | null;
+  yellow_cards: number | null;
+  red_cards: number | null;
+};
+
+const YELLOW_CARD_FINE_REASON = "Žlutá karta";
+const RED_CARD_FINE_REASON = "Červená karta";
+const CARD_FINE_NOTE_PREFIX = "auto:card:";
+
+function normalizeText(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function isAutomaticCardFine(fine: FineRow) {
+  return Boolean(fine.note?.startsWith(CARD_FINE_NOTE_PREFIX));
+}
+
+function buildCardFineKey(playerId: string, reason: string) {
+  return `${playerId}::${normalizeText(reason)}`;
+}
+
+function getSafeFineDateForPeriod(period: Period, preferredDate?: string | null) {
+  const preferred = normalizeDateToIso(preferredDate);
+
+  if (preferred && isDateInsidePeriod(preferred, period)) {
+    return preferred;
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (isDateInsidePeriod(today, period)) {
+    return today;
+  }
+
+  return normalizeDateToIso(period.end_date) || normalizeDateToIso(period.start_date);
+}
+
 
 function normalizeDateToIso(value?: string | null) {
   if (!value) return "";
@@ -294,6 +338,184 @@ export default function DisciplineScreen({
     setTemplatesLoaded(true);
   }, [clubId]);
 
+  const syncCardFinesForPeriod = useCallback(
+    async (period: Period) => {
+      const currentFines = await getFinesByPeriodId(period.id);
+      const templates = await ensureDefaultFineTemplates(clubId);
+
+      const yellowTemplate = templates.find(
+        (template) =>
+          normalizeText(template.name) === normalizeText(YELLOW_CARD_FINE_REASON) &&
+          template.is_active
+      );
+      const redTemplate = templates.find(
+        (template) =>
+          normalizeText(template.name) === normalizeText(RED_CARD_FINE_REASON) &&
+          template.is_active
+      );
+
+      const { data: matchesData, error: matchesError } = await supabase
+        .from("finished_matches")
+        .select("id,date")
+        .eq("club_id", clubId);
+
+      if (matchesError) {
+        console.error("Nepodařilo se načíst zápasy pro pokuty za karty:", matchesError);
+        return currentFines;
+      }
+
+      const matchesInPeriod = ((matchesData as FinishedMatchForCardsRow[]) ?? [])
+        .filter((match) => isDateInsidePeriod(match.date, period));
+
+      const matchIds = matchesInPeriod.map((match) => match.id);
+
+      if (matchIds.length === 0) {
+        return currentFines;
+      }
+
+      const matchDateById = new Map(
+        matchesInPeriod.map((match) => [match.id, normalizeDateToIso(match.date)])
+      );
+
+      const { data: cardStatsData, error: cardStatsError } = await supabase
+        .from("finished_match_player_stats")
+        .select("finished_match_id,player_id,yellow_cards,red_cards")
+        .in("finished_match_id", matchIds)
+        .not("player_id", "is", null);
+
+      if (cardStatsError) {
+        console.error("Nepodařilo se načíst karty pro pokuty:", cardStatsError);
+        return currentFines;
+      }
+
+      const desiredCounts = new Map<
+        string,
+        {
+          playerId: string;
+          reason: string;
+          count: number;
+          date: string;
+          amount: number;
+          noteType: "yellow" | "red";
+        }
+      >();
+
+      ((cardStatsData as FinishedMatchCardStatRow[]) ?? []).forEach((row) => {
+        if (!row.player_id) return;
+
+        const matchDate = matchDateById.get(row.finished_match_id) ?? period.end_date;
+
+        const addDesired = (
+          reason: string,
+          count: number,
+          amount: number,
+          noteType: "yellow" | "red"
+        ) => {
+          if (count <= 0) return;
+
+          const key = buildCardFineKey(row.player_id!, reason);
+          const existing = desiredCounts.get(key);
+
+          if (!existing) {
+            desiredCounts.set(key, {
+              playerId: row.player_id!,
+              reason,
+              count,
+              date: matchDate,
+              amount,
+              noteType,
+            });
+            return;
+          }
+
+          existing.count += count;
+
+          if (matchDate > existing.date) {
+            existing.date = matchDate;
+          }
+        };
+
+        if (yellowTemplate) {
+          addDesired(
+            YELLOW_CARD_FINE_REASON,
+            Number(row.yellow_cards ?? 0),
+            Number(yellowTemplate.default_amount ?? 0),
+            "yellow"
+          );
+        }
+
+        if (redTemplate) {
+          addDesired(
+            RED_CARD_FINE_REASON,
+            Number(row.red_cards ?? 0),
+            Number(redTemplate.default_amount ?? 0),
+            "red"
+          );
+        }
+      });
+
+      const existingCounts = new Map<string, number>();
+      const automaticFinesByKey = new Map<string, FineRow[]>();
+
+      currentFines.forEach((fine) => {
+        if (
+          normalizeText(fine.reason) !== normalizeText(YELLOW_CARD_FINE_REASON) &&
+          normalizeText(fine.reason) !== normalizeText(RED_CARD_FINE_REASON)
+        ) {
+          return;
+        }
+
+        const key = buildCardFineKey(fine.player_id, fine.reason);
+        existingCounts.set(key, (existingCounts.get(key) ?? 0) + 1);
+
+        if (isAutomaticCardFine(fine)) {
+          const rows = automaticFinesByKey.get(key) ?? [];
+          rows.push(fine);
+          automaticFinesByKey.set(key, rows);
+        }
+      });
+
+      for (const desired of desiredCounts.values()) {
+        const key = buildCardFineKey(desired.playerId, desired.reason);
+        const existingCount = existingCounts.get(key) ?? 0;
+        const missingCount = Math.max(0, desired.count - existingCount);
+
+        for (let index = 0; index < missingCount; index += 1) {
+          await createFine({
+            clubId,
+            periodId: period.id,
+            playerId: desired.playerId,
+            amount: desired.amount,
+            reason: desired.reason,
+            note: `${CARD_FINE_NOTE_PREFIX}${desired.noteType}`,
+            fineDate: getSafeFineDateForPeriod(period, desired.date),
+            createdBy: currentUserId,
+          });
+        }
+      }
+
+      for (const [key, automaticFines] of automaticFinesByKey.entries()) {
+        const desiredCount = desiredCounts.get(key)?.count ?? 0;
+        const existingCount = existingCounts.get(key) ?? 0;
+        const excessCount = Math.max(0, existingCount - desiredCount);
+
+        if (excessCount === 0) continue;
+
+        const finesToDelete = automaticFines
+          .slice()
+          .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
+          .slice(0, excessCount);
+
+        for (const fine of finesToDelete) {
+          await deleteFine(fine.id);
+        }
+      }
+
+      return await getFinesByPeriodId(period.id);
+    },
+    [clubId, currentUserId]
+  );
+
   const reloadVisibleFines = useCallback(async () => {
     setFinesLoading(true);
 
@@ -305,7 +527,7 @@ export default function DisciplineScreen({
       }
 
       const finesByPeriods = await Promise.all(
-        periods.map((period) => getFinesByPeriodId(period.id))
+        periods.map((period) => syncCardFinesForPeriod(period))
       );
 
       setFines(finesByPeriods.flat());
@@ -319,10 +541,10 @@ export default function DisciplineScreen({
       return;
     }
 
-    const data = await getFinesByPeriodId(effectivePeriod.id);
+    const data = await syncCardFinesForPeriod(effectivePeriod);
     setFines(data);
     setFinesLoading(false);
-  }, [effectivePeriod, periodFilterMode, periods]);
+  }, [effectivePeriod, periodFilterMode, periods, syncCardFinesForPeriod]);
 
   useEffect(() => {
     let active = true;
