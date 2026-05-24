@@ -364,9 +364,6 @@ export default function Home() {
 
   const matchesLoadedRef = useRef(false);
   const matchesLoadingRef = useRef(false);
-  const clubRealtimeRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
 
   const [overviewPlayers, setOverviewPlayers] = useState<Player[]>([]);
   const [overviewPlayersLoaded, setOverviewPlayersLoaded] = useState(false);
@@ -393,6 +390,11 @@ export default function Home() {
 
   const [openTrainingId, setOpenTrainingId] = useState<string | null>(null);
   const [openMatchId, setOpenMatchId] = useState<string | null>(null);
+
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const [pullDistance, setPullDistance] = useState(0);
+  const pullStartYRef = useRef<number | null>(null);
+  const pullDistanceRef = useRef(0);
 
   const isCurrentUserAdmin = currentMembership?.role === "admin";
 
@@ -446,20 +448,6 @@ export default function Home() {
   const ensureClubMatchDataLoaded = useCallback(
     async (clubId: string) => {
       await loadClubMatchData(clubId, false);
-    },
-    [loadClubMatchData]
-  );
-
-  const scheduleClubMatchRealtimeRefresh = useCallback(
-    (clubId: string) => {
-      if (clubRealtimeRefreshTimeoutRef.current) {
-        clearTimeout(clubRealtimeRefreshTimeoutRef.current);
-      }
-
-      clubRealtimeRefreshTimeoutRef.current = setTimeout(() => {
-        clubRealtimeRefreshTimeoutRef.current = null;
-        void loadClubMatchData(clubId, true);
-      }, 350);
     },
     [loadClubMatchData]
   );
@@ -711,6 +699,110 @@ export default function Home() {
     [loadAppState]
   );
 
+  const handlePullRefresh = useCallback(async () => {
+    if (!session || !currentClub || isPullRefreshing) return;
+
+    try {
+      setIsPullRefreshing(true);
+      setPullDistance(74);
+      setAppError("");
+
+      const {
+        data: { session: freshSession },
+      } = await supabase.auth.getSession();
+
+      await loadAppState(freshSession ?? session);
+
+      await Promise.all([
+        loadClubMatchData(currentClub.id, true),
+        loadHomeTrainings(currentClub.id, true),
+        loadOverviewPlayers(currentClub.id, true),
+        loadLinkedPlayerState(currentClub.id, session.user.id),
+      ]);
+    } catch (error) {
+      console.error("Nepodařilo se obnovit aplikaci:", error);
+      setAppError("Nepodařilo se obnovit data. Zkus to prosím znovu.");
+    } finally {
+      setIsPullRefreshing(false);
+      setPullDistance(0);
+      pullDistanceRef.current = 0;
+      pullStartYRef.current = null;
+    }
+  }, [
+    session,
+    currentClub,
+    isPullRefreshing,
+    loadAppState,
+    loadClubMatchData,
+    loadHomeTrainings,
+    loadOverviewPlayers,
+    loadLinkedPlayerState,
+  ]);
+
+  const handlePullTouchStart = (event: React.TouchEvent<HTMLElement>) => {
+    if (isPullRefreshing) return;
+
+    const scrollTop =
+      window.scrollY ||
+      document.documentElement.scrollTop ||
+      document.body.scrollTop ||
+      0;
+
+    if (scrollTop > 0) {
+      pullStartYRef.current = null;
+      return;
+    }
+
+    pullStartYRef.current = event.touches[0]?.clientY ?? null;
+  };
+
+  const handlePullTouchMove = (event: React.TouchEvent<HTMLElement>) => {
+    if (isPullRefreshing) return;
+    if (pullStartYRef.current === null) return;
+
+    const currentY = event.touches[0]?.clientY ?? 0;
+    const diff = currentY - pullStartYRef.current;
+
+    if (diff <= 0) {
+      setPullDistance(0);
+      pullDistanceRef.current = 0;
+      return;
+    }
+
+    const scrollTop =
+      window.scrollY ||
+      document.documentElement.scrollTop ||
+      document.body.scrollTop ||
+      0;
+
+    if (scrollTop > 0) return;
+
+    const nextDistance = Math.min(96, Math.round(diff * 0.42));
+
+    if (nextDistance > 8) {
+      event.preventDefault();
+    }
+
+    setPullDistance(nextDistance);
+    pullDistanceRef.current = nextDistance;
+  };
+
+  const handlePullTouchEnd = () => {
+    if (isPullRefreshing) return;
+
+    const shouldRefresh = pullDistanceRef.current >= 62;
+
+    pullStartYRef.current = null;
+    pullDistanceRef.current = 0;
+
+    if (shouldRefresh) {
+      void handlePullRefresh();
+      return;
+    }
+
+    setPullDistance(0);
+  };
+
   useEffect(() => {
     let removeListener: (() => void) | null = null;
     let isMounted = true;
@@ -820,76 +912,6 @@ export default function Home() {
       void loadClubMatchData(currentClub.id, true);
     }
   }, [session, currentClub, loadClubMatchData]);
-
-  useEffect(() => {
-    if (!currentClub) return;
-
-    const clubId = currentClub.id;
-
-    const refreshClubMatches = () => {
-      scheduleClubMatchRealtimeRefresh(clubId);
-    };
-
-    const channel = supabase
-      .channel(`club-matches-realtime-${clubId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "planned_matches",
-          filter: `club_id=eq.${clubId}`,
-        },
-        refreshClubMatches
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "finished_matches",
-          filter: `club_id=eq.${clubId}`,
-        },
-        refreshClubMatches
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "finished_match_player_stats",
-        },
-        refreshClubMatches
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "finished_match_events",
-        },
-        refreshClubMatches
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "finished_match_goalkeeper_segments",
-        },
-        refreshClubMatches
-      )
-      .subscribe();
-
-    return () => {
-      if (clubRealtimeRefreshTimeoutRef.current) {
-        clearTimeout(clubRealtimeRefreshTimeoutRef.current);
-        clubRealtimeRefreshTimeoutRef.current = null;
-      }
-
-      void supabase.removeChannel(channel);
-    };
-  }, [currentClub, scheduleClubMatchRealtimeRefresh]);
 
   useEffect(() => {
     if (!currentClub) return;
@@ -1409,6 +1431,43 @@ export default function Home() {
     </button>
   );
 
+  const pullRefreshStyle: React.CSSProperties = {
+    position: "fixed",
+    top: "12px",
+    left: "50%",
+    transform: `translate(-50%, ${Math.max(0, pullDistance - 64)}px)`,
+    opacity: isPullRefreshing || pullDistance > 10 ? 1 : 0,
+    transition: isPullRefreshing
+      ? "opacity 0.18s ease, transform 0.18s ease"
+      : "opacity 0.12s ease",
+    zIndex: 9999,
+    pointerEvents: "none",
+  };
+
+  const pullRefreshBadgeStyle: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "9px 13px",
+    borderRadius: "999px",
+    background: "rgba(10,10,10,0.88)",
+    border: `1px solid ${dynamicTheme.cardBorder}`,
+    color: "#ffffff",
+    boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
+    backdropFilter: "blur(14px)",
+    fontSize: "12px",
+    fontWeight: "bold",
+  };
+
+  const pullRefreshSpinnerStyle: React.CSSProperties = {
+    width: "14px",
+    height: "14px",
+    borderRadius: "999px",
+    border: `2px solid ${dynamicTheme.primary}55`,
+    borderTopColor: dynamicTheme.primary,
+    animation: isPullRefreshing ? "myteamhub-spin 0.75s linear infinite" : undefined,
+  };
+
   if (bootLoading) {
     return (
       <main style={{ ...styles.page, background: dynamicTheme.pageBackground }}>
@@ -1737,7 +1796,35 @@ export default function Home() {
   }
 
   return (
-    <main style={{ ...styles.page, background: dynamicTheme.pageBackground }}>
+    <main
+      style={{
+        ...styles.page,
+        background: dynamicTheme.pageBackground,
+        touchAction: pullDistance > 0 || isPullRefreshing ? "none" : "pan-y",
+      }}
+      onTouchStart={handlePullTouchStart}
+      onTouchMove={handlePullTouchMove}
+      onTouchEnd={handlePullTouchEnd}
+      onTouchCancel={handlePullTouchEnd}
+    >
+      <style>{`
+        @keyframes myteamhub-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+
+      <div style={pullRefreshStyle}>
+        <div style={pullRefreshBadgeStyle}>
+          <span style={pullRefreshSpinnerStyle} />
+          {isPullRefreshing
+            ? "Aktualizuji..."
+            : pullDistance >= 62
+              ? "Pusť pro obnovení"
+              : "Stáhni pro obnovení"}
+        </div>
+      </div>
+
       <div
         style={{
           ...styles.phone,
