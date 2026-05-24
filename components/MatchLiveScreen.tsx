@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 import { getPlayersByClubId, type Player } from "@/lib/players";
 import { getMatchLineupPlayerIds } from "@/lib/matchLineups";
 import {
@@ -110,6 +111,21 @@ export default function MatchLiveScreen({
     return players.filter((player) => idsToUse.includes(player.id));
   }, [players, lineupPlayerIds, selectedPlayers]);
 
+  const detailPlayerIds = useMemo(
+    () => selectedPlayerObjects.map((player) => player.id),
+    [selectedPlayerObjects]
+  );
+
+  const appendLiveEvent = useCallback((createdEvent: LiveMatchEventRecord) => {
+    setEvents((prev) => {
+      if (prev.some((event) => event.id === createdEvent.id)) {
+        return prev;
+      }
+
+      return [...prev, createdEvent];
+    });
+  }, []);
+
   const loadDetailRows = useCallback(
     async (playerIds: string[]) => {
       if (playerIds.length === 0) {
@@ -167,6 +183,77 @@ export default function MatchLiveScreen({
       active = false;
     };
   }, [clubId, matchId, selectedPlayers, loadDetailRows]);
+
+  const refreshMatchState = useCallback(async () => {
+    const loadedMatch = await getPlannedMatchById(matchId);
+
+    if (loadedMatch) {
+      setMatchState(loadedMatch);
+      onMatchStateChanged?.(loadedMatch);
+    }
+  }, [matchId, onMatchStateChanged]);
+
+  const refreshEvents = useCallback(async () => {
+    const loadedEvents = await getLiveMatchEvents(matchId);
+    setEvents(loadedEvents);
+  }, [matchId]);
+
+  const refreshDetailRows = useCallback(async () => {
+    if (detailPlayerIds.length === 0) return;
+    await loadDetailRows(detailPlayerIds);
+  }, [detailPlayerIds, loadDetailRows]);
+
+  useEffect(() => {
+    let isDisposed = false;
+
+    const channel = supabase
+      .channel(`live-match-screen-${matchId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "planned_matches",
+          filter: `id=eq.${matchId}`,
+        },
+        () => {
+          if (isDisposed) return;
+          void refreshMatchState();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "live_match_events",
+          filter: `match_id=eq.${matchId}`,
+        },
+        () => {
+          if (isDisposed) return;
+          void refreshEvents();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "live_match_player_details",
+          filter: `match_id=eq.${matchId}`,
+        },
+        () => {
+          if (isDisposed) return;
+          void refreshDetailRows();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      isDisposed = true;
+      void supabase.removeChannel(channel);
+    };
+  }, [matchId, refreshDetailRows, refreshEvents, refreshMatchState]);
 
   const timerPaused = useMemo(() => {
     if (!matchState) return false;
@@ -485,7 +572,7 @@ export default function MatchLiveScreen({
     }
 
     const createdEvent = result.event;
-    setEvents((prev) => [...prev, createdEvent]);
+    appendLiveEvent(createdEvent);
     setScorerId("");
     setAssistId("none");
     setMessage("Gól byl uložen.");
@@ -525,7 +612,7 @@ export default function MatchLiveScreen({
     }
 
     const createdEvent = result.event;
-    setEvents((prev) => [...prev, createdEvent]);
+    appendLiveEvent(createdEvent);
     setMessage("Inkasovaný gól byl uložen.");
     setSavingEvent(false);
   };
@@ -569,7 +656,7 @@ export default function MatchLiveScreen({
     }
 
     const createdEvent = result.event;
-    setEvents((prev) => [...prev, createdEvent]);
+    appendLiveEvent(createdEvent);
     setYellowCardPlayerId("");
     setMessage("Žlutá karta byla uložena.");
     setSavingEvent(false);
@@ -614,7 +701,7 @@ export default function MatchLiveScreen({
     }
 
     const createdEvent = result.event;
-    setEvents((prev) => [...prev, createdEvent]);
+    appendLiveEvent(createdEvent);
     setRedCardPlayerId("");
     setMessage("Červená karta byla uložena.");
     setSavingEvent(false);

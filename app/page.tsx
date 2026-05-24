@@ -364,6 +364,9 @@ export default function Home() {
 
   const matchesLoadedRef = useRef(false);
   const matchesLoadingRef = useRef(false);
+  const clubRealtimeRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
 
   const [overviewPlayers, setOverviewPlayers] = useState<Player[]>([]);
   const [overviewPlayersLoaded, setOverviewPlayersLoaded] = useState(false);
@@ -443,6 +446,20 @@ export default function Home() {
   const ensureClubMatchDataLoaded = useCallback(
     async (clubId: string) => {
       await loadClubMatchData(clubId, false);
+    },
+    [loadClubMatchData]
+  );
+
+  const scheduleClubMatchRealtimeRefresh = useCallback(
+    (clubId: string) => {
+      if (clubRealtimeRefreshTimeoutRef.current) {
+        clearTimeout(clubRealtimeRefreshTimeoutRef.current);
+      }
+
+      clubRealtimeRefreshTimeoutRef.current = setTimeout(() => {
+        clubRealtimeRefreshTimeoutRef.current = null;
+        void loadClubMatchData(clubId, true);
+      }, 350);
     },
     [loadClubMatchData]
   );
@@ -803,6 +820,76 @@ export default function Home() {
       void loadClubMatchData(currentClub.id, true);
     }
   }, [session, currentClub, loadClubMatchData]);
+
+  useEffect(() => {
+    if (!currentClub) return;
+
+    const clubId = currentClub.id;
+
+    const refreshClubMatches = () => {
+      scheduleClubMatchRealtimeRefresh(clubId);
+    };
+
+    const channel = supabase
+      .channel(`club-matches-realtime-${clubId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "planned_matches",
+          filter: `club_id=eq.${clubId}`,
+        },
+        refreshClubMatches
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "finished_matches",
+          filter: `club_id=eq.${clubId}`,
+        },
+        refreshClubMatches
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "finished_match_player_stats",
+        },
+        refreshClubMatches
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "finished_match_events",
+        },
+        refreshClubMatches
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "finished_match_goalkeeper_segments",
+        },
+        refreshClubMatches
+      )
+      .subscribe();
+
+    return () => {
+      if (clubRealtimeRefreshTimeoutRef.current) {
+        clearTimeout(clubRealtimeRefreshTimeoutRef.current);
+        clubRealtimeRefreshTimeoutRef.current = null;
+      }
+
+      void supabase.removeChannel(channel);
+    };
+  }, [currentClub, scheduleClubMatchRealtimeRefresh]);
 
   useEffect(() => {
     if (!currentClub) return;
