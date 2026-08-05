@@ -20,10 +20,16 @@ type CreatePeriodInput = {
   type: PeriodType;
   startDate: string;
   endDate: string;
+  makeActive?: boolean;
 };
 
-type CloseAndCreatePeriodInput = CreatePeriodInput & {
+type CloseAndCreatePeriodInput = {
+  clubId: string;
   closingPeriodId: string;
+  name: string;
+  type: PeriodType;
+  startDate: string;
+  endDate: string;
 };
 
 export async function getActivePeriod(clubId: string): Promise<Period | null> {
@@ -63,16 +69,19 @@ export async function createPeriod({
   type,
   startDate,
   endDate,
+  makeActive = true,
 }: CreatePeriodInput): Promise<Period | null> {
-  const { error: deactivateError } = await supabase
-    .from("periods")
-    .update({ is_active: false })
-    .eq("club_id", clubId)
-    .eq("is_active", true);
+  if (makeActive) {
+    const { error: deactivateError } = await supabase
+      .from("periods")
+      .update({ is_active: false })
+      .eq("club_id", clubId)
+      .eq("is_active", true);
 
-  if (deactivateError) {
-    console.error("Nepodařilo se deaktivovat staré období:", deactivateError);
-    return null;
+    if (deactivateError) {
+      console.error("Nepodařilo se deaktivovat původní období:", deactivateError);
+      return null;
+    }
   }
 
   const { data, error } = await supabase
@@ -83,7 +92,7 @@ export async function createPeriod({
       type,
       start_date: startDate,
       end_date: endDate,
-      is_active: true,
+      is_active: makeActive,
       is_closed: false,
     })
     .select("*")
@@ -95,59 +104,6 @@ export async function createPeriod({
   }
 
   return (data as Period) ?? null;
-}
-
-export async function setActivePeriod(
-  periodId: string,
-  clubId: string
-): Promise<boolean> {
-  const { data: selectedPeriod, error: selectedPeriodError } = await supabase
-    .from("periods")
-    .select("id, is_closed")
-    .eq("id", periodId)
-    .eq("club_id", clubId)
-    .maybeSingle();
-
-  if (selectedPeriodError || !selectedPeriod) {
-    console.error(
-      "Nepodařilo se ověřit období:",
-      selectedPeriodError ?? "Období neexistuje."
-    );
-    return false;
-  }
-
-  if (selectedPeriod.is_closed) {
-    console.error("Uzavřené období nelze znovu nastavit jako aktivní.");
-    return false;
-  }
-
-  const { error: deactivateError } = await supabase
-    .from("periods")
-    .update({ is_active: false })
-    .eq("club_id", clubId)
-    .eq("is_active", true);
-
-  if (deactivateError) {
-    console.error(
-      "Nepodařilo se deaktivovat původní aktivní období:",
-      deactivateError
-    );
-    return false;
-  }
-
-  const { error: activateError } = await supabase
-    .from("periods")
-    .update({ is_active: true })
-    .eq("id", periodId)
-    .eq("club_id", clubId)
-    .eq("is_closed", false);
-
-  if (activateError) {
-    console.error("Nepodařilo se nastavit aktivní období:", activateError);
-    return false;
-  }
-
-  return true;
 }
 
 export async function closePeriod(
@@ -171,11 +127,6 @@ export async function closePeriod(
   return true;
 }
 
-/**
- * Uzavře současné období a vytvoří nové aktivní období.
- * Pokud vytvoření nového období selže, pokusí se původní období znovu otevřít,
- * aby klub nezůstal bez aktivního období.
- */
 export async function closeAndCreatePeriod({
   clubId,
   closingPeriodId,
@@ -196,6 +147,11 @@ export async function closeAndCreatePeriod({
       "Nepodařilo se načíst uzavírané období:",
       closingPeriodError ?? "Období neexistuje."
     );
+    return null;
+  }
+
+  if (!closingPeriod.is_active) {
+    console.error("Ukončit lze pouze právě aktivní období.");
     return null;
   }
 

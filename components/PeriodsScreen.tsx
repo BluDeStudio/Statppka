@@ -2,16 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  closePeriod,
+  closeAndCreatePeriod,
   createPeriod,
   getActivePeriod,
   getPeriodsByClubId,
-  setActivePeriod,
   type Period,
+  type PeriodType,
 } from "@/lib/periods";
 import { styles } from "@/styles/appStyles";
-
-type PeriodType = "year" | "season";
 
 type Props = {
   clubId: string;
@@ -22,20 +20,60 @@ function formatPeriodType(type: PeriodType) {
   return type === "year" ? "Rok" : "Sezóna";
 }
 
-function buildDefaultSeasonName(startDate: string, endDate: string) {
-  if (!startDate || !endDate) return "";
-  const startYear = new Date(startDate).getFullYear();
-  const endYear = new Date(endDate).getFullYear();
-
-  if (Number.isNaN(startYear) || Number.isNaN(endYear)) return "";
-  return `${startYear}/${endYear}`;
+function formatDate(value: string) {
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return value;
+  return `${Number(day)}. ${Number(month)}. ${year}`;
 }
 
-function buildDefaultYearName(startDate: string) {
-  if (!startDate) return "";
-  const startYear = new Date(startDate).getFullYear();
-  if (Number.isNaN(startYear)) return "";
-  return String(startYear);
+function getYearFromDate(value: string) {
+  const [year] = value.split("-");
+  return Number(year);
+}
+
+function buildDefaultPeriodName(
+  type: PeriodType,
+  startDate: string,
+  endDate: string
+) {
+  if (!startDate || !endDate) return "";
+
+  const startYear = getYearFromDate(startDate);
+  const endYear = getYearFromDate(endDate);
+
+  if (!Number.isFinite(startYear) || !Number.isFinite(endYear)) return "";
+
+  return type === "year"
+    ? `Rok ${startYear}`
+    : `Sezóna ${startYear}/${endYear}`;
+}
+
+function addYearsToIsoDate(value: string, years: number) {
+  const [yearValue, monthValue, dayValue] = value.split("-").map(Number);
+
+  if (!yearValue || !monthValue || !dayValue) return "";
+
+  const targetYear = yearValue + years;
+  const lastDayOfTargetMonth = new Date(targetYear, monthValue, 0).getDate();
+  const safeDay = Math.min(dayValue, lastDayOfTargetMonth);
+
+  return [
+    String(targetYear).padStart(4, "0"),
+    String(monthValue).padStart(2, "0"),
+    String(safeDay).padStart(2, "0"),
+  ].join("-");
+}
+
+function getSuggestedNextPeriod(period: Period) {
+  const startDate = addYearsToIsoDate(period.start_date, 1);
+  const endDate = addYearsToIsoDate(period.end_date, 1);
+
+  return {
+    type: period.type,
+    startDate,
+    endDate,
+    name: buildDefaultPeriodName(period.type, startDate, endDate),
+  };
 }
 
 export default function PeriodsScreen({
@@ -43,16 +81,23 @@ export default function PeriodsScreen({
   primaryColor = "#888888",
 }: Props) {
   const [periods, setPeriods] = useState<Period[]>([]);
-  const [activePeriod, setActivePeriodState] = useState<Period | null>(null);
+  const [activePeriod, setActivePeriod] = useState<Period | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  const [periodName, setPeriodName] = useState("");
-  const [periodType, setPeriodType] = useState<PeriodType>("year");
-  const [periodStartDate, setPeriodStartDate] = useState("");
-  const [periodEndDate, setPeriodEndDate] = useState("");
+  const [showCloseForm, setShowCloseForm] = useState(false);
+  const [nextPeriodName, setNextPeriodName] = useState("");
+  const [nextPeriodType, setNextPeriodType] = useState<PeriodType>("season");
+  const [nextPeriodStartDate, setNextPeriodStartDate] = useState("");
+  const [nextPeriodEndDate, setNextPeriodEndDate] = useState("");
+
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const [customType, setCustomType] = useState<PeriodType>("year");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
 
   const loadData = async () => {
     setLoading(true);
@@ -63,20 +108,13 @@ export default function PeriodsScreen({
     ]);
 
     setPeriods(loadedPeriods);
-    setActivePeriodState(loadedActivePeriod);
+    setActivePeriod(loadedActivePeriod);
     setLoading(false);
   };
 
   useEffect(() => {
     void loadData();
   }, [clubId]);
-
-  const resetForm = () => {
-    setPeriodName("");
-    setPeriodType("year");
-    setPeriodStartDate("");
-    setPeriodEndDate("");
-  };
 
   const sortedPeriods = useMemo(() => {
     return [...periods].sort((a, b) => {
@@ -86,27 +124,130 @@ export default function PeriodsScreen({
     });
   }, [periods]);
 
-  const handleCreatePeriod = async () => {
-    if (!periodStartDate) {
-      setMessage("Vyber datum začátku období.");
+  const openCloseForm = () => {
+    if (!activePeriod) return;
+
+    const suggested = getSuggestedNextPeriod(activePeriod);
+
+    setNextPeriodType(suggested.type);
+    setNextPeriodStartDate(suggested.startDate);
+    setNextPeriodEndDate(suggested.endDate);
+    setNextPeriodName(suggested.name);
+    setMessage("");
+    setShowCloseForm(true);
+  };
+
+  const handleNextPeriodTypeChange = (type: PeriodType) => {
+    setNextPeriodType(type);
+    setNextPeriodName(
+      buildDefaultPeriodName(type, nextPeriodStartDate, nextPeriodEndDate)
+    );
+  };
+
+  const handleNextStartDateChange = (value: string) => {
+    setNextPeriodStartDate(value);
+    setNextPeriodName(
+      buildDefaultPeriodName(nextPeriodType, value, nextPeriodEndDate)
+    );
+  };
+
+  const handleNextEndDateChange = (value: string) => {
+    setNextPeriodEndDate(value);
+    setNextPeriodName(
+      buildDefaultPeriodName(nextPeriodType, nextPeriodStartDate, value)
+    );
+  };
+
+  const handleCloseAndCreate = async () => {
+    if (!activePeriod) {
+      setMessage("Není nastavené žádné aktivní období.");
       return;
     }
 
-    if (!periodEndDate) {
-      setMessage("Vyber datum konce období.");
+    if (!nextPeriodStartDate || !nextPeriodEndDate) {
+      setMessage("Vyplň datum začátku a konce nového období.");
       return;
     }
 
-    if (periodEndDate < periodStartDate) {
-      setMessage("Datum konce musí být později než datum začátku.");
+    if (nextPeriodEndDate < nextPeriodStartDate) {
+      setMessage("Konec nového období musí být později než jeho začátek.");
       return;
     }
 
     const resolvedName =
-      periodName.trim() ||
-      (periodType === "year"
-        ? buildDefaultYearName(periodStartDate)
-        : buildDefaultSeasonName(periodStartDate, periodEndDate));
+      nextPeriodName.trim() ||
+      buildDefaultPeriodName(
+        nextPeriodType,
+        nextPeriodStartDate,
+        nextPeriodEndDate
+      );
+
+    if (!resolvedName) {
+      setMessage("Zadej název nového období.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      [
+        `Opravdu chceš ukončit období "${activePeriod.name}"?`,
+        "",
+        `Nové aktivní období bude: "${resolvedName}".`,
+        "",
+        "Historická data se nesmažou. Nové statistiky, docházka a pokuty se budou zobrazovat v novém aktivním období.",
+      ].join("\n")
+    );
+
+    if (!confirmed) return;
+
+    setSaving(true);
+    setMessage("");
+
+    const created = await closeAndCreatePeriod({
+      clubId,
+      closingPeriodId: activePeriod.id,
+      name: resolvedName,
+      type: nextPeriodType,
+      startDate: nextPeriodStartDate,
+      endDate: nextPeriodEndDate,
+    });
+
+    if (!created) {
+      setMessage(
+        "Nepodařilo se ukončit období a vytvořit nové. Původní období zůstalo aktivní."
+      );
+      setSaving(false);
+      return;
+    }
+
+    await loadData();
+    setShowCloseForm(false);
+    setMessage(
+      `Období "${activePeriod.name}" bylo ukončeno. Aktivní je nyní "${created.name}".`
+    );
+    setSaving(false);
+  };
+
+  const resetCustomForm = () => {
+    setCustomName("");
+    setCustomType("year");
+    setCustomStartDate("");
+    setCustomEndDate("");
+  };
+
+  const handleCreateCustomPeriod = async () => {
+    if (!customStartDate || !customEndDate) {
+      setMessage("Vyplň datum začátku a konce období.");
+      return;
+    }
+
+    if (customEndDate < customStartDate) {
+      setMessage("Konec období musí být později než jeho začátek.");
+      return;
+    }
+
+    const resolvedName =
+      customName.trim() ||
+      buildDefaultPeriodName(customType, customStartDate, customEndDate);
 
     if (!resolvedName) {
       setMessage("Zadej název období.");
@@ -119,197 +260,265 @@ export default function PeriodsScreen({
     const created = await createPeriod({
       clubId,
       name: resolvedName,
-      type: periodType,
-      startDate: periodStartDate,
-      endDate: periodEndDate,
+      type: customType,
+      startDate: customStartDate,
+      endDate: customEndDate,
+      makeActive: activePeriod === null,
     });
 
     if (!created) {
-      setMessage("Nepodařilo se vytvořit období.");
+      setMessage("Nepodařilo se vytvořit vlastní období.");
       setSaving(false);
       return;
     }
 
     await loadData();
-    resetForm();
-    setMessage(`Období "${resolvedName}" bylo vytvořeno a nastaveno jako aktivní.`);
-    setSaving(false);
-  };
+    resetCustomForm();
+    setShowCustomForm(false);
 
-  const handleActivatePeriod = async (period: Period) => {
-    setSaving(true);
-    setMessage("");
-
-    const success = await setActivePeriod(period.id, clubId);
-
-    if (!success) {
-      setMessage("Nepodařilo se nastavit aktivní období.");
-      setSaving(false);
-      return;
-    }
-
-    await loadData();
-    setMessage(`Aktivní období bylo nastaveno na "${period.name}".`);
-    setSaving(false);
-  };
-
-  const handleClosePeriod = async (period: Period) => {
-    const confirmed = window.confirm(
-      `Opravdu chceš uzavřít období "${period.name}"?`
+    setMessage(
+      activePeriod
+        ? `Období "${created.name}" bylo přidáno do historie a filtrů. Aktivní období se nezměnilo.`
+        : `Období "${created.name}" bylo vytvořeno a nastaveno jako aktivní.`
     );
 
-    if (!confirmed) return;
-
-    setSaving(true);
-    setMessage("");
-
-    const success = await closePeriod(period.id);
-
-    if (!success) {
-      setMessage("Nepodařilo se uzavřít období.");
-      setSaving(false);
-      return;
-    }
-
-    await loadData();
-    setMessage(`Období "${period.name}" bylo uzavřeno.`);
     setSaving(false);
   };
 
-  const buttonStyle = (active: boolean): React.CSSProperties => ({
+  const toggleStyle = (active: boolean): React.CSSProperties => ({
     flex: 1,
-    border: "none",
-    borderRadius: "10px",
-    padding: "10px 12px",
-    background: active ? primaryColor : "rgba(255,255,255,0.08)",
-    color: "white",
+    border: active
+      ? `1px solid ${primaryColor}`
+      : "1px solid rgba(255,255,255,0.08)",
+    borderRadius: "12px",
+    padding: "11px 12px",
+    background: active ? primaryColor : "rgba(255,255,255,0.07)",
+    color: "#ffffff",
+    fontWeight: 900,
+    cursor: "pointer",
+    opacity: saving ? 0.7 : 1,
+  });
+
+  const secondaryButtonStyle: React.CSSProperties = {
+    width: "100%",
+    border: "1px solid rgba(255,255,255,0.10)",
+    borderRadius: "12px",
+    padding: "11px 12px",
+    background: "rgba(255,255,255,0.07)",
+    color: "#ffffff",
     fontWeight: "bold",
     cursor: "pointer",
-  });
+  };
 
   return (
     <div style={{ display: "grid", gap: "12px" }}>
       <div style={styles.card}>
-        <h2 style={styles.screenTitle}>Období</h2>
+        <h2 style={styles.screenTitle}>Aktivní období</h2>
 
         <div
           style={{
             color: "#cfcfcf",
             fontSize: "13px",
             lineHeight: 1.5,
-            marginBottom: "12px",
+            marginBottom: "14px",
           }}
         >
-          Tady nastavuješ hlavní období klubu. Aktivní období pak slouží jako
-          výchozí pro statistiky, disciplínu a pokuty.
+          Běžné statistiky, docházka a pokuty se mají zobrazovat podle aktivního
+          období. Historická data zůstávají uložená v seznamu období.
         </div>
 
-        {activePeriod ? (
+        {loading ? (
+          <div style={{ color: "#b8b8b8" }}>Načítám aktivní období...</div>
+        ) : activePeriod ? (
           <div
             style={{
-              padding: "12px 14px",
-              borderRadius: "12px",
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.06)",
+              padding: "16px",
+              borderRadius: "16px",
+              background: "rgba(255,255,255,0.045)",
+              border: `1px solid ${primaryColor}55`,
+              boxShadow: `0 12px 28px ${primaryColor}12`,
             }}
           >
             <div
               style={{
-                fontWeight: "bold",
-                fontSize: "15px",
-                marginBottom: "6px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: "12px",
               }}
             >
-              Aktivní období: {activePeriod.name}
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    color: "#ffffff",
+                    fontSize: "19px",
+                    fontWeight: 900,
+                  }}
+                >
+                  {activePeriod.name}
+                </div>
+
+                <div
+                  style={{
+                    color: "#b8b8b8",
+                    fontSize: "13px",
+                    lineHeight: 1.5,
+                    marginTop: "7px",
+                  }}
+                >
+                  {formatPeriodType(activePeriod.type)} •{" "}
+                  {formatDate(activePeriod.start_date)} až{" "}
+                  {formatDate(activePeriod.end_date)}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: "999px",
+                  background: "rgba(46,204,113,0.16)",
+                  color: "#9af0b6",
+                  fontWeight: "bold",
+                  fontSize: "12px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                AKTIVNÍ
+              </div>
             </div>
 
-            <div
-              style={{
-                color: "#cfcfcf",
-                fontSize: "13px",
-                lineHeight: 1.5,
-              }}
-            >
-              {formatPeriodType(activePeriod.type)} • {activePeriod.start_date} až{" "}
-              {activePeriod.end_date}
-            </div>
+            {!showCloseForm && (
+              <button
+                type="button"
+                onClick={openCloseForm}
+                disabled={saving}
+                style={{
+                  ...styles.primaryButton,
+                  width: "100%",
+                  marginTop: "16px",
+                  background: "rgba(198,40,40,0.95)",
+                  border: "none",
+                  opacity: saving ? 0.7 : 1,
+                }}
+              >
+                UKONČIT OBDOBÍ
+              </button>
+            )}
           </div>
         ) : (
           <div
             style={{
-              padding: "12px 14px",
-              borderRadius: "12px",
+              padding: "14px",
+              borderRadius: "14px",
               background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.07)",
               color: "#b8b8b8",
               fontSize: "13px",
+              lineHeight: 1.5,
             }}
           >
-            Zatím není nastavené žádné aktivní období.
+            Zatím není nastavené žádné aktivní období. Vytvoř první období níže.
           </div>
         )}
       </div>
 
-      <div style={styles.card}>
-        <h2 style={styles.screenTitle}>Vytvořit nové období</h2>
+      {showCloseForm && activePeriod && (
+        <div
+          style={{
+            ...styles.card,
+            border: `1px solid ${primaryColor}55`,
+          }}
+        >
+          <h2 style={styles.screenTitle}>Navazující období</h2>
 
-        <div style={{ display: "grid", gap: "10px" }}>
-          <input
-            type="text"
-            placeholder="Název období (např. 2026 nebo 2025/2026)"
-            value={periodName}
-            onChange={(e) => setPeriodName(e.target.value)}
-            style={styles.input}
-          />
-
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button
-              type="button"
-              style={buttonStyle(periodType === "year")}
-              onClick={() => setPeriodType("year")}
-            >
-              ROK
-            </button>
-
-            <button
-              type="button"
-              style={buttonStyle(periodType === "season")}
-              onClick={() => setPeriodType("season")}
-            >
-              SEZÓNA
-            </button>
-          </div>
-
-          <input
-            type="date"
-            value={periodStartDate}
-            onChange={(e) => setPeriodStartDate(e.target.value)}
-            style={styles.input}
-          />
-
-          <input
-            type="date"
-            value={periodEndDate}
-            onChange={(e) => setPeriodEndDate(e.target.value)}
-            style={styles.input}
-          />
-
-          <button
-            type="button"
-            onClick={() => void handleCreatePeriod()}
-            disabled={saving}
+          <div
             style={{
-              ...styles.primaryButton,
-              marginTop: 0,
-              background: primaryColor,
-              border: "none",
-              opacity: saving ? 0.7 : 1,
+              color: "#cfcfcf",
+              fontSize: "13px",
+              lineHeight: 1.5,
+              marginBottom: "14px",
             }}
           >
-            {saving ? "Ukládám..." : "Vytvořit období"}
-          </button>
+            Po potvrzení se období „{activePeriod.name}“ uzavře a nové období se
+            automaticky nastaví jako aktivní.
+          </div>
+
+          <div style={{ display: "grid", gap: "10px" }}>
+            <input
+              type="text"
+              value={nextPeriodName}
+              onChange={(event) => setNextPeriodName(event.target.value)}
+              placeholder="Název nového období"
+              style={styles.input}
+            />
+
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                type="button"
+                disabled={saving}
+                style={toggleStyle(nextPeriodType === "year")}
+                onClick={() => handleNextPeriodTypeChange("year")}
+              >
+                ROK
+              </button>
+
+              <button
+                type="button"
+                disabled={saving}
+                style={toggleStyle(nextPeriodType === "season")}
+                onClick={() => handleNextPeriodTypeChange("season")}
+              >
+                SEZÓNA
+              </button>
+            </div>
+
+            <input
+              type="date"
+              value={nextPeriodStartDate}
+              onChange={(event) =>
+                handleNextStartDateChange(event.target.value)
+              }
+              style={styles.input}
+            />
+
+            <input
+              type="date"
+              value={nextPeriodEndDate}
+              onChange={(event) => handleNextEndDateChange(event.target.value)}
+              style={styles.input}
+            />
+
+            <button
+              type="button"
+              onClick={() => void handleCloseAndCreate()}
+              disabled={saving}
+              style={{
+                ...styles.primaryButton,
+                marginTop: 0,
+                background: primaryColor,
+                border: "none",
+                opacity: saving ? 0.7 : 1,
+              }}
+            >
+              {saving
+                ? "Ukládám..."
+                : "UKONČIT A VYTVOŘIT NOVÉ OBDOBÍ"}
+            </button>
+
+            <button
+              type="button"
+              disabled={saving}
+              style={secondaryButtonStyle}
+              onClick={() => {
+                setShowCloseForm(false);
+                setMessage("");
+              }}
+            >
+              Zrušit
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {message && (
         <div
@@ -318,6 +527,7 @@ export default function PeriodsScreen({
             padding: "12px 14px",
             color: "#d9d9d9",
             fontSize: "14px",
+            lineHeight: 1.5,
           }}
         >
           {message}
@@ -330,7 +540,9 @@ export default function PeriodsScreen({
         {loading ? (
           <div style={{ color: "#b8b8b8" }}>Načítám období...</div>
         ) : sortedPeriods.length === 0 ? (
-          <div style={{ color: "#b8b8b8" }}>Zatím nejsou vytvořená žádná období.</div>
+          <div style={{ color: "#b8b8b8" }}>
+            Zatím nejsou vytvořená žádná období.
+          </div>
         ) : (
           <div style={{ display: "grid", gap: "10px" }}>
             {sortedPeriods.map((period) => {
@@ -341,33 +553,38 @@ export default function PeriodsScreen({
                 <div
                   key={period.id}
                   style={{
-                    padding: "12px",
-                    borderRadius: "12px",
+                    padding: "13px",
+                    borderRadius: "14px",
                     background: "rgba(255,255,255,0.04)",
                     border: isActive
-                      ? "1px solid rgba(61, 214, 140, 0.30)"
-                      : "1px solid rgba(255,255,255,0.05)",
+                      ? `1px solid ${primaryColor}55`
+                      : "1px solid rgba(255,255,255,0.06)",
                   }}
                 >
                   <div
                     style={{
                       display: "flex",
                       justifyContent: "space-between",
+                      alignItems: "flex-start",
                       gap: "12px",
-                      alignItems: "center",
                     }}
                   >
-                    <div>
-                      <div style={{ fontWeight: "bold" }}>{period.name}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 900, color: "#ffffff" }}>
+                        {period.name}
+                      </div>
+
                       <div
                         style={{
                           marginTop: "6px",
                           fontSize: "13px",
                           color: "#b8b8b8",
+                          lineHeight: 1.45,
                         }}
                       >
-                        {formatPeriodType(period.type)} • {period.start_date} až{" "}
-                        {period.end_date}
+                        {formatPeriodType(period.type)} •{" "}
+                        {formatDate(period.start_date)} až{" "}
+                        {formatDate(period.end_date)}
                       </div>
                     </div>
 
@@ -376,68 +593,116 @@ export default function PeriodsScreen({
                         padding: "6px 10px",
                         borderRadius: "999px",
                         background: isActive
-                          ? "rgba(46, 204, 113, 0.16)"
+                          ? "rgba(46,204,113,0.16)"
                           : isClosed
-                          ? "rgba(255,120,120,0.12)"
-                          : "rgba(255,255,255,0.10)",
+                            ? "rgba(255,120,120,0.12)"
+                            : "rgba(255,255,255,0.10)",
                         color: isActive
                           ? "#9af0b6"
                           : isClosed
-                          ? "#ffb0a8"
-                          : "#b8b8b8",
+                            ? "#ffb0a8"
+                            : "#cfcfcf",
                         fontWeight: "bold",
-                        fontSize: "12px",
+                        fontSize: "11px",
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {isActive ? "AKTIVNÍ" : isClosed ? "UZAVŘENÉ" : "NEAKTIVNÍ"}
+                      {isActive
+                        ? "AKTIVNÍ"
+                        : isClosed
+                          ? "UZAVŘENÉ"
+                          : "VLASTNÍ"}
                     </div>
-                  </div>
-
-                  <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
-                    {!isActive && (
-                      <button
-                        type="button"
-                        onClick={() => void handleActivatePeriod(period)}
-                        disabled={saving}
-                        style={{
-                          flex: 1,
-                          border: "none",
-                          borderRadius: "10px",
-                          padding: "10px 12px",
-                          background: primaryColor,
-                          color: "white",
-                          fontWeight: "bold",
-                          cursor: "pointer",
-                          opacity: saving ? 0.7 : 1,
-                        }}
-                      >
-                        Nastavit jako aktivní
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => void handleClosePeriod(period)}
-                      disabled={saving || isClosed}
-                      style={{
-                        flex: 1,
-                        border: "none",
-                        borderRadius: "10px",
-                        padding: "10px 12px",
-                        background: "rgba(198,40,40,0.95)",
-                        color: "white",
-                        fontWeight: "bold",
-                        cursor: isClosed ? "default" : "pointer",
-                        opacity: saving || isClosed ? 0.7 : 1,
-                      }}
-                    >
-                      {isClosed ? "Uzavřeno" : "Uzavřít období"}
-                    </button>
                   </div>
                 </div>
               );
             })}
+          </div>
+        )}
+      </div>
+
+      <div style={styles.card}>
+        <button
+          type="button"
+          style={secondaryButtonStyle}
+          onClick={() => {
+            setShowCustomForm((previous) => !previous);
+            setMessage("");
+          }}
+        >
+          {showCustomForm ? "Skrýt vlastní období" : "+ Přidat vlastní období"}
+        </button>
+
+        {showCustomForm && (
+          <div style={{ display: "grid", gap: "10px", marginTop: "14px" }}>
+            <div
+              style={{
+                color: "#cfcfcf",
+                fontSize: "13px",
+                lineHeight: 1.5,
+              }}
+            >
+              Vlastní období slouží například pro vyhodnocení kalendářního roku
+              nebo turnaje. Pokud už existuje aktivní období, jeho vytvoření ho
+              nezmění.
+            </div>
+
+            <input
+              type="text"
+              value={customName}
+              onChange={(event) => setCustomName(event.target.value)}
+              placeholder="Název období"
+              style={styles.input}
+            />
+
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                type="button"
+                disabled={saving}
+                style={toggleStyle(customType === "year")}
+                onClick={() => setCustomType("year")}
+              >
+                ROK
+              </button>
+
+              <button
+                type="button"
+                disabled={saving}
+                style={toggleStyle(customType === "season")}
+                onClick={() => setCustomType("season")}
+              >
+                SEZÓNA
+              </button>
+            </div>
+
+            <input
+              type="date"
+              value={customStartDate}
+              onChange={(event) => setCustomStartDate(event.target.value)}
+              style={styles.input}
+            />
+
+            <input
+              type="date"
+              value={customEndDate}
+              onChange={(event) => setCustomEndDate(event.target.value)}
+              style={styles.input}
+            />
+
+            <button
+              type="button"
+              onClick={() => void handleCreateCustomPeriod()}
+              disabled={saving}
+              style={{
+                ...styles.primaryButton,
+                marginTop: 0,
+                background: primaryColor,
+                border: "none",
+                opacity: saving ? 0.7 : 1,
+              }}
+            >
+              {saving ? "Ukládám..." : "VYTVOŘIT VLASTNÍ OBDOBÍ"}
+            </button>
           </div>
         )}
       </div>
