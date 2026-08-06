@@ -48,7 +48,7 @@ type MainTab = "attendance" | "fines";
 type FineTab = "awarded" | "templates";
 type AttendanceSort = "highest" | "lowest";
 type PeriodType = "year" | "season";
-type PeriodFilterMode = "active" | "all" | "custom";
+type PeriodFilterMode = "active" | "all" | "custom" | "range";
 
 type Props = {
   clubId: string;
@@ -231,6 +231,8 @@ export default function DisciplineScreen({
   const [periods, setPeriods] = useState<Period[]>([]);
   const [activePeriod, setActivePeriod] = useState<Period | null>(null);
   const [selectedPeriodId, setSelectedPeriodId] = useState("");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
   const [periodFilterMode, setPeriodFilterMode] =
     useState<PeriodFilterMode>("active");
   const [periodPanelOpen, setPeriodPanelOpen] = useState(false);
@@ -325,7 +327,7 @@ export default function DisciplineScreen({
   }, [clubId]);
 
   const effectivePeriod = useMemo(() => {
-    if (periodFilterMode === "all") return null;
+    if (periodFilterMode === "all" || periodFilterMode === "range") return null;
     if (periodFilterMode === "active") return activePeriod ?? null;
     return periods.find((period) => period.id === selectedPeriodId) ?? null;
   }, [periodFilterMode, activePeriod, periods, selectedPeriodId]);
@@ -659,12 +661,28 @@ export default function DisciplineScreen({
   }, [mainTab, fineTab, isAdmin, loadTemplatesIfNeeded]);
 
   const filteredOlderTrainings = useMemo(() => {
-    return trainings.filter(
-      (training) =>
-        isOlderTraining(training) &&
-        isDateInsidePeriod(training.date, effectivePeriod)
-    );
-  }, [trainings, effectivePeriod]);
+    return trainings.filter((training) => {
+      if (!isOlderTraining(training)) return false;
+
+      if (periodFilterMode === "range") {
+        const trainingDate = normalizeDateToIso(training.date);
+        const startDate = normalizeDateToIso(customStartDate);
+        const endDate = normalizeDateToIso(customEndDate);
+
+        if (!trainingDate || !startDate || !endDate) return false;
+
+        return trainingDate >= startDate && trainingDate <= endDate;
+      }
+
+      return isDateInsidePeriod(training.date, effectivePeriod);
+    });
+  }, [
+    trainings,
+    periodFilterMode,
+    effectivePeriod,
+    customStartDate,
+    customEndDate,
+  ]);
 
   const attendanceStats = useMemo(() => {
     return disciplinePlayers.map((player) => {
@@ -991,25 +1009,13 @@ export default function DisciplineScreen({
       return;
     }
 
-    const targetPeriod =
-      periodFilterMode === "active"
-        ? activePeriod
-        : periodFilterMode === "custom"
-          ? effectivePeriod
-          : null;
-
-    if (!targetPeriod) {
-      setMessage("Funkci ZAPLATIT VŠE použij u konkrétního období.");
-      return;
-    }
-
     if (unpaidAmount <= 0) {
-      setMessage("Hráč nemá v tomto období žádné nezaplacené pokuty.");
+      setMessage("Hráč nemá žádné nezaplacené pokuty.");
       return;
     }
 
     const confirmed = window.confirm(
-      `Opravdu označit všechny nezaplacené pokuty hráče ${playerName} v období "${targetPeriod.name}" jako zaplacené?\n\nCelkem: ${formatMoney(unpaidAmount)}`
+      `Opravdu označit všechny nezaplacené pokuty hráče ${playerName} napříč všemi obdobími jako zaplacené?\n\nCelkem: ${formatMoney(unpaidAmount)}`
     );
 
     if (!confirmed) return;
@@ -1029,7 +1035,9 @@ export default function DisciplineScreen({
     }
 
     await reloadVisibleFines();
-    setMessage(`Všechny nezaplacené pokuty hráče ${playerName} byly označeny jako zaplacené.`);
+    setMessage(
+      `Všechny nezaplacené pokuty hráče ${playerName} byly označeny jako zaplacené.`
+    );
     setPayingAllPlayerId(null);
   };
 
@@ -1466,14 +1474,24 @@ export default function DisciplineScreen({
               <div style={{ fontSize: "18px", fontWeight: 950, marginTop: "3px" }}>
                 {periodFilterMode === "all"
                   ? "Všechna období"
-                  : effectivePeriod?.name ?? "Bez aktivního období"}
+                  : periodFilterMode === "range"
+                    ? "Vlastní rozsah"
+                    : effectivePeriod?.name ?? "Bez aktivního období"}
               </div>
 
-              {effectivePeriod && (
+              {periodFilterMode === "range" ? (
                 <div style={{ color: "#b8b8b8", fontSize: "12px", marginTop: "3px" }}>
-                  {formatPeriodType(effectivePeriod.type)} • {effectivePeriod.start_date} až{" "}
-                  {effectivePeriod.end_date}
+                  {customStartDate && customEndDate
+                    ? `${customStartDate} až ${customEndDate}`
+                    : "Vyber datum od–do"}
                 </div>
+              ) : (
+                effectivePeriod && (
+                  <div style={{ color: "#b8b8b8", fontSize: "12px", marginTop: "3px" }}>
+                    {formatPeriodType(effectivePeriod.type)} • {effectivePeriod.start_date} až{" "}
+                    {effectivePeriod.end_date}
+                  </div>
+                )
               )}
             </div>
           </div>
@@ -1529,6 +1547,40 @@ export default function DisciplineScreen({
             >
               Vybrat období
             </button>
+
+            <button
+              type="button"
+              onClick={() => setPeriodFilterMode("range")}
+              style={tabButton(periodFilterMode === "range")}
+            >
+              Vlastní datum od–do
+            </button>
+
+            {periodFilterMode === "range" && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "8px",
+                }}
+              >
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  style={{ ...styles.input, marginBottom: 0 }}
+                  aria-label="Datum od"
+                />
+
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  style={{ ...styles.input, marginBottom: 0 }}
+                  aria-label="Datum do"
+                />
+              </div>
+            )}
 
             {periodFilterMode === "custom" && (
               <select

@@ -18,7 +18,7 @@ type StatsMode = "players" | "goalkeepers";
 type PlayerSort = "goals" | "assists" | "points" | "rating" | "motm";
 type GoalkeeperSort = "matches" | "goalsAgainst" | "average";
 type TeamFilter = "ALL" | "A" | "B";
-type PeriodFilterMode = "active" | "all" | "custom";
+type PeriodFilterMode = "active" | "all" | "custom" | "range";
 
 type StatsScreenProps = {
   clubId: string;
@@ -125,6 +125,22 @@ function isMatchInsidePeriod(matchDate: string, period: Period | null) {
     normalizedMatchDate >= normalizedStartDate &&
     normalizedMatchDate <= normalizedEndDate
   );
+}
+
+function isDateInsideRange(
+  dateValue: string,
+  startDate: string,
+  endDate: string
+) {
+  const normalizedDate = normalizeDateToIso(dateValue);
+  const normalizedStart = normalizeDateToIso(startDate);
+  const normalizedEnd = normalizeDateToIso(endDate);
+
+  if (!normalizedDate || !normalizedStart || !normalizedEnd) {
+    return false;
+  }
+
+  return normalizedDate >= normalizedStart && normalizedDate <= normalizedEnd;
 }
 
 function formatPeriodType(type?: string | null) {
@@ -234,6 +250,8 @@ export default function StatsScreen({
   const [periodFilterMode, setPeriodFilterMode] =
     useState<PeriodFilterMode>("active");
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>("");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
   const [periodPanelOpen, setPeriodPanelOpen] = useState(false);
 
   const [statsMode, setStatsMode] = useState<StatsMode>("players");
@@ -453,7 +471,7 @@ export default function StatsScreen({
   }, [periods, selectedPeriodId]);
 
   const effectivePeriod = useMemo(() => {
-    if (periodFilterMode === "all") return null;
+    if (periodFilterMode === "all" || periodFilterMode === "range") return null;
     if (periodFilterMode === "active") return activePeriod;
     return customSelectedPeriod;
   }, [periodFilterMode, activePeriod, customSelectedPeriod]);
@@ -461,7 +479,15 @@ export default function StatsScreen({
   const filteredStatsMatches = useMemo(() => {
     let matches = finishedMatches;
 
-    if (effectivePeriod) {
+    if (periodFilterMode === "range") {
+      if (customStartDate && customEndDate) {
+        matches = matches.filter((match) =>
+          isDateInsideRange(match.date, customStartDate, customEndDate)
+        );
+      } else {
+        matches = [];
+      }
+    } else if (effectivePeriod) {
       matches = matches.filter((match) =>
         isMatchInsidePeriod(match.date, effectivePeriod)
       );
@@ -472,7 +498,14 @@ export default function StatsScreen({
     }
 
     return matches;
-  }, [finishedMatches, effectivePeriod, statsTeamFilter]);
+  }, [
+    finishedMatches,
+    periodFilterMode,
+    effectivePeriod,
+    customStartDate,
+    customEndDate,
+    statsTeamFilter,
+  ]);
 
   const fieldPlayerStats = useMemo(() => {
     const playerMap = new Map<
@@ -927,14 +960,20 @@ export default function StatsScreen({
   const periodTitle =
     periodFilterMode === "all"
       ? "Všechna období"
-      : effectivePeriod?.name ?? "Bez aktivního období";
+      : periodFilterMode === "range"
+        ? "Vlastní rozsah"
+        : effectivePeriod?.name ?? "Bez aktivního období";
 
   const periodSubtitle =
     periodFilterMode === "all"
       ? `${filteredStatsMatches.length} odehraných zápasů`
-      : effectivePeriod
-      ? `${formatPeriodType(effectivePeriod.type)} • ${effectivePeriod.start_date} až ${effectivePeriod.end_date}`
-      : "Nejdřív vytvoř aktivní období";
+      : periodFilterMode === "range"
+        ? customStartDate && customEndDate
+          ? `${customStartDate} až ${customEndDate} • ${filteredStatsMatches.length} zápasů`
+          : "Vyber datum od–do"
+        : effectivePeriod
+          ? `${formatPeriodType(effectivePeriod.type)} • ${effectivePeriod.start_date} až ${effectivePeriod.end_date}`
+          : "Nejdřív vytvoř aktivní období";
 
   return (
     <div style={{ display: "grid", gap: "14px" }}>
@@ -1076,6 +1115,40 @@ export default function StatsScreen({
                 >
                   Vybrat období
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPeriodFilterMode("range")}
+                  style={getToggleStyle(periodFilterMode === "range")}
+                >
+                  Vlastní datum od–do
+                </button>
+
+                {periodFilterMode === "range" && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "8px",
+                    }}
+                  >
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      style={{ ...styles.input, marginBottom: 0 }}
+                      aria-label="Datum od"
+                    />
+
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      style={{ ...styles.input, marginBottom: 0 }}
+                      aria-label="Datum do"
+                    />
+                  </div>
+                )}
 
                 {periodFilterMode === "custom" && (
                   <select

@@ -26,6 +26,7 @@ import {
 import { styles } from "@/styles/appStyles";
 
 type TrainingTab = "planned" | "older";
+type PeriodFilterMode = "active" | "all" | "custom" | "range";
 type AttendanceStatus = "yes" | "maybe" | "no";
 
 type Training = {
@@ -165,6 +166,12 @@ export default function TrainingsScreen({
     Record<string, TrainingPresenceRow[]>
   >({});
   const [periods, setPeriods] = useState<Period[]>([]);
+  const [periodFilterMode, setPeriodFilterMode] =
+    useState<PeriodFilterMode>("active");
+  const [selectedPeriodId, setSelectedPeriodId] = useState("");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
+  const [periodPanelOpen, setPeriodPanelOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -237,6 +244,18 @@ export default function TrainingsScreen({
       setAttendanceMap(nextAttendanceMap);
       setPresenceMap(nextPresenceMap);
       setPeriods(loadedPeriods);
+
+      const activePeriod =
+        loadedPeriods.find((period) => period.is_active) ?? null;
+
+      if (activePeriod) {
+        setPeriodFilterMode("active");
+        setSelectedPeriodId(activePeriod.id);
+      } else {
+        setPeriodFilterMode("all");
+        setSelectedPeriodId("");
+      }
+
       setCurrentUserId(user?.id ?? null);
       setLinkedPlayer(currentLinkedPlayer);
       setFineTemplates(loadedTemplates);
@@ -289,6 +308,38 @@ export default function TrainingsScreen({
     );
   }, [fineTemplates]);
 
+  const activePeriod = useMemo(
+    () => periods.find((period) => period.is_active) ?? null,
+    [periods]
+  );
+
+  const selectedPeriod = useMemo(
+    () => periods.find((period) => period.id === selectedPeriodId) ?? null,
+    [periods, selectedPeriodId]
+  );
+
+  const effectivePeriod = useMemo(() => {
+    if (periodFilterMode === "active") return activePeriod;
+    if (periodFilterMode === "custom") return selectedPeriod;
+    return null;
+  }, [periodFilterMode, activePeriod, selectedPeriod]);
+
+  const isTrainingVisibleByPeriod = (training: Training) => {
+    if (periodFilterMode === "all") return true;
+
+    if (periodFilterMode === "range") {
+      const trainingDate = normalizeDateToIso(training.date);
+      const startDate = normalizeDateToIso(customStartDate);
+      const endDate = normalizeDateToIso(customEndDate);
+
+      if (!trainingDate || !startDate || !endDate) return false;
+
+      return trainingDate >= startDate && trainingDate <= endDate;
+    }
+
+    return isDateInsidePeriod(training.date, effectivePeriod);
+  };
+
   const resetForm = () => {
     setEditingTrainingId(null);
     setDate("");
@@ -301,7 +352,10 @@ export default function TrainingsScreen({
 
   const plannedTrainings = useMemo(() => {
     return trainings
-      .filter((training) => isTrainingPlanned(training))
+      .filter(
+        (training) =>
+          isTrainingPlanned(training) && isTrainingVisibleByPeriod(training)
+      )
       .sort((a, b) => {
         const aKey = `${normalizeDateToIso(a.date)} ${
           normalizeTimeValue(a.start_time) || "00:00"
@@ -311,11 +365,20 @@ export default function TrainingsScreen({
         }`;
         return aKey.localeCompare(bKey);
       });
-  }, [trainings]);
+  }, [
+    trainings,
+    periodFilterMode,
+    effectivePeriod,
+    customStartDate,
+    customEndDate,
+  ]);
 
   const olderTrainings = useMemo(() => {
     return trainings
-      .filter((training) => !isTrainingPlanned(training))
+      .filter(
+        (training) =>
+          !isTrainingPlanned(training) && isTrainingVisibleByPeriod(training)
+      )
       .sort((a, b) => {
         const aKey = `${normalizeDateToIso(a.date)} ${
           normalizeTimeValue(a.start_time) || "00:00"
@@ -325,7 +388,13 @@ export default function TrainingsScreen({
         }`;
         return bKey.localeCompare(aKey);
       });
-  }, [trainings]);
+  }, [
+    trainings,
+    periodFilterMode,
+    effectivePeriod,
+    customStartDate,
+    customEndDate,
+  ]);
 
   const visibleTrainings = tab === "planned" ? plannedTrainings : olderTrainings;
 
@@ -893,8 +962,201 @@ export default function TrainingsScreen({
     whiteSpace: "nowrap",
   });
 
+  const periodToggleStyle = (active: boolean): React.CSSProperties => ({
+    flex: 1,
+    border: "none",
+    borderRadius: "14px",
+    padding: "11px 10px",
+    background: active
+      ? `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`
+      : "rgba(255,255,255,0.07)",
+    color: active ? "#071107" : "#ffffff",
+    fontWeight: 950,
+    cursor: "pointer",
+  });
+
+  const periodTitle =
+    periodFilterMode === "all"
+      ? "Všechna období"
+      : periodFilterMode === "range"
+        ? "Vlastní rozsah"
+        : effectivePeriod?.name ?? "Bez aktivního období";
+
+  const periodSubtitle =
+    periodFilterMode === "range"
+      ? customStartDate && customEndDate
+        ? `${customStartDate} až ${customEndDate}`
+        : "Vyber datum od–do"
+      : effectivePeriod
+        ? `${effectivePeriod.start_date} až ${effectivePeriod.end_date}`
+        : periodFilterMode === "all"
+          ? `${visibleTrainings.length} tréninků`
+          : "Nejdřív vytvoř aktivní období";
+
   return (
     <div style={{ display: "grid", gap: "14px" }}>
+      <div
+        style={{
+          ...glassCardStyle,
+          overflow: "hidden",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setPeriodPanelOpen((prev) => !prev)}
+          style={{
+            width: "100%",
+            border: "none",
+            background: "transparent",
+            color: "white",
+            padding: "16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            cursor: "pointer",
+            textAlign: "left",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                color: "#9b9b9b",
+                fontSize: "12px",
+                fontWeight: 950,
+                letterSpacing: "0.8px",
+                textTransform: "uppercase",
+              }}
+            >
+              Období tréninků a anket
+            </div>
+
+            <div style={{ fontSize: "18px", fontWeight: 950, marginTop: "3px" }}>
+              {periodTitle}
+            </div>
+
+            <div style={{ color: "#b8b8b8", fontSize: "12px", marginTop: "3px" }}>
+              {periodSubtitle}
+            </div>
+          </div>
+
+          <div
+            style={{
+              fontSize: "24px",
+              color: "#b8b8b8",
+              transform: periodPanelOpen ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 0.2s ease",
+            }}
+          >
+            ⌄
+          </div>
+        </button>
+
+        {periodPanelOpen && (
+          <div
+            style={{
+              display: "grid",
+              gap: "10px",
+              padding: "0 16px 16px",
+              borderTop: "1px solid rgba(255,255,255,0.06)",
+            }}
+          >
+            <div style={{ display: "flex", gap: "8px", marginTop: "14px" }}>
+              <button
+                type="button"
+                onClick={() => setPeriodFilterMode("active")}
+                style={periodToggleStyle(periodFilterMode === "active")}
+              >
+                Aktivní
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPeriodFilterMode("all")}
+                style={periodToggleStyle(periodFilterMode === "all")}
+              >
+                Vše
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setPeriodFilterMode("custom");
+                if (!selectedPeriodId && periods.length > 0) {
+                  setSelectedPeriodId(periods[0].id);
+                }
+              }}
+              style={periodToggleStyle(periodFilterMode === "custom")}
+            >
+              Vybrat období
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPeriodFilterMode("range")}
+              style={periodToggleStyle(periodFilterMode === "range")}
+            >
+              Vlastní datum od–do
+            </button>
+
+            {periodFilterMode === "custom" && (
+              <select
+                value={selectedPeriodId}
+                onChange={(e) => setSelectedPeriodId(e.target.value)}
+                style={{
+                  ...styles.input,
+                  appearance: "none",
+                  cursor: "pointer",
+                  marginBottom: 0,
+                }}
+              >
+                <option value="" style={{ background: "#111111", color: "white" }}>
+                  Vyber období
+                </option>
+
+                {periods.map((period) => (
+                  <option
+                    key={period.id}
+                    value={period.id}
+                    style={{ background: "#111111", color: "white" }}
+                  >
+                    {period.name}
+                    {period.is_active ? " (aktivní)" : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {periodFilterMode === "range" && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "8px",
+                }}
+              >
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  style={{ ...styles.input, marginBottom: 0 }}
+                  aria-label="Datum od"
+                />
+
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  style={{ ...styles.input, marginBottom: 0 }}
+                  aria-label="Datum do"
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {isAdmin && (
         <div
           style={{
