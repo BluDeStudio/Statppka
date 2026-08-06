@@ -8,6 +8,7 @@ export type Player = {
   position: string;
   profile_id?: string | null;
   birth_date?: string | null;
+  is_active: boolean;
   created_at?: string;
 };
 
@@ -19,8 +20,17 @@ export type ClubMemberPlayer = {
   position: string;
   profile_id?: string | null;
   birth_date?: string | null;
+  is_active: boolean;
   created_at?: string;
 };
+
+function normalizePlayer(row: Player): Player {
+  return {
+    ...row,
+    number: Number(row.number),
+    is_active: row.is_active !== false,
+  };
+}
 
 export async function getPlayersByClubId(clubId: string): Promise<Player[]> {
   try {
@@ -35,9 +45,55 @@ export async function getPlayersByClubId(clubId: string): Promise<Player[]> {
       return [];
     }
 
-    return (data as Player[]) ?? [];
+    return ((data as Player[]) ?? []).map(normalizePlayer);
   } catch (error) {
     console.error("Chyba v getPlayersByClubId:", error);
+    return [];
+  }
+}
+
+export async function getActivePlayersByClubId(
+  clubId: string
+): Promise<Player[]> {
+  try {
+    const { data, error } = await supabase
+      .from("players")
+      .select("*")
+      .eq("club_id", clubId)
+      .eq("is_active", true)
+      .order("number", { ascending: true });
+
+    if (error) {
+      console.error("Nepodařilo se načíst aktivní hráče:", error.message);
+      return [];
+    }
+
+    return ((data as Player[]) ?? []).map(normalizePlayer);
+  } catch (error) {
+    console.error("Chyba v getActivePlayersByClubId:", error);
+    return [];
+  }
+}
+
+export async function getInactivePlayersByClubId(
+  clubId: string
+): Promise<Player[]> {
+  try {
+    const { data, error } = await supabase
+      .from("players")
+      .select("*")
+      .eq("club_id", clubId)
+      .eq("is_active", false)
+      .order("number", { ascending: true });
+
+    if (error) {
+      console.error("Nepodařilo se načíst neaktivní hráče:", error.message);
+      return [];
+    }
+
+    return ((data as Player[]) ?? []).map(normalizePlayer);
+  } catch (error) {
+    console.error("Chyba v getInactivePlayersByClubId:", error);
     return [];
   }
 }
@@ -98,25 +154,30 @@ export async function getClubMemberPlayersByClubId(
       profilesMap.set(profile.id, profile);
     });
 
-    const mapped: ClubMemberPlayer[] = membershipRows.map((membership, index) => {
-      const profile = profilesMap.get(membership.user_id);
+    const mapped: ClubMemberPlayer[] = membershipRows.map(
+      (membership, index) => {
+        const profile = profilesMap.get(membership.user_id);
 
-      const email = profile?.email?.trim() ?? "";
-      const fallbackName = email.includes("@") ? email.split("@")[0] : email;
-      const safeName = fallbackName || `Člen ${index + 1}`;
+        const email = profile?.email?.trim() ?? "";
+        const fallbackName = email.includes("@") ? email.split("@")[0] : email;
+        const safeName = fallbackName || `Člen ${index + 1}`;
 
-      return {
-        id: membership.user_id,
-        club_id: membership.club_id,
-        name: safeName,
-        number: index + 1,
-        position: "member",
-        profile_id: membership.user_id,
-        birth_date: null,
-        created_at:
-          membership.created_at ?? profile?.created_at ?? new Date().toISOString(),
-      };
-    });
+        return {
+          id: membership.user_id,
+          club_id: membership.club_id,
+          name: safeName,
+          number: index + 1,
+          position: "member",
+          profile_id: membership.user_id,
+          birth_date: null,
+          is_active: true,
+          created_at:
+            membership.created_at ??
+            profile?.created_at ??
+            new Date().toISOString(),
+        };
+      }
+    );
 
     return mapped.sort((a, b) => a.name.localeCompare(b.name, "cs"));
   } catch (error) {
@@ -166,6 +227,7 @@ export async function createPlayer(input: {
           number: input.number,
           position: trimmedPosition,
           birth_date: input.birth_date ?? null,
+          is_active: true,
         },
       ])
       .select()
@@ -180,7 +242,7 @@ export async function createPlayer(input: {
     }
 
     return {
-      player: data as Player,
+      player: normalizePlayer(data as Player),
     };
   } catch (error) {
     console.error("Chyba v createPlayer:", error);
@@ -244,13 +306,47 @@ export async function updatePlayer(input: {
     }
 
     return {
-      player: data as Player,
+      player: normalizePlayer(data as Player),
     };
   } catch (error) {
     console.error("Chyba v updatePlayer:", error);
     return {
       player: null,
       errorMessage: "Při úpravě hráče nastala chyba.",
+    };
+  }
+}
+
+export async function setPlayerActiveStatus(input: {
+  playerId: string;
+  isActive: boolean;
+}): Promise<{ player: Player | null; errorMessage?: string }> {
+  try {
+    const { data, error } = await supabase
+      .from("players")
+      .update({
+        is_active: input.isActive,
+      })
+      .eq("id", input.playerId)
+      .select()
+      .single();
+
+    if (error || !data) {
+      console.error("Nepodařilo se změnit aktivitu hráče:", error?.message);
+      return {
+        player: null,
+        errorMessage: "Nepodařilo se změnit aktivitu hráče.",
+      };
+    }
+
+    return {
+      player: normalizePlayer(data as Player),
+    };
+  } catch (error) {
+    console.error("Chyba v setPlayerActiveStatus:", error);
+    return {
+      player: null,
+      errorMessage: "Při změně aktivity hráče nastala chyba.",
     };
   }
 }

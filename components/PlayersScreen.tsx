@@ -5,6 +5,7 @@ import { styles } from "@/styles/appStyles";
 import {
   createPlayer,
   getPlayersByClubId,
+  setPlayerActiveStatus,
   updatePlayer,
   type Player,
 } from "@/lib/players";
@@ -20,6 +21,8 @@ type ClubMemberRoleRow = {
   user_id: string;
   role: "admin" | "member";
 };
+
+type PlayerListMode = "active" | "inactive";
 
 const defaultPositions = [
   "Brankář",
@@ -63,10 +66,16 @@ export default function PlayersScreen({
   isAdmin,
 }: PlayersScreenProps) {
   const [players, setPlayers] = useState<Player[]>([]);
+  const [listMode, setListMode] = useState<PlayerListMode>("active");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [changingStatusPlayerId, setChangingStatusPlayerId] = useState<
+    string | null
+  >(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [memberRoles, setMemberRoles] = useState<Record<string, "admin" | "member">>({});
+  const [memberRoles, setMemberRoles] = useState<
+    Record<string, "admin" | "member">
+  >({});
 
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -127,9 +136,22 @@ export default function PlayersScreen({
     };
   }, [clubId]);
 
-  const linkedCount = useMemo(
-    () => players.filter((player) => player.profile_id).length,
+  const activePlayers = useMemo(
+    () => players.filter((player) => player.is_active !== false),
     [players]
+  );
+
+  const inactivePlayers = useMemo(
+    () => players.filter((player) => player.is_active === false),
+    [players]
+  );
+
+  const visiblePlayers =
+    listMode === "active" ? activePlayers : inactivePlayers;
+
+  const linkedCount = useMemo(
+    () => activePlayers.filter((player) => player.profile_id).length,
+    [activePlayers]
   );
 
   const adminCount = useMemo(() => {
@@ -156,6 +178,7 @@ export default function PlayersScreen({
       if (!next) {
         resetForm();
       } else {
+        setListMode("active");
         setName("");
         setNumber("");
         setPosition(defaultPositions[2]);
@@ -190,7 +213,9 @@ export default function PlayersScreen({
     }
 
     if (players.some((player) => player.number === parsedNumber)) {
-      setMessage("Hráč s tímto číslem už v týmu existuje.");
+      setMessage(
+        "Hráč s tímto číslem už v týmu existuje, včetně neaktivních hráčů."
+      );
       return;
     }
 
@@ -211,7 +236,8 @@ export default function PlayersScreen({
       );
       resetForm();
       setShowAddForm(false);
-      setMessage("Hráč byl přidán.");
+      setListMode("active");
+      setMessage("Hráč byl přidán jako aktivní.");
     } else {
       setMessage(result.errorMessage ?? "Nepodařilo se přidat hráče.");
     }
@@ -270,7 +296,9 @@ export default function PlayersScreen({
           player.id !== editingPlayer.id && player.number === parsedNumber
       )
     ) {
-      setMessage("Hráč s tímto číslem už v týmu existuje.");
+      setMessage(
+        "Hráč s tímto číslem už v týmu existuje, včetně neaktivních hráčů."
+      );
       return;
     }
 
@@ -301,6 +329,65 @@ export default function PlayersScreen({
     }
 
     setSaving(false);
+  };
+
+  const handleTogglePlayerActivity = async (player: Player) => {
+    if (!isAdmin) {
+      setMessage("Pouze admin může měnit aktivitu hráčů.");
+      return;
+    }
+
+    const nextActive = player.is_active === false;
+
+    const actionText = nextActive ? "znovu aktivovat" : "zneaktivnit";
+    const confirmed = window.confirm(
+      nextActive
+        ? `Opravdu chceš hráče ${player.name} znovu aktivovat?`
+        : [
+            `Opravdu chceš hráče ${player.name} zneaktivnit?`,
+            "",
+            "Historické statistiky, docházka a pokuty zůstanou zachované.",
+            "Hráč se po úpravě dalších obrazovek nebude nabízet v nových anketách, nominacích ani docházce.",
+          ].join("\n")
+    );
+
+    if (!confirmed) return;
+
+    setChangingStatusPlayerId(player.id);
+    setMessage("");
+
+    const result = await setPlayerActiveStatus({
+      playerId: player.id,
+      isActive: nextActive,
+    });
+
+    if (!result.player) {
+      setMessage(
+        result.errorMessage ??
+          `Nepodařilo se hráče ${actionText}.`
+      );
+      setChangingStatusPlayerId(null);
+      return;
+    }
+
+    setPlayers((prev) =>
+      prev
+        .map((item) =>
+          item.id === player.id ? (result.player as Player) : item
+        )
+        .sort((a, b) => a.number - b.number)
+    );
+
+    if (editingPlayer?.id === player.id) {
+      resetForm();
+    }
+
+    setMessage(
+      nextActive
+        ? `${player.name} je znovu aktivní.`
+        : `${player.name} byl přesunut mezi neaktivní hráče. Jeho historie zůstala zachovaná.`
+    );
+    setChangingStatusPlayerId(null);
   };
 
   const handleCancelForm = () => {
@@ -483,6 +570,19 @@ export default function PlayersScreen({
     </div>
   );
 
+  const modeButtonStyle = (active: boolean): React.CSSProperties => ({
+    flex: 1,
+    border: active
+      ? `1px solid ${primaryColor}`
+      : "1px solid rgba(255,255,255,0.08)",
+    borderRadius: "12px",
+    padding: "11px 10px",
+    background: active ? primaryColor : "rgba(255,255,255,0.06)",
+    color: active ? "#071107" : "#ffffff",
+    fontWeight: 900,
+    cursor: "pointer",
+  });
+
   return (
     <div>
       <h2 style={styles.screenTitle}>Soupiska</h2>
@@ -498,17 +598,54 @@ export default function PlayersScreen({
           }}
         >
           <div>
-            Celkem hráčů: <strong>{players.length}</strong>
+            Aktivní hráči: <strong>{activePlayers.length}</strong>
           </div>
           <div>
-            Propojeno s účtem: <strong>{linkedCount}</strong>
+            Neaktivní hráči: <strong>{inactivePlayers.length}</strong>
+          </div>
+          <div>
+            Aktivní a propojení s účtem: <strong>{linkedCount}</strong>
           </div>
           <div>
             Adminů: <strong>{adminCount}</strong>
           </div>
         </div>
 
-        {isAdmin && (
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            marginBottom: "14px",
+          }}
+        >
+          <button
+            type="button"
+            style={modeButtonStyle(listMode === "active")}
+            onClick={() => {
+              setListMode("active");
+              resetForm();
+              setShowAddForm(false);
+              setMessage("");
+            }}
+          >
+            AKTIVNÍ ({activePlayers.length})
+          </button>
+
+          <button
+            type="button"
+            style={modeButtonStyle(listMode === "inactive")}
+            onClick={() => {
+              setListMode("inactive");
+              resetForm();
+              setShowAddForm(false);
+              setMessage("");
+            }}
+          >
+            NEAKTIVNÍ ({inactivePlayers.length})
+          </button>
+        </div>
+
+        {isAdmin && listMode === "active" && (
           <button
             type="button"
             style={{
@@ -535,6 +672,7 @@ export default function PlayersScreen({
               margin: "0 0 16px 0",
               color: "#cfcfcf",
               fontSize: "14px",
+              lineHeight: 1.45,
             }}
           >
             {message}
@@ -554,7 +692,7 @@ export default function PlayersScreen({
           >
             Načítám hráče...
           </div>
-        ) : players.length === 0 ? (
+        ) : visiblePlayers.length === 0 ? (
           <div
             style={{
               padding: "16px",
@@ -565,7 +703,9 @@ export default function PlayersScreen({
               color: "#b8b8b8",
             }}
           >
-            Zatím nemáš žádné hráče.
+            {listMode === "active"
+              ? "Zatím nemáš žádné aktivní hráče."
+              : "Zatím nemáš žádné neaktivní hráče."}
           </div>
         ) : (
           <div
@@ -574,7 +714,7 @@ export default function PlayersScreen({
               gap: "10px",
             }}
           >
-            {players.map((player) => {
+            {visiblePlayers.map((player) => {
               const isMe =
                 currentUserId !== null && player.profile_id === currentUserId;
               const isLinked = Boolean(player.profile_id);
@@ -585,6 +725,9 @@ export default function PlayersScreen({
                 : "member";
               const isPlayerAdmin = playerRole === "admin";
               const isEditingThisPlayer = editingPlayer?.id === player.id;
+              const isInactive = player.is_active === false;
+              const isChangingStatus =
+                changingStatusPlayerId === player.id;
 
               return (
                 <div
@@ -592,16 +735,21 @@ export default function PlayersScreen({
                   style={{
                     display: "grid",
                     gap: isEditingThisPlayer ? "10px" : "0px",
-                    background: isMe
-                      ? "rgba(61, 214, 140, 0.10)"
-                      : "rgba(255,255,255,0.04)",
+                    background: isInactive
+                      ? "rgba(255,255,255,0.025)"
+                      : isMe
+                        ? "rgba(61, 214, 140, 0.10)"
+                        : "rgba(255,255,255,0.04)",
                     borderRadius: "14px",
                     padding: "10px 12px",
                     border: isEditingThisPlayer
                       ? `1px solid ${primaryColor}`
-                      : isMe
-                        ? "1px solid rgba(61, 214, 140, 0.30)"
-                        : "1px solid rgba(255,255,255,0.05)",
+                      : isInactive
+                        ? "1px solid rgba(255,255,255,0.05)"
+                        : isMe
+                          ? "1px solid rgba(61, 214, 140, 0.30)"
+                          : "1px solid rgba(255,255,255,0.05)",
+                    opacity: isInactive ? 0.78 : 1,
                   }}
                 >
                   <div
@@ -616,7 +764,9 @@ export default function PlayersScreen({
                         minWidth: "42px",
                         height: "42px",
                         borderRadius: "10px",
-                        background: primaryColor,
+                        background: isInactive
+                          ? "rgba(255,255,255,0.10)"
+                          : primaryColor,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -657,6 +807,24 @@ export default function PlayersScreen({
                         flexShrink: 0,
                       }}
                     >
+                      <div
+                        style={{
+                          padding: "5px 9px",
+                          borderRadius: "999px",
+                          fontSize: "11px",
+                          fontWeight: "bold",
+                          background: isInactive
+                            ? "rgba(255,255,255,0.08)"
+                            : "rgba(46,204,113,0.16)",
+                          color: isInactive ? "#b8b8b8" : "#9af0b6",
+                          border: isInactive
+                            ? "1px solid rgba(255,255,255,0.10)"
+                            : "1px solid rgba(46,204,113,0.24)",
+                        }}
+                      >
+                        {isInactive ? "NEAKTIVNÍ" : "AKTIVNÍ"}
+                      </div>
+
                       {isMe && (
                         <div
                           style={{
@@ -735,6 +903,37 @@ export default function PlayersScreen({
                       >
                         {isLinked ? "PROPOJENÝ" : "VOLNÝ"}
                       </div>
+
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          style={{
+                            border: "none",
+                            borderRadius: "8px",
+                            padding: "6px 10px",
+                            background: isInactive
+                              ? "rgba(46,204,113,0.95)"
+                              : "rgba(198,40,40,0.95)",
+                            color: "white",
+                            cursor: isChangingStatus
+                              ? "default"
+                              : "pointer",
+                            fontWeight: "bold",
+                            fontSize: "11px",
+                            opacity: isChangingStatus ? 0.7 : 1,
+                          }}
+                          onClick={() =>
+                            void handleTogglePlayerActivity(player)
+                          }
+                          disabled={isChangingStatus}
+                        >
+                          {isChangingStatus
+                            ? "UKLÁDÁM..."
+                            : isInactive
+                              ? "AKTIVOVAT"
+                              : "ZNEAKTIVNIT"}
+                        </button>
+                      )}
 
                       {isAdmin && isLinked && !isMe && (
                         <button
