@@ -23,6 +23,50 @@ const DEFAULT_FINE_TEMPLATES: Array<{
   { name: "Zápasy", default_amount: 20 },
 ];
 
+const ensureRequestsByClub = new Map<string, Promise<FineTemplateRow[]>>();
+
+function normalizeTemplateName(value?: string | null): string {
+  return (value ?? "")
+    .trim()
+    .toLocaleLowerCase("cs-CZ")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, " ");
+}
+
+function normalizeTemplateRow(row: FineTemplateRow): FineTemplateRow {
+  return {
+    ...row,
+    name: row.name.trim(),
+    default_amount: Number(row.default_amount),
+  };
+}
+
+function deduplicateTemplates(rows: FineTemplateRow[]): FineTemplateRow[] {
+  const sorted = [...rows].sort((a, b) => {
+    if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
+
+    const aCreated = a.created_at ?? "";
+    const bCreated = b.created_at ?? "";
+
+    if (aCreated !== bCreated) return aCreated.localeCompare(bCreated);
+    return a.id.localeCompare(b.id);
+  });
+
+  const unique = new Map<string, FineTemplateRow>();
+
+  sorted.forEach((row) => {
+    const key = normalizeTemplateName(row.name);
+    if (!key || unique.has(key)) return;
+    unique.set(key, normalizeTemplateRow(row));
+  });
+
+  return Array.from(unique.values()).sort((a, b) => {
+    if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
+    return a.name.localeCompare(b.name, "cs");
+  });
+}
+
 export async function getFineTemplatesByClubId(
   clubId: string
 ): Promise<FineTemplateRow[]> {
@@ -38,41 +82,64 @@ export async function getFineTemplatesByClubId(
     return [];
   }
 
-  return ((data as FineTemplateRow[]) ?? []).map((item) => ({
-    ...item,
-    default_amount: Number(item.default_amount),
-  }));
+  return deduplicateTemplates(
+    ((data as FineTemplateRow[]) ?? []).map(normalizeTemplateRow)
+  );
 }
 
-export async function ensureDefaultFineTemplates(
+async function ensureDefaultFineTemplatesInternal(
   clubId: string
 ): Promise<FineTemplateRow[]> {
   const existing = await getFineTemplatesByClubId(clubId);
 
   const existingNames = new Set(
-    existing.map((item) => item.name.trim().toLowerCase())
+    existing.map((item) => normalizeTemplateName(item.name))
   );
 
   const missingTemplates = DEFAULT_FINE_TEMPLATES.filter(
-    (item) => !existingNames.has(item.name.trim().toLowerCase())
+    (item) => !existingNames.has(normalizeTemplateName(item.name))
   );
 
-  if (missingTemplates.length > 0) {
-    const { error } = await supabase.from("fine_templates").insert(
-      missingTemplates.map((item) => ({
-        club_id: clubId,
-        name: item.name,
-        default_amount: item.default_amount,
-        is_active: true,
-      }))
-    );
+  for (const template of missingTemplates) {
+    const normalizedName = normalizeTemplateName(template.name);
 
-    if (error) {
-      console.error("Nepodařilo se doplnit výchozí týmové pokuty:", error);
+    if (existingNames.has(normalizedName)) continue;
+
+    const { error } = await supabase.from("fine_templates").insert({
+      club_id: clubId,
+      name: template.name.trim(),
+      default_amount: Number(template.default_amount),
+      is_active: true,
+    });
+
+    if (error && error.code !== "23505") {
+      console.error(
+        `Nepodařilo se doplnit výchozí týmovou pokutu "${template.name}":`,
+        error
+      );
+      continue;
     }
+
+    existingNames.add(normalizedName);
   }
 
   return await getFineTemplatesByClubId(clubId);
+}
+
+export async function ensureDefaultFineTemplates(
+  clubId: string
+): Promise<FineTemplateRow[]> {
+  const runningRequest = ensureRequestsByClub.get(clubId);
+  if (runningRequest) return await runningRequest;
+
+  const request = ensureDefaultFineTemplatesInternal(clubId);
+  ensureRequestsByClub.set(clubId, request);
+
+  try {
+    return await request;
+  } finally {
+    ensureRequestsByClub.delete(clubId);
+  }
 }
 
 export async function createFineTemplate({
@@ -84,28 +151,46 @@ export async function createFineTemplate({
   name: string;
   defaultAmount: number;
 }): Promise<FineTemplateRow | null> {
+  const trimmedName = name.trim();
+  const normalizedName = normalizeTemplateName(trimmedName);
+
+  if (!trimmedName || !normalizedName) {
+    console.error("Nepodařilo se vytvořit týmovou pokutu: chybí název.");
+    return null;
+  }
+
+  const existing = await getFineTemplatesByClubId(clubId);
+  const duplicate = existing.find(
+    (item) => normalizeTemplateName(item.name) === normalizedName
+  );
+
+  if (duplicate) {
+    console.error(`Týmová pokuta "${trimmedName}" už v tomto klubu existuje.`);
+    return null;
+  }
+
   const { data, error } = await supabase
     .from("fine_templates")
     .insert({
       club_id: clubId,
-      name,
-      default_amount: defaultAmount,
+      name: trimmedName,
+      default_amount: Number(defaultAmount),
       is_active: true,
     })
     .select("*")
     .single();
 
   if (error) {
+    if (error.code === "23505") {
+      console.error(`Týmová pokuta "${trimmedName}" už v tomto klubu existuje.`);
+      return null;
+    }
+
     console.error("Nepodařilo se vytvořit týmovou pokutu:", error);
     return null;
   }
 
-  return data
-    ? {
-        ...(data as FineTemplateRow),
-        default_amount: Number((data as FineTemplateRow).default_amount),
-      }
-    : null;
+  return data ? normalizeTemplateRow(data as FineTemplateRow) : null;
 }
 
 export async function updateFineTemplate({
@@ -119,11 +204,18 @@ export async function updateFineTemplate({
   defaultAmount: number;
   isActive: boolean;
 }): Promise<FineTemplateRow | null> {
+  const trimmedName = name.trim();
+
+  if (!trimmedName) {
+    console.error("Nepodařilo se upravit týmovou pokutu: chybí název.");
+    return null;
+  }
+
   const { data, error } = await supabase
     .from("fine_templates")
     .update({
-      name,
-      default_amount: defaultAmount,
+      name: trimmedName,
+      default_amount: Number(defaultAmount),
       is_active: isActive,
     })
     .eq("id", templateId)
@@ -131,16 +223,16 @@ export async function updateFineTemplate({
     .single();
 
   if (error) {
+    if (error.code === "23505") {
+      console.error(`Týmová pokuta "${trimmedName}" už v tomto klubu existuje.`);
+      return null;
+    }
+
     console.error("Nepodařilo se upravit týmovou pokutu:", error);
     return null;
   }
 
-  return data
-    ? {
-        ...(data as FineTemplateRow),
-        default_amount: Number((data as FineTemplateRow).default_amount),
-      }
-    : null;
+  return data ? normalizeTemplateRow(data as FineTemplateRow) : null;
 }
 
 export async function deleteFineTemplate(templateId: string): Promise<boolean> {
