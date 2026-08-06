@@ -863,7 +863,7 @@ export default function DisciplineScreen({
     setPeriodSaving(true);
     setMessage("");
 
-    const success = await closePeriod(activePeriod.id);
+    const success = await closePeriod(activePeriod.id, clubId);
 
     if (!success) {
       setMessage("Nepodařilo se uzavřít období.");
