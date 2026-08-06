@@ -9,11 +9,29 @@ import {
   type Period,
   type PeriodType,
 } from "@/lib/periods";
+import {
+  buildFineSummaryByPlayer,
+  getFinesByPeriodId,
+  setAllPlayerFinesPaid,
+  type FineSummaryRow,
+} from "@/lib/fines";
+import {
+  getPlayersByClubId,
+  getClubMemberPlayersByClubId,
+  type Player,
+  type ClubMemberPlayer,
+} from "@/lib/players";
 import { styles } from "@/styles/appStyles";
 
 type Props = {
   clubId: string;
   primaryColor?: string;
+};
+
+type PeriodPlayer = Player | ClubMemberPlayer;
+
+type UnpaidPlayerSummary = FineSummaryRow & {
+  playerName: string;
 };
 
 function formatPeriodType(type: PeriodType) {
@@ -85,7 +103,10 @@ export default function PeriodsScreen({
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [payingPlayerId, setPayingPlayerId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [players, setPlayers] = useState<PeriodPlayer[]>([]);
+  const [unpaidPlayers, setUnpaidPlayers] = useState<UnpaidPlayerSummary[]>([]);
 
   const [showCloseForm, setShowCloseForm] = useState(false);
   const [nextPeriodName, setNextPeriodName] = useState("");
@@ -102,13 +123,49 @@ export default function PeriodsScreen({
   const loadData = async () => {
     setLoading(true);
 
-    const [loadedPeriods, loadedActivePeriod] = await Promise.all([
+    const [
+      loadedPeriods,
+      loadedActivePeriod,
+      loadedPlayers,
+      loadedClubMemberPlayers,
+    ] = await Promise.all([
       getPeriodsByClubId(clubId),
       getActivePeriod(clubId),
+      getPlayersByClubId(clubId),
+      getClubMemberPlayersByClubId(clubId),
     ]);
+
+    const resolvedPlayers: PeriodPlayer[] =
+      loadedPlayers.length > 0 ? loadedPlayers : loadedClubMemberPlayers;
 
     setPeriods(loadedPeriods);
     setActivePeriod(loadedActivePeriod);
+    setPlayers(resolvedPlayers);
+
+    if (loadedActivePeriod) {
+      const activeFines = await getFinesByPeriodId(loadedActivePeriod.id);
+      const playerNameById = new Map(
+        resolvedPlayers.map((player) => [player.id, player.name])
+      );
+
+      const unpaidSummary = buildFineSummaryByPlayer(activeFines)
+        .filter((item) => item.unpaid_amount > 0)
+        .map((item) => ({
+          ...item,
+          playerName: playerNameById.get(item.player_id) ?? "Neznámý hráč",
+        }))
+        .sort((a, b) => {
+          if (b.unpaid_amount !== a.unpaid_amount) {
+            return b.unpaid_amount - a.unpaid_amount;
+          }
+          return a.playerName.localeCompare(b.playerName, "cs");
+        });
+
+      setUnpaidPlayers(unpaidSummary);
+    } else {
+      setUnpaidPlayers([]);
+    }
+
     setLoading(false);
   };
 
@@ -123,6 +180,15 @@ export default function PeriodsScreen({
       return b.start_date.localeCompare(a.start_date);
     });
   }, [periods]);
+
+  const unpaidTotal = useMemo(
+    () =>
+      unpaidPlayers.reduce(
+        (sum, item) => sum + Number(item.unpaid_amount),
+        0
+      ),
+    [unpaidPlayers]
+  );
 
   const openCloseForm = () => {
     if (!activePeriod) return;
@@ -158,6 +224,34 @@ export default function PeriodsScreen({
     );
   };
 
+  const handlePayAllPlayerFines = async (item: UnpaidPlayerSummary) => {
+    if (!activePeriod) return;
+
+    const confirmed = window.confirm(
+      `Opravdu označit všechny nezaplacené pokuty hráče ${item.playerName} v období "${activePeriod.name}" jako zaplacené?\n\nCelkem: ${Number(item.unpaid_amount).toFixed(0)} Kč`
+    );
+
+    if (!confirmed) return;
+
+    setPayingPlayerId(item.player_id);
+    setMessage("");
+
+    const success = await setAllPlayerFinesPaid({
+      periodId: activePeriod.id,
+      playerId: item.player_id,
+    });
+
+    if (!success) {
+      setMessage("Nepodařilo se označit všechny pokuty hráče jako zaplacené.");
+      setPayingPlayerId(null);
+      return;
+    }
+
+    await loadData();
+    setMessage(`Pokuty hráče ${item.playerName} byly označeny jako zaplacené.`);
+    setPayingPlayerId(null);
+  };
+
   const handleCloseAndCreate = async () => {
     if (!activePeriod) {
       setMessage("Není nastavené žádné aktivní období.");
@@ -184,6 +278,13 @@ export default function PeriodsScreen({
 
     if (!resolvedName) {
       setMessage("Zadej název nového období.");
+      return;
+    }
+
+    if (unpaidPlayers.length > 0) {
+      setMessage(
+        "Období zatím nelze ukončit. Nejprve označ všechny nezaplacené pokuty jako zaplacené."
+      );
       return;
     }
 
@@ -443,6 +544,115 @@ export default function PeriodsScreen({
             automaticky nastaví jako aktivní.
           </div>
 
+          {unpaidPlayers.length > 0 ? (
+            <div
+              style={{
+                display: "grid",
+                gap: "10px",
+                padding: "13px",
+                borderRadius: "14px",
+                background: "rgba(198,40,40,0.12)",
+                border: "1px solid rgba(255,120,120,0.20)",
+                marginBottom: "14px",
+              }}
+            >
+              <div style={{ fontWeight: 900, color: "#ffb0a8" }}>
+                Nezaplacené pokuty: {unpaidPlayers.length} hráčů
+              </div>
+
+              <div style={{ color: "#cfcfcf", fontSize: "13px" }}>
+                Celkový dluh: {unpaidTotal.toFixed(0)} Kč. Období půjde ukončit
+                až po označení všech pokut jako zaplacených.
+              </div>
+
+              {unpaidPlayers.map((item) => (
+                <div
+                  key={item.player_id}
+                  style={{
+                    display: "grid",
+                    gap: "8px",
+                    padding: "11px",
+                    borderRadius: "12px",
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: "12px",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 900 }}>{item.playerName}</div>
+                      <div
+                        style={{
+                          color: "#b8b8b8",
+                          fontSize: "12px",
+                          marginTop: "4px",
+                        }}
+                      >
+                        Nezaplacených pokut:{" "}
+                        {item.fines_count}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        color: "#ffb0a8",
+                        fontWeight: 900,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {Number(item.unpaid_amount).toFixed(0)} Kč
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void handlePayAllPlayerFines(item)}
+                    disabled={payingPlayerId === item.player_id}
+                    style={{
+                      width: "100%",
+                      border: "none",
+                      borderRadius: "11px",
+                      padding: "10px 12px",
+                      background: primaryColor,
+                      color: "#071107",
+                      fontWeight: 950,
+                      cursor:
+                        payingPlayerId === item.player_id
+                          ? "default"
+                          : "pointer",
+                      opacity:
+                        payingPlayerId === item.player_id ? 0.7 : 1,
+                    }}
+                  >
+                    {payingPlayerId === item.player_id
+                      ? "Označuji..."
+                      : "ZAPLATIT VŠE"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div
+              style={{
+                padding: "12px",
+                borderRadius: "12px",
+                background: "rgba(46,204,113,0.12)",
+                border: "1px solid rgba(46,204,113,0.20)",
+                color: "#9af0b6",
+                fontWeight: 900,
+                marginBottom: "14px",
+              }}
+            >
+              Všechny pokuty v tomto období jsou zaplacené.
+            </div>
+          )}
+
           <div style={{ display: "grid", gap: "10px" }}>
             <input
               type="text"
@@ -491,7 +701,7 @@ export default function PeriodsScreen({
             <button
               type="button"
               onClick={() => void handleCloseAndCreate()}
-              disabled={saving}
+              disabled={saving || unpaidPlayers.length > 0}
               style={{
                 ...styles.primaryButton,
                 marginTop: 0,

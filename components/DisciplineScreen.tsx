@@ -30,6 +30,7 @@ import {
   getTotalFineAmount,
   getUnpaidFineAmount,
   setFinePaidStatus,
+  setAllPlayerFinesPaid,
   type FineRow,
 } from "@/lib/fines";
 import {
@@ -247,6 +248,7 @@ export default function DisciplineScreen({
   const [fineSaving, setFineSaving] = useState(false);
   const [templateSaving, setTemplateSaving] = useState(false);
   const [deletingFineId, setDeletingFineId] = useState<string | null>(null);
+  const [payingAllPlayerId, setPayingAllPlayerId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -986,6 +988,62 @@ export default function DisciplineScreen({
         ? "Pokuta byla označena jako zaplacená."
         : "Pokuta byla vrácena mezi nezaplacené."
     );
+  };
+
+  const handlePayAllPlayerFines = async ({
+    playerId,
+    playerName,
+    unpaidAmount,
+  }: {
+    playerId: string;
+    playerName: string;
+    unpaidAmount: number;
+  }) => {
+    if (!isAdmin) {
+      setMessage("Pouze admin může měnit stav pokut.");
+      return;
+    }
+
+    const targetPeriod =
+      periodFilterMode === "active"
+        ? activePeriod
+        : periodFilterMode === "custom"
+          ? effectivePeriod
+          : null;
+
+    if (!targetPeriod) {
+      setMessage("Funkci ZAPLATIT VŠE použij u konkrétního období.");
+      return;
+    }
+
+    if (unpaidAmount <= 0) {
+      setMessage("Hráč nemá v tomto období žádné nezaplacené pokuty.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Opravdu označit všechny nezaplacené pokuty hráče ${playerName} v období "${targetPeriod.name}" jako zaplacené?\n\nCelkem: ${formatMoney(unpaidAmount)}`
+    );
+
+    if (!confirmed) return;
+
+    setPayingAllPlayerId(playerId);
+    setMessage("");
+
+    const success = await setAllPlayerFinesPaid({
+      periodId: targetPeriod.id,
+      playerId,
+    });
+
+    if (!success) {
+      setMessage("Nepodařilo se označit všechny pokuty hráče jako zaplacené.");
+      setPayingAllPlayerId(null);
+      return;
+    }
+
+    await reloadVisibleFines();
+    setMessage(`Všechny pokuty hráče ${playerName} byly označeny jako zaplacené.`);
+    setPayingAllPlayerId(null);
   };
 
   const handleDeleteFine = async (fine: FineRow) => {
@@ -2168,6 +2226,39 @@ export default function DisciplineScreen({
                               borderTop: "1px solid rgba(255,255,255,0.06)",
                             }}
                           >
+                            {isAdmin && item.unpaid_amount > 0 && periodFilterMode !== "all" && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handlePayAllPlayerFines({
+                                    playerId: item.player_id,
+                                    playerName: item.playerName,
+                                    unpaidAmount: item.unpaid_amount,
+                                  })
+                                }
+                                disabled={payingAllPlayerId === item.player_id}
+                                style={{
+                                  width: "100%",
+                                  border: "none",
+                                  borderRadius: "12px",
+                                  padding: "11px 12px",
+                                  background: primaryColor,
+                                  color: "#071107",
+                                  fontWeight: 950,
+                                  cursor:
+                                    payingAllPlayerId === item.player_id
+                                      ? "default"
+                                      : "pointer",
+                                  opacity:
+                                    payingAllPlayerId === item.player_id ? 0.7 : 1,
+                                }}
+                              >
+                                {payingAllPlayerId === item.player_id
+                                  ? "Označuji..."
+                                  : `ZAPLATIT VŠE (${formatMoney(item.unpaid_amount)})`}
+                              </button>
+                            )}
+
                             {playerFines.length === 0 ? (
                               <div style={{ color: "#b8b8b8", fontSize: "13px" }}>
                                 Žádné pokuty.

@@ -231,6 +231,45 @@ export async function setFinePaidStatus({
   return true;
 }
 
+
+export async function setAllPlayerFinesPaid({
+  periodId,
+  playerId,
+}: {
+  periodId: string;
+  playerId: string;
+}): Promise<boolean> {
+  const { error } = await supabase
+    .from("fines")
+    .update({ is_paid: true })
+    .eq("period_id", periodId)
+    .eq("player_id", playerId)
+    .eq("is_paid", false);
+
+  if (error) {
+    console.error("Nepodařilo se označit všechny pokuty hráče jako zaplacené:", error);
+    return false;
+  }
+
+  return true;
+}
+
+export async function hasUnpaidFinesForPeriod(periodId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("fines")
+    .select("id")
+    .eq("period_id", periodId)
+    .eq("is_paid", false)
+    .limit(1);
+
+  if (error) {
+    console.error("Nepodařilo se ověřit nezaplacené pokuty období:", error);
+    return true;
+  }
+
+  return (data?.length ?? 0) > 0;
+}
+
 export async function deleteFine(fineId: string): Promise<boolean> {
   const { error } = await supabase
     .from("fines")
