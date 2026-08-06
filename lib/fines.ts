@@ -84,6 +84,22 @@ export async function getFinesByPeriodId(periodId: string): Promise<FineRow[]> {
   return ((data as FineRow[]) ?? []).map(normalizeFineRow);
 }
 
+export async function getFinesByClubId(clubId: string): Promise<FineRow[]> {
+  const { data, error } = await supabase
+    .from("fines")
+    .select("*")
+    .eq("club_id", clubId)
+    .order("fine_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Nepodařilo se načíst pokuty klubu:", error);
+    return [];
+  }
+
+  return ((data as FineRow[]) ?? []).map(normalizeFineRow);
+}
+
 export async function createFine({
   clubId,
   periodId,
@@ -248,6 +264,31 @@ export async function setAllPlayerFinesPaid({
 
   if (error) {
     console.error("Nepodařilo se označit všechny pokuty hráče jako zaplacené:", error);
+    return false;
+  }
+
+  return true;
+}
+
+export async function setAllPlayerClubFinesPaid({
+  clubId,
+  playerId,
+}: {
+  clubId: string;
+  playerId: string;
+}): Promise<boolean> {
+  const { error } = await supabase
+    .from("fines")
+    .update({ is_paid: true })
+    .eq("club_id", clubId)
+    .eq("player_id", playerId)
+    .eq("is_paid", false);
+
+  if (error) {
+    console.error(
+      "Nepodařilo se označit všechny dluhy hráče jako zaplacené:",
+      error
+    );
     return false;
   }
 

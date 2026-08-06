@@ -26,11 +26,12 @@ import {
   createFine,
   deleteFine,
   getFinesByPeriodId,
+  getFinesByClubId,
   getPaidFineAmount,
   getTotalFineAmount,
   getUnpaidFineAmount,
   setFinePaidStatus,
-  setAllPlayerFinesPaid,
+  setAllPlayerClubFinesPaid,
   type FineRow,
 } from "@/lib/fines";
 import {
@@ -534,35 +535,21 @@ export default function DisciplineScreen({
       do {
         finesReloadQueuedRef.current = false;
 
-        if (periodFilterMode === "all") {
-          if (periods.length === 0) {
-            setFines([]);
-            continue;
-          }
-
-          const finesByPeriods: FineRow[][] = [];
-
-          for (const period of periods) {
-            finesByPeriods.push(await syncCardFinesForPeriod(period));
-          }
-
-          setFines(finesByPeriods.flat());
-          continue;
+        // Automatické pokuty za karty nejdřív synchronizujeme v každém období.
+        for (const period of periods) {
+          await syncCardFinesForPeriod(period);
         }
 
-        if (!effectivePeriod) {
-          setFines([]);
-          continue;
-        }
-
-        const data = await syncCardFinesForPeriod(effectivePeriod);
-        setFines(data);
+        // Dluhy a souhrn pokut se zobrazují za celý klub bez ohledu na období.
+        const allClubFines = await getFinesByClubId(clubId);
+        setFines(allClubFines);
       } while (finesReloadQueuedRef.current);
     } finally {
       finesReloadRunningRef.current = false;
       setFinesLoading(false);
     }
-  }, [effectivePeriod, periodFilterMode, periods, syncCardFinesForPeriod]);
+  }, [clubId, periods, syncCardFinesForPeriod]);
+
 
   useEffect(() => {
     let active = true;
@@ -1030,8 +1017,8 @@ export default function DisciplineScreen({
     setPayingAllPlayerId(playerId);
     setMessage("");
 
-    const success = await setAllPlayerFinesPaid({
-      periodId: targetPeriod.id,
+    const success = await setAllPlayerClubFinesPaid({
+      clubId,
       playerId,
     });
 
@@ -1042,7 +1029,7 @@ export default function DisciplineScreen({
     }
 
     await reloadVisibleFines();
-    setMessage(`Všechny pokuty hráče ${playerName} byly označeny jako zaplacené.`);
+    setMessage(`Všechny nezaplacené pokuty hráče ${playerName} byly označeny jako zaplacené.`);
     setPayingAllPlayerId(null);
   };
 
@@ -1473,7 +1460,7 @@ export default function DisciplineScreen({
                   textTransform: "uppercase",
                 }}
               >
-                Období
+                Období docházky
               </div>
 
               <div style={{ fontSize: "18px", fontWeight: 950, marginTop: "3px" }}>
@@ -1911,6 +1898,18 @@ export default function DisciplineScreen({
               <div
                 style={{
                   ...glassCardStyle,
+                  padding: "12px 14px",
+                  color: "#cfcfcf",
+                  fontSize: "13px",
+                  lineHeight: 1.5,
+                }}
+              >
+                Pokuty a dluhy se zobrazují napříč všemi obdobími. Nezaplacený
+                dluh zůstává hráči až do jeho uhrazení.
+              </div>
+              <div
+                style={{
+                  ...glassCardStyle,
                   padding: "16px",
                   display: "grid",
                   gridTemplateColumns: "1fr 1fr 1fr",
@@ -2101,7 +2100,7 @@ export default function DisciplineScreen({
                 </div>
               ) : fineSummary.length === 0 ? (
                 <div style={{ ...glassCardStyle, padding: "16px", color: "#b8b8b8" }}>
-                  Zatím žádné pokuty v tomto období.
+                  Zatím žádné pokuty v klubu.
                 </div>
               ) : (
                 <div style={{ display: "grid", gap: "10px" }}>
@@ -2226,7 +2225,7 @@ export default function DisciplineScreen({
                               borderTop: "1px solid rgba(255,255,255,0.06)",
                             }}
                           >
-                            {isAdmin && item.unpaid_amount > 0 && periodFilterMode !== "all" && (
+                            {isAdmin && item.unpaid_amount > 0 && (
                               <button
                                 type="button"
                                 onClick={() =>

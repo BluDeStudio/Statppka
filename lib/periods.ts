@@ -155,23 +155,6 @@ export async function closeAndCreatePeriod({
     return null;
   }
 
-  const { data: unpaidFines, error: unpaidFinesError } = await supabase
-    .from("fines")
-    .select("id")
-    .eq("period_id", closingPeriodId)
-    .eq("is_paid", false)
-    .limit(1);
-
-  if (unpaidFinesError) {
-    console.error("Nepodařilo se ověřit nezaplacené pokuty:", unpaidFinesError);
-    return null;
-  }
-
-  if ((unpaidFines?.length ?? 0) > 0) {
-    console.error("Období nelze uzavřít, dokud existují nezaplacené pokuty.");
-    return null;
-  }
-
   const closed = await closePeriod(closingPeriodId, clubId);
   if (!closed) return null;
 
