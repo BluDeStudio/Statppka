@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getPlayersByClubId, type Player } from "@/lib/players";
+import { getActivePlayersByClubId, type Player } from "@/lib/players";
 import { getMatchLineupState, saveMatchLineup } from "@/lib/matchLineups";
 import { canEditLineup } from "@/lib/liveMatch";
 import { styles } from "@/styles/appStyles";
@@ -50,7 +50,7 @@ export default function MatchDetail({
       setPlayersLoading(true);
       setMessage("");
 
-      const loadedPlayers = await getPlayersByClubId(clubId);
+      const loadedPlayers = await getActivePlayersByClubId(clubId);
 
       if (!active) return;
 
