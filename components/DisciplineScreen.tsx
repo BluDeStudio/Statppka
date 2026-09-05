@@ -285,6 +285,14 @@ export default function DisciplineScreen({
     return clubMemberPlayers;
   }, [players, clubMemberPlayers]);
 
+  const activeDisciplinePlayers = useMemo<DisciplinePlayer[]>(() => {
+    if (players.length > 0) {
+      return players.filter((player) => player.is_active !== false);
+    }
+
+    return clubMemberPlayers.filter((player) => player.is_active !== false);
+  }, [players, clubMemberPlayers]);
+
   const disciplinePlayersById = useMemo(() => {
     const map = new Map<string, DisciplinePlayer>();
 
@@ -685,7 +693,7 @@ export default function DisciplineScreen({
   ]);
 
   const attendanceStats = useMemo(() => {
-    return disciplinePlayers.map((player) => {
+    return activeDisciplinePlayers.map((player) => {
       let attended = 0;
       const total = filteredOlderTrainings.length;
 
@@ -707,7 +715,7 @@ export default function DisciplineScreen({
         percentage,
       };
     });
-  }, [disciplinePlayers, filteredOlderTrainings, presenceMap]);
+  }, [activeDisciplinePlayers, filteredOlderTrainings, presenceMap]);
 
   const sortedAttendanceStats = useMemo(() => {
     const sorted = [...attendanceStats].sort((a, b) => {
@@ -2049,7 +2057,7 @@ export default function DisciplineScreen({
                             <option value="" style={{ background: "#111111", color: "white" }}>
                               Vyber hráče
                             </option>
-                            {disciplinePlayers
+                            {activeDisciplinePlayers
                               .slice()
                               .sort((a, b) => a.name.localeCompare(b.name, "cs"))
                               .map((player) => (

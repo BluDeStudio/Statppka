@@ -354,6 +354,22 @@ export default function StatsScreen({
     };
   }, [clubId, finishedMatchIds.join("|")]);
 
+  const activePlayerIds = useMemo(() => {
+    return new Set(
+      players
+        .filter((player) => player.is_active !== false)
+        .map((player) => player.id)
+    );
+  }, [players]);
+
+  const activePlayerNumbers = useMemo(() => {
+    return new Set(
+      players
+        .filter((player) => player.is_active !== false)
+        .map((player) => player.number)
+    );
+  }, [players]);
+
   const playerById = useMemo(() => {
     const map = new Map<string, Player>();
 
@@ -673,25 +689,33 @@ export default function StatsScreen({
       });
     });
 
-    const arr = Array.from(playerMap.entries()).map(([key, stats]) => ({
-      key,
-      playerId: stats.playerId,
-      number: getPlayerNumber(stats.playerNumber, stats.playerId),
-      historicalNumber: stats.playerNumber,
-      name: getPlayerName(stats.playerNumber, stats.playerId),
-      matches: stats.matches,
-      goals: stats.goals,
-      assists: stats.assists,
-      points: stats.goals + stats.assists,
-      averageRating:
-        stats.ratingVotes > 0
-          ? Number((stats.ratingPoints / stats.ratingVotes).toFixed(1))
-          : null,
-      ratingVotes: stats.ratingVotes,
-      motmCount: stats.motmCount,
-      yellowCards: stats.yellowCards,
-      redCards: stats.redCards,
-    }));
+    const arr = Array.from(playerMap.entries())
+      .filter(([, stats]) => {
+        if (stats.playerId) {
+          return activePlayerIds.has(stats.playerId);
+        }
+
+        return activePlayerNumbers.has(stats.playerNumber);
+      })
+      .map(([key, stats]) => ({
+        key,
+        playerId: stats.playerId,
+        number: getPlayerNumber(stats.playerNumber, stats.playerId),
+        historicalNumber: stats.playerNumber,
+        name: getPlayerName(stats.playerNumber, stats.playerId),
+        matches: stats.matches,
+        goals: stats.goals,
+        assists: stats.assists,
+        points: stats.goals + stats.assists,
+        averageRating:
+          stats.ratingVotes > 0
+            ? Number((stats.ratingPoints / stats.ratingVotes).toFixed(1))
+            : null,
+        ratingVotes: stats.ratingVotes,
+        motmCount: stats.motmCount,
+        yellowCards: stats.yellowCards,
+        redCards: stats.redCards,
+      }));
 
     return arr.sort((a, b) => {
       if (playerSort === "goals") {
@@ -737,6 +761,8 @@ export default function StatsScreen({
     playerByNumber,
     statPlayerIdByMatchAndNumber,
     statRowsByMatchId,
+    activePlayerIds,
+    activePlayerNumbers,
   ]);
 
   const goalkeeperStats = useMemo(() => {
@@ -816,23 +842,31 @@ export default function StatsScreen({
       current.goalsAgainst += match.goalsAgainst;
     });
 
-    const arr = Array.from(gkMap.entries()).map(([key, stats]) => {
-      const matches = stats.matchIds.size;
+    const arr = Array.from(gkMap.entries())
+      .filter(([, stats]) => {
+        if (stats.playerId) {
+          return activePlayerIds.has(stats.playerId);
+        }
 
-      return {
-        key,
-        playerId: stats.playerId,
-        number: getPlayerNumber(stats.playerNumber, stats.playerId),
-        historicalNumber: stats.playerNumber,
-        name: getPlayerName(stats.playerNumber, stats.playerId),
-        matches,
-        goalsAgainst: stats.goalsAgainst,
-        average:
-          matches > 0
-            ? Number((stats.goalsAgainst / matches).toFixed(2))
-            : 0,
-      };
-    });
+        return activePlayerNumbers.has(stats.playerNumber);
+      })
+      .map(([key, stats]) => {
+        const matches = stats.matchIds.size;
+
+        return {
+          key,
+          playerId: stats.playerId,
+          number: getPlayerNumber(stats.playerNumber, stats.playerId),
+          historicalNumber: stats.playerNumber,
+          name: getPlayerName(stats.playerNumber, stats.playerId),
+          matches,
+          goalsAgainst: stats.goalsAgainst,
+          average:
+            matches > 0
+              ? Number((stats.goalsAgainst / matches).toFixed(2))
+              : 0,
+        };
+      });
 
     return arr.sort((a, b) => {
       if (goalkeeperSort === "matches") {
@@ -862,6 +896,8 @@ export default function StatsScreen({
     playerById,
     playerByNumber,
     statPlayerIdByMatchAndNumber,
+    activePlayerIds,
+    activePlayerNumbers,
   ]);
 
   const glassCardStyle: React.CSSProperties = {

@@ -236,7 +236,9 @@ export default function TrainingsScreen({
 
       const currentLinkedPlayer =
         loadedPlayers.find(
-          (player) => player.profile_id === (user?.id ?? null)
+          (player) =>
+            player.profile_id === (user?.id ?? null) &&
+            player.is_active !== false
         ) ?? null;
 
       setTrainings((loadedTrainings as Training[]) ?? []);
@@ -307,6 +309,16 @@ export default function TrainingsScreen({
       ) ?? null
     );
   }, [fineTemplates]);
+
+  const activePlayers = useMemo(
+    () => players.filter((player) => player.is_active !== false),
+    [players]
+  );
+
+  const activePlayerIds = useMemo(
+    () => new Set(activePlayers.map((player) => player.id)),
+    [activePlayers]
+  );
 
   const activePeriod = useMemo(
     () => periods.find((period) => period.is_active) ?? null,
@@ -413,7 +425,9 @@ export default function TrainingsScreen({
   };
 
   const getTrainingSummary = (trainingId: string) => {
-    const rows = getTrainingAttendanceRows(trainingId);
+    const rows = getTrainingAttendanceRows(trainingId).filter((row) =>
+      activePlayerIds.has(row.player_id)
+    );
     const yesCount = rows.filter((row) => row.status === "yes").length;
     const maybeCount = rows.filter((row) => row.status === "maybe").length;
     const noCount = rows.filter((row) => row.status === "no").length;
@@ -429,7 +443,7 @@ export default function TrainingsScreen({
         .map((row) => row.player_id)
     );
 
-    const notVotedCount = players.filter(
+    const notVotedCount = activePlayers.filter(
       (player) => !votedPlayerIds.has(player.id)
     ).length;
 
@@ -443,7 +457,9 @@ export default function TrainingsScreen({
   };
 
   const getNonVotedPlayers = (trainingId: string) => {
-    const rows = getTrainingAttendanceRows(trainingId);
+    const rows = getTrainingAttendanceRows(trainingId).filter((row) =>
+      activePlayerIds.has(row.player_id)
+    );
     const votedPlayerIds = new Set(
       rows
         .filter(
@@ -455,14 +471,16 @@ export default function TrainingsScreen({
         .map((row) => row.player_id)
     );
 
-    return players
+    return activePlayers
       .filter((player) => !votedPlayerIds.has(player.id))
       .sort((a, b) => a.name.localeCompare(b.name, "cs"));
   };
 
   const getPresenceSummary = (trainingId: string) => {
     const rows = getTrainingPresenceRows(trainingId);
-    return rows.filter((row) => row.present).length;
+    return rows.filter(
+      (row) => row.present && activePlayerIds.has(row.player_id)
+    ).length;
   };
 
   const getMyAttendanceStatus = (
@@ -746,7 +764,7 @@ export default function TrainingsScreen({
     }
 
     const existingPresence = getTrainingPresenceRows(trainingId)
-      .filter((row) => row.present)
+      .filter((row) => row.present && activePlayerIds.has(row.player_id))
       .map((row) => row.player_id);
 
     if (existingPresence.length > 0) {
@@ -757,7 +775,9 @@ export default function TrainingsScreen({
     }
 
     const defaultFromAttendance = getTrainingAttendanceRows(trainingId)
-      .filter((row) => row.status === "yes")
+      .filter(
+        (row) => row.status === "yes" && activePlayerIds.has(row.player_id)
+      )
       .map((row) => row.player_id);
 
     setPresenceDraft(defaultFromAttendance);
@@ -1357,7 +1377,9 @@ export default function TrainingsScreen({
             const nonVotedPlayers = getNonVotedPlayers(training.id);
 
             const yesRows = attendanceRows
-              .filter((row) => row.status === "yes")
+              .filter(
+                (row) => row.status === "yes" && activePlayerIds.has(row.player_id)
+              )
               .sort((a, b) =>
                 getPlayerName(rowToPlayerId(a)).localeCompare(
                   getPlayerName(rowToPlayerId(b)),
@@ -1366,7 +1388,9 @@ export default function TrainingsScreen({
               );
 
             const maybeRows = attendanceRows
-              .filter((row) => row.status === "maybe")
+              .filter(
+                (row) => row.status === "maybe" && activePlayerIds.has(row.player_id)
+              )
               .sort((a, b) =>
                 getPlayerName(rowToPlayerId(a)).localeCompare(
                   getPlayerName(rowToPlayerId(b)),
@@ -1375,7 +1399,9 @@ export default function TrainingsScreen({
               );
 
             const noRows = attendanceRows
-              .filter((row) => row.status === "no")
+              .filter(
+                (row) => row.status === "no" && activePlayerIds.has(row.player_id)
+              )
               .sort((a, b) =>
                 getPlayerName(rowToPlayerId(a)).localeCompare(
                   getPlayerName(rowToPlayerId(b)),
@@ -1384,7 +1410,7 @@ export default function TrainingsScreen({
               );
 
             const presentRows = presenceRows
-              .filter((row) => row.present)
+              .filter((row) => row.present && activePlayerIds.has(row.player_id))
               .sort((a, b) =>
                 getPlayerName(a.player_id).localeCompare(
                   getPlayerName(b.player_id),
@@ -1809,7 +1835,7 @@ export default function TrainingsScreen({
                             </div>
 
                             <div style={{ display: "grid", gap: "8px" }}>
-                              {players
+                              {activePlayers
                                 .slice()
                                 .sort((a, b) => a.number - b.number)
                                 .map((player) => {

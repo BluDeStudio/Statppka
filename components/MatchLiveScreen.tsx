@@ -101,14 +101,16 @@ export default function MatchLiveScreen({
   const [redCardPlayerId, setRedCardPlayerId] = useState("");
 
   const selectedPlayerObjects = useMemo(() => {
+    const activePlayers = players.filter((player) => player.is_active !== false);
+
     const idsToUse =
       lineupPlayerIds.length > 0
         ? lineupPlayerIds
-        : players
+        : activePlayers
             .filter((player) => selectedPlayers.includes(player.number))
             .map((player) => player.id);
 
-    return players.filter((player) => idsToUse.includes(player.id));
+    return activePlayers.filter((player) => idsToUse.includes(player.id));
   }, [players, lineupPlayerIds, selectedPlayers]);
 
   const detailPlayerIds = useMemo(
@@ -168,7 +170,11 @@ export default function MatchLiveScreen({
         loadedLineupIds.length > 0
           ? loadedLineupIds
           : loadedPlayers
-              .filter((player) => selectedPlayers.includes(player.number))
+              .filter(
+                (player) =>
+                  player.is_active !== false &&
+                  selectedPlayers.includes(player.number)
+              )
               .map((player) => player.id);
 
       await loadDetailRows(playerIdsForDetail);
