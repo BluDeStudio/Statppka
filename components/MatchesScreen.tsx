@@ -40,6 +40,7 @@ type Player = {
   number: number;
   position: string;
   profile_id?: string | null;
+  is_active?: boolean;
 };
 
 type MatchAttendanceRow = {
@@ -220,6 +221,7 @@ export default function MatchesScreen({
           .from("players")
           .select("*")
           .eq("club_id", clubId)
+          .eq("is_active", true)
           .order("number", { ascending: true }),
         visibleMatchIds.length === 0
           ? Promise.resolve({ data: [], error: null })
