@@ -745,8 +745,12 @@ export default function DisciplineScreen({
 
   const fineSummary = useMemo(() => {
     const summary = buildFineSummaryByPlayer(fines);
+    const activePlayerIds = new Set(
+      activeDisciplinePlayers.map((player) => player.id)
+    );
 
     return summary
+      .filter((item) => activePlayerIds.has(item.player_id))
       .map((item) => ({
         ...item,
         playerName:
@@ -761,7 +765,7 @@ export default function DisciplineScreen({
         }
         return a.playerName.localeCompare(b.playerName, "cs");
       });
-  }, [disciplinePlayersById, fines]);
+  }, [activeDisciplinePlayers, disciplinePlayersById, fines]);
 
   const finesByPlayer = useMemo(() => {
     const map = new Map<string, FineRow[]>();
@@ -2241,35 +2245,37 @@ export default function DisciplineScreen({
                                 </div>
                                 <div
                                   style={{
-                                    fontSize: "13px",
+                                    fontSize: "12px",
                                     color: "#b8b8b8",
                                     marginTop: "4px",
                                   }}
                                 >
-                                  Pokut: {item.fines_count}
+                                  Historicky celkem: {formatMoney(item.total_amount)}
                                 </div>
                               </div>
                             </div>
 
-                            <div style={{ textAlign: "right" }}>
+                            <div style={{ textAlign: "right", minWidth: "92px" }}>
                               <div
                                 style={{
-                                  fontSize: "16px",
-                                  fontWeight: 950,
-                                  color: "#ffffff",
+                                  fontSize: "11px",
+                                  color: "#9b9b9b",
+                                  fontWeight: 900,
+                                  letterSpacing: "0.6px",
                                 }}
                               >
-                                {formatMoney(item.total_amount)}
+                                DLUH
                               </div>
                               <div
                                 style={{
-                                  fontSize: "12px",
+                                  fontSize: "22px",
+                                  lineHeight: 1.1,
+                                  fontWeight: 950,
                                   color: item.unpaid_amount > 0 ? "#ffb0a8" : "#9af0b6",
-                                  marginTop: "4px",
-                                  fontWeight: 900,
+                                  marginTop: "3px",
                                 }}
                               >
-                                Dluh: {formatMoney(item.unpaid_amount)}
+                                {formatMoney(item.unpaid_amount)}
                               </div>
                             </div>
                           </div>
