@@ -636,6 +636,8 @@ export default function PlayedMatchDetailScreen({
   const [message, setMessage] = useState("");
   const [savingPlayerKey, setSavingPlayerKey] = useState<string | null>(null);
   const [removingPlayerKey, setRemovingPlayerKey] = useState<string | null>(null);
+  const [addPlayerId, setAddPlayerId] = useState("");
+  const [addingPlayer, setAddingPlayer] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
 
   const [editEvents, setEditEvents] = useState<EditableEvent[]>([]);
@@ -1005,6 +1007,27 @@ export default function PlayedMatchDetailScreen({
         return (aCurrentNumber ?? a.playerNumber) - (bCurrentNumber ?? b.playerNumber);
       });
   }, [localMatch.playerStats, playerById, playerByNumber]);
+
+  const availablePlayersToAdd = useMemo(() => {
+    const existingIds = new Set(
+      (localMatch.playerStats as PlayerStatWithId[])
+        .map((stat) => getStatPlayerId(stat))
+        .filter((id): id is string => Boolean(id))
+    );
+    const existingNumbers = new Set(
+      (localMatch.playerStats as PlayerStatWithId[]).map((stat) => Number(stat.playerNumber))
+    );
+
+    return players
+      .filter((player) => player.is_active !== false)
+      .filter(
+        (player) =>
+          !existingIds.has(player.id) &&
+          !existingNumbers.has(Number(player.number))
+      )
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name, "cs"));
+  }, [players, localMatch.playerStats]);
 
   const votingStatus = useMemo(() => {
     return getRemainingVotingTime(localMatch.finished_at, nowMs);
@@ -1824,6 +1847,70 @@ export default function PlayedMatchDetailScreen({
     setMessage("");
   };
 
+  const handleAddPlayer = async () => {
+    if (!isAdmin) return;
+
+    if (!addPlayerId) {
+      setMessage("Vyber hráče, kterého chceš přidat.");
+      return;
+    }
+
+    const player = players.find((item) => item.id === addPlayerId);
+    if (!player) {
+      setMessage("Vybraný hráč nebyl nalezen.");
+      return;
+    }
+
+    setAddingPlayer(true);
+    setMessage("");
+
+    const { error } = await supabase.from("finished_match_player_stats").insert({
+      finished_match_id: localMatch.id,
+      player_id: player.id,
+      player_number: Number(player.number),
+      goals: 0,
+      assists: 0,
+      yellow_cards: 0,
+      red_cards: 0,
+      played_seconds: 0,
+      shots_on_target: 0,
+      shots_off_target: 0,
+    });
+
+    if (error) {
+      console.error("Nepodařilo se přidat hráče do zápasu:", error);
+      setMessage(`Nepodařilo se přidat hráče: ${error.message}`);
+      setAddingPlayer(false);
+      return;
+    }
+
+    const newStat: PlayerStatWithId = {
+      playerId: player.id,
+      player_id: player.id,
+      playerNumber: Number(player.number),
+      goals: 0,
+      assists: 0,
+      yellowCards: 0,
+      redCards: 0,
+      playedSeconds: 0,
+      shotsOnTarget: 0,
+      shotsOffTarget: 0,
+    };
+
+    setLocalMatch((prev) => ({
+      ...prev,
+      playerStats: dedupePlayerStats([
+        ...(prev.playerStats as PlayerStatWithId[]),
+        newStat,
+      ]),
+    }));
+
+    setAddPlayerId("");
+    setLineupOpen(true);
+    setMessage(`Hráč ${player.name} byl přidán do sestavy.`);
+    setAddingPlayer(false);
+  };
+
   const handleRemovePlayer = async (stat: PlayerStatWithId) => {
     if (!isAdmin) {
       setMessage("Editace zápasu je dostupná jen pro admina.");
@@ -2516,6 +2603,62 @@ export default function PlayedMatchDetailScreen({
 
         {lineupOpen && (
           <div style={{ display: "grid", gap: "10px", marginTop: "12px" }}>
+            {isAdmin && (
+              <div
+                style={{
+                  display: "grid",
+                  gap: "8px",
+                  padding: "12px",
+                  borderRadius: "16px",
+                  background: "rgba(34,197,94,0.08)",
+                  border: "1px solid rgba(34,197,94,0.18)",
+                }}
+              >
+                <div style={{ fontWeight: 950, fontSize: "14px" }}>
+                  Přidat hráče do sestavy
+                </div>
+
+                {availablePlayersToAdd.length === 0 ? (
+                  <div style={{ color: "#b8b8b8", fontSize: "12px" }}>
+                    Všichni aktivní hráči už jsou v sestavě.
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "8px" }}>
+                    <select
+                      value={addPlayerId}
+                      onChange={(e) => setAddPlayerId(e.target.value)}
+                      style={inputStyle}
+                      disabled={addingPlayer}
+                    >
+                      <option value="" style={{ color: "black" }}>
+                        Vyber hráče
+                      </option>
+                      {availablePlayersToAdd.map((player) => (
+                        <option key={player.id} value={player.id} style={{ color: "black" }}>
+                          #{player.number} — {player.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleAddPlayer()}
+                      disabled={addingPlayer || !addPlayerId}
+                      style={{
+                        ...primaryButtonStyle,
+                        width: "auto",
+                        padding: "10px 14px",
+                        opacity: addingPlayer || !addPlayerId ? 0.7 : 1,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {addingPlayer ? "Přidávám..." : "Přidat"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div style={{ display: "grid", gap: "8px" }}>
               {lineupPlayers.map((stat) => {
                 const statPlayerId = getStatPlayerId(stat);
