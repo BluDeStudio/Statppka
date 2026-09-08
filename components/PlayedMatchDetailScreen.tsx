@@ -1328,6 +1328,221 @@ export default function PlayedMatchDetailScreen({
     return dedupePlayerStats(nextStats);
   };
 
+  const syncCardFinesForThisMatch = async (
+    eventsToSave: EditableEvent[]
+  ) => {
+    const cardEvents = eventsToSave.filter(
+      (event) => event.type === "yellow_card" || event.type === "red_card"
+    );
+
+    const desired = new Map<
+      string,
+      {
+        playerId: string;
+        type: "yellow_card" | "red_card";
+        count: number;
+      }
+    >();
+
+    for (const event of cardEvents) {
+      const resolved = resolvePlayerIdentity(event.playerId, event.playerNumber);
+      if (!resolved.playerId) {
+        return {
+          success: false,
+          errorMessage: "U karty chybí player_id hráče.",
+        };
+      }
+
+      const type = event.type as "yellow_card" | "red_card";
+      const key = `${type}::${resolved.playerId}`;
+      const existing = desired.get(key);
+
+      if (existing) {
+        existing.count += 1;
+      } else {
+        desired.set(key, {
+          playerId: resolved.playerId,
+          type,
+          count: 1,
+        });
+      }
+    }
+
+    const { data: periodsData, error: periodsError } = await supabase
+      .from("periods")
+      .select("id,start_date,end_date")
+      .eq("club_id", clubId);
+
+    if (periodsError) {
+      console.error("Nepodařilo se načíst období pro karetní pokutu:", periodsError);
+      return {
+        success: false,
+        errorMessage: "Karta byla uložena, ale nepodařilo se určit období pokuty.",
+      };
+    }
+
+    const matchDate = String(localMatch.date).slice(0, 10);
+    const period = ((periodsData ?? []) as Array<{
+      id: string;
+      start_date: string;
+      end_date: string;
+    }>).find(
+      (item) =>
+        String(item.start_date).slice(0, 10) <= matchDate &&
+        String(item.end_date).slice(0, 10) >= matchDate
+    );
+
+    if (!period) {
+      return {
+        success: false,
+        errorMessage: `Karta byla uložena, ale pro datum ${matchDate} nebylo nalezeno období pokut.`,
+      };
+    }
+
+    const { data: templatesData, error: templatesError } = await supabase
+      .from("fine_templates")
+      .select("name,default_amount,is_active")
+      .eq("club_id", clubId)
+      .eq("is_active", true);
+
+    if (templatesError) {
+      console.error("Nepodařilo se načíst sazby karetních pokut:", templatesError);
+      return {
+        success: false,
+        errorMessage: "Karta byla uložena, ale nepodařilo se načíst sazbu pokuty.",
+      };
+    }
+
+    const normalize = (value?: string | null) =>
+      (value ?? "").trim().toLocaleLowerCase("cs-CZ");
+
+    const templates = (templatesData ?? []) as Array<{
+      name: string;
+      default_amount: number | string | null;
+      is_active: boolean;
+    }>;
+
+    const yellowTemplate = templates.find(
+      (item) => normalize(item.name) === normalize("Žlutá karta")
+    );
+    const redTemplate = templates.find(
+      (item) => normalize(item.name) === normalize("Červená karta")
+    );
+
+    const { data: existingFinesData, error: existingFinesError } = await supabase
+      .from("fines")
+      .select("id,player_id,reason,note,fine_date,created_at")
+      .eq("club_id", clubId)
+      .like("note", `match:${localMatch.id}:%`);
+
+    if (existingFinesError) {
+      console.error("Nepodařilo se načíst karetní pokuty zápasu:", existingFinesError);
+      return {
+        success: false,
+        errorMessage: "Karta byla uložena, ale nepodařilo se zkontrolovat její pokutu.",
+      };
+    }
+
+    const existingFines = (existingFinesData ?? []) as Array<{
+      id: string;
+      player_id: string;
+      reason: string;
+      note: string | null;
+      fine_date: string;
+      created_at?: string | null;
+    }>;
+
+    const desiredKeys = new Set<string>();
+
+    for (const item of desired.values()) {
+      const reason =
+        item.type === "yellow_card" ? "Žlutá karta" : "Červená karta";
+      const template =
+        item.type === "yellow_card" ? yellowTemplate : redTemplate;
+
+      // Pokud pro typ karty není aktivní sazba, automatickou pokutu nevytváříme.
+      if (!template) continue;
+
+      const note = `match:${localMatch.id}:${item.type}:${item.playerId}`;
+      desiredKeys.add(note);
+
+      const matching = existingFines
+        .filter((fine) => fine.note === note)
+        .sort((a, b) =>
+          String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""))
+        );
+
+      const missingCount = Math.max(0, item.count - matching.length);
+
+      if (missingCount > 0) {
+        const rows = Array.from({ length: missingCount }, () => ({
+          club_id: clubId,
+          period_id: period.id,
+          player_id: item.playerId,
+          amount: Number(template.default_amount ?? 0),
+          reason,
+          note,
+          fine_date: matchDate,
+          is_paid: false,
+          created_by: currentUserId,
+        }));
+
+        const { error: insertFineError } = await supabase.from("fines").insert(rows);
+
+        if (insertFineError) {
+          console.error("Nepodařilo se vytvořit karetní pokutu:", insertFineError);
+          return {
+            success: false,
+            errorMessage: "Karta byla uložena, ale nepodařilo se vytvořit její pokutu.",
+          };
+        }
+      }
+
+      if (matching.length > item.count) {
+        const idsToDelete = matching
+          .slice(item.count)
+          .map((fine) => fine.id);
+
+        const { error: deleteExtraError } = await supabase
+          .from("fines")
+          .delete()
+          .in("id", idsToDelete);
+
+        if (deleteExtraError) {
+          console.error("Nepodařilo se odstranit duplicitní karetní pokutu:", deleteExtraError);
+          return {
+            success: false,
+            errorMessage: "Karta byla uložena, ale nepodařilo se odstranit duplicitní pokutu.",
+          };
+        }
+      }
+    }
+
+    // Pokud byla karta ze zápasu smazána nebo změněna na jiný typ/hráče,
+    // odstraníme pouze automatickou pokutu svázanou s TÍMTO zápasem.
+    // Ruční ani historické pokuty bez match: vazby se nikdy nemažou.
+    const obsoleteIds = existingFines
+      .filter((fine) => fine.note && !desiredKeys.has(fine.note))
+      .map((fine) => fine.id);
+
+    if (obsoleteIds.length > 0) {
+      const { error: deleteObsoleteError } = await supabase
+        .from("fines")
+        .delete()
+        .in("id", obsoleteIds);
+
+      if (deleteObsoleteError) {
+        console.error("Nepodařilo se odstranit pokutu po smazání karty:", deleteObsoleteError);
+        return {
+          success: false,
+          errorMessage: "Karta byla změněna, ale nepodařilo se upravit její pokutu.",
+        };
+      }
+    }
+
+    return { success: true };
+  };
+
   const persistMatchChanges = async (
     eventsToSave: EditableEvent[],
     segmentsToSave: GoalkeeperSegment[]
@@ -1559,6 +1774,14 @@ export default function PlayedMatchDetailScreen({
           errorMessage: `Nepodařilo se uložit brankáře: ${insertGoalkeepersError.message}`,
         };
       }
+    }
+
+    const cardFineResult = await syncCardFinesForThisMatch(
+      normalizedEventsToSave
+    );
+
+    if (!cardFineResult.success) {
+      return cardFineResult;
     }
 
     setLocalMatch((prev) => ({

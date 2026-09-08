@@ -635,12 +635,10 @@ export default function DisciplineScreen({
       do {
         finesReloadQueuedRef.current = false;
 
-        // Automatické pokuty za karty nejdřív synchronizujeme v každém období.
-        for (const period of periods) {
-          await syncCardFinesForPeriod(period);
-        }
-
-        // Dluhy a souhrn pokut se zobrazují za celý klub bez ohledu na období.
+        // Pokuty se zde už pouze načítají.
+        // Otevření obrazovky POKUTY nesmí vytvářet, opravovat ani mazat
+        // automatické pokuty za karty. Karetní pokuta vzniká / zaniká
+        // výhradně při uložení změny konkrétního odehraného zápasu.
         const allClubFines = await getFinesByClubId(clubId);
         setFines(allClubFines);
       } while (finesReloadQueuedRef.current);
