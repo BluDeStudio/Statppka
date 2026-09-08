@@ -77,8 +77,27 @@ function normalizeText(value: string) {
   return value.trim().toLowerCase();
 }
 
+function parseMatchCardFineNote(note?: string | null) {
+  if (!note) return null;
+
+  const match = note.match(
+    /^match:(.+):(yellow_card|red_card):([^:]+)$/
+  );
+
+  if (!match) return null;
+
+  return {
+    matchId: match[1],
+    cardType: match[2] as "yellow_card" | "red_card",
+    playerToken: match[3],
+  };
+}
+
 function isAutomaticCardFine(fine: FineRow) {
-  return Boolean(fine.note?.startsWith(CARD_FINE_NOTE_PREFIX));
+  return Boolean(
+    fine.note?.startsWith(CARD_FINE_NOTE_PREFIX) ||
+      parseMatchCardFineNote(fine.note)
+  );
 }
 
 function buildCardFineKey(playerId: string, reason: string, fineDate: string) {
@@ -360,9 +379,6 @@ export default function DisciplineScreen({
       const currentFines = allClubFines.filter(
         (fine) => fine.period_id === period.id
       );
-      const cardFinesInPeriodByDate = allClubFines.filter((fine) =>
-        isDateInsidePeriod(fine.fine_date, period)
-      );
       const templates = await ensureDefaultFineTemplates(clubId);
 
       const yellowTemplate = templates.find(
@@ -521,7 +537,13 @@ export default function DisciplineScreen({
       // ne pouze podle period_id. Starší logika totiž mohla po dodatečném
       // doplnění karty uložit pokutu do jiného období. To přesně způsobovalo,
       // že se po otevření Pokut vytvořila druhá stejná ŽK.
-      cardFinesInPeriodByDate.forEach((fine) => {
+      // Starší pokuty vytvořené přímo ze zápasu mají note ve tvaru:
+      // match:<finished_match_id>:yellow_card:<player_id>
+      // Některé historické řádky mají chybně otočený den/měsíc ve fine_date
+      // (např. zápas 12.04.2026 -> fine_date 2026-12-04).
+      // U těchto pokut proto bereme datum přímo z ID zápasu / finished_matches,
+      // ne z chybného fine_date.
+      allClubFines.forEach((fine) => {
         if (
           normalizeText(fine.reason) !== normalizeText(YELLOW_CARD_FINE_REASON) &&
           normalizeText(fine.reason) !== normalizeText(RED_CARD_FINE_REASON)
@@ -529,11 +551,23 @@ export default function DisciplineScreen({
           return;
         }
 
+        const parsedMatchFine = parseMatchCardFineNote(fine.note);
+        const effectiveFineDate =
+          (parsedMatchFine
+            ? matchDateById.get(parsedMatchFine.matchId)
+            : null) ??
+          normalizeDateToIso(fine.fine_date);
+
+        if (!isDateInsidePeriod(effectiveFineDate, period)) {
+          return;
+        }
+
         const key = buildCardFineKey(
           fine.player_id,
           fine.reason,
-          fine.fine_date
+          effectiveFineDate
         );
+
         existingCounts.set(key, (existingCounts.get(key) ?? 0) + 1);
 
         if (isAutomaticCardFine(fine)) {
