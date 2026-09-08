@@ -81,8 +81,8 @@ function isAutomaticCardFine(fine: FineRow) {
   return Boolean(fine.note?.startsWith(CARD_FINE_NOTE_PREFIX));
 }
 
-function buildCardFineKey(playerId: string, reason: string) {
-  return `${playerId}::${normalizeText(reason)}`;
+function buildCardFineKey(playerId: string, reason: string, fineDate: string) {
+  return `${playerId}::${normalizeText(reason)}::${normalizeDateToIso(fineDate)}`;
 }
 
 function getSafeFineDateForPeriod(period: Period, preferredDate?: string | null) {
@@ -356,7 +356,13 @@ export default function DisciplineScreen({
 
   const syncCardFinesForPeriod = useCallback(
     async (period: Period) => {
-      const currentFines = await getFinesByPeriodId(period.id);
+      const allClubFines = await getFinesByClubId(clubId);
+      const currentFines = allClubFines.filter(
+        (fine) => fine.period_id === period.id
+      );
+      const cardFinesInPeriodByDate = allClubFines.filter((fine) =>
+        isDateInsidePeriod(fine.fine_date, period)
+      );
       const templates = await ensureDefaultFineTemplates(clubId);
 
       const yellowTemplate = templates.find(
@@ -465,7 +471,7 @@ export default function DisciplineScreen({
         ) => {
           if (count <= 0) return;
 
-          const key = buildCardFineKey(row.player_id!, reason);
+          const key = buildCardFineKey(row.player_id!, reason, matchDate);
           const existing = desiredCounts.get(key);
 
           if (!existing) {
@@ -510,7 +516,12 @@ export default function DisciplineScreen({
       const existingCounts = new Map<string, number>();
       const automaticFinesByKey = new Map<string, FineRow[]>();
 
-      currentFines.forEach((fine) => {
+      // DŮLEŽITÉ:
+      // Existující karetní pokuty hledáme podle DATA ZÁPASU napříč klubem,
+      // ne pouze podle period_id. Starší logika totiž mohla po dodatečném
+      // doplnění karty uložit pokutu do jiného období. To přesně způsobovalo,
+      // že se po otevření Pokut vytvořila druhá stejná ŽK.
+      cardFinesInPeriodByDate.forEach((fine) => {
         if (
           normalizeText(fine.reason) !== normalizeText(YELLOW_CARD_FINE_REASON) &&
           normalizeText(fine.reason) !== normalizeText(RED_CARD_FINE_REASON)
@@ -518,7 +529,11 @@ export default function DisciplineScreen({
           return;
         }
 
-        const key = buildCardFineKey(fine.player_id, fine.reason);
+        const key = buildCardFineKey(
+          fine.player_id,
+          fine.reason,
+          fine.fine_date
+        );
         existingCounts.set(key, (existingCounts.get(key) ?? 0) + 1);
 
         if (isAutomaticCardFine(fine)) {
@@ -529,7 +544,11 @@ export default function DisciplineScreen({
       });
 
       for (const desired of desiredCounts.values()) {
-        const key = buildCardFineKey(desired.playerId, desired.reason);
+        const key = buildCardFineKey(
+          desired.playerId,
+          desired.reason,
+          desired.date
+        );
         const existingCount = existingCounts.get(key) ?? 0;
         const missingCount = Math.max(0, desired.count - existingCount);
 
