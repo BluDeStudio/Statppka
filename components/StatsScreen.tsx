@@ -37,6 +37,9 @@ type StatPlayerIdRow = {
   played_seconds?: number | null;
   shots_on_target?: number | null;
   shots_off_target?: number | null;
+  average_rating?: number | null;
+  rating_color?: string | null;
+  is_player_of_the_match?: boolean | null;
 };
 
 type GoalkeeperSegmentRow = {
@@ -163,6 +166,19 @@ function getStatPlayerId(
   );
 }
 
+function getRatingPlayerId(rating: PlayerRatingRow) {
+  return (
+    (
+      rating as PlayerRatingRow & {
+        player_id?: string | null;
+        playerId?: string | null;
+      }
+    ).player_id ??
+    (rating as PlayerRatingRow & { playerId?: string | null }).playerId ??
+    null
+  );
+}
+
 function makeNumberKey(matchId: string, playerNumber: number) {
   return `${matchId}:${playerNumber}`;
 }
@@ -270,7 +286,7 @@ export default function StatsScreen({
             ? supabase
                 .from("finished_match_player_stats")
                 .select(
-                  "finished_match_id, player_number, player_id, goals, assists, yellow_cards, red_cards, played_seconds, shots_on_target, shots_off_target"
+                  "finished_match_id, player_number, player_id, goals, assists, yellow_cards, red_cards, played_seconds, shots_on_target, shots_off_target, average_rating, rating_color, is_player_of_the_match"
                 )
                 .in("finished_match_id", finishedMatchIds)
             : Promise.resolve({ data: [], error: null }),
@@ -529,10 +545,8 @@ export default function StatsScreen({
 
     filteredStatsMatches.forEach((match) => {
       const matchRatings = ratingsByMatchId.get(match.id) ?? [];
-
       const matchStatsMap = new Map<string, AggregatedMatchStat>();
       const statsByNumber = new Map<number, string>();
-      const statsByPlayerId = new Map<string, string>();
 
       const dbRows = statRowsByMatchId.get(match.id) ?? [];
 
@@ -558,11 +572,7 @@ export default function StatsScreen({
         const playerKey = getPlayerKey(playerNumber, playerId);
 
         mergeStatIntoMatchMap(matchStatsMap, stat, playerId, playerNumber);
-
         statsByNumber.set(playerNumber, playerKey);
-        if (playerId) {
-          statsByPlayerId.set(playerId, playerKey);
-        }
       });
 
       Array.from(matchStatsMap.entries()).forEach(([playerKey, stat]) => {
@@ -591,6 +601,59 @@ export default function StatsScreen({
         current.redCards += stat.redCards;
       });
 
+      // 1) Preferujeme výslednou známku uloženou přímo u odehraného zápasu.
+      // Každý zápas přidá hráči právě jednu výslednou známku.
+      const ratedPlayerKeysFromDb = new Set<string>();
+
+      dbRows.forEach((row) => {
+        const playerNumber = Number(row.player_number);
+        const playerId =
+          row.player_id ??
+          playerByNumber.get(playerNumber)?.id ??
+          null;
+        const playerKey =
+          statsByNumber.get(playerNumber) ??
+          getPlayerKey(playerNumber, playerId);
+
+        if (!playerMap.has(playerKey)) {
+          playerMap.set(playerKey, {
+            playerId,
+            playerNumber,
+            matches: 0,
+            goals: 0,
+            assists: 0,
+            ratingPoints: 0,
+            ratingVotes: 0,
+            motmCount: 0,
+            yellowCards: 0,
+            redCards: 0,
+          });
+        }
+
+        const current = playerMap.get(playerKey)!;
+        const persistedRating =
+          row.average_rating === null || row.average_rating === undefined
+            ? null
+            : Number(row.average_rating);
+
+        if (
+          persistedRating !== null &&
+          Number.isFinite(persistedRating) &&
+          !ratedPlayerKeysFromDb.has(playerKey)
+        ) {
+          current.ratingPoints += persistedRating;
+          current.ratingVotes += 1;
+          ratedPlayerKeysFromDb.add(playerKey);
+        }
+
+        if (row.is_player_of_the_match && !ratedPlayerKeysFromDb.has(`${playerKey}:motm`)) {
+          current.motmCount += 1;
+          ratedPlayerKeysFromDb.add(`${playerKey}:motm`);
+        }
+      });
+
+      // 2) Fallback pro starší zápasy, které ještě nemají average_rating
+      // uložené ve finished_match_player_stats.
       const ratingPlayerNumbers = Array.from(
         new Set([
           ...sourceStats.map((player) => Number(player.playerNumber)),
@@ -603,32 +666,23 @@ export default function StatsScreen({
         matchRatings
       );
 
-
       matchSummary.forEach((summary) => {
-        const summaryNumber = Number(summary.playerNumber);
-
-        // Hodnocení je v DB uložené podle player_number.
-        // Proto ho nejdřív připojíme přímo k hráči, který má v tomto
-        // konkrétním zápase stejné číslo ve statistikách zápasu.
-        const matchingMatchStatEntry = Array.from(matchStatsMap.entries()).find(
-          ([, stat]) => Number(stat.playerNumber) === summaryNumber
-        );
-
-        const matchingPlayerKey = matchingMatchStatEntry?.[0] ?? null;
-        const matchingPlayerId =
-          matchingMatchStatEntry?.[1].playerId ??
-          playerByNumber.get(summaryNumber)?.id ??
+        const playerNumber = Number(summary.playerNumber);
+        const playerId =
+          statPlayerIdByMatchAndNumber.get(
+            makeNumberKey(match.id, playerNumber)
+          ) ??
+          playerByNumber.get(playerNumber)?.id ??
           null;
 
         const playerKey =
-          matchingPlayerKey ??
-          statsByNumber.get(summaryNumber) ??
-          getPlayerKey(summaryNumber, matchingPlayerId);
+          statsByNumber.get(playerNumber) ??
+          getPlayerKey(playerNumber, playerId);
 
         if (!playerMap.has(playerKey)) {
           playerMap.set(playerKey, {
-            playerId: matchingPlayerId,
-            playerNumber: summaryNumber,
+            playerId,
+            playerNumber,
             matches: 0,
             goals: 0,
             assists: 0,
@@ -642,13 +696,18 @@ export default function StatsScreen({
 
         const current = playerMap.get(playerKey)!;
 
-        if (summary.averageRating !== null) {
-          // Jeden odehraný zápas = jedna výsledná známka do dlouhodobých statistik.
+        if (
+          summary.averageRating !== null &&
+          !ratedPlayerKeysFromDb.has(playerKey)
+        ) {
           current.ratingPoints += Number(summary.averageRating);
           current.ratingVotes += 1;
         }
 
-        if (summary.isBest) {
+        if (
+          summary.isBest &&
+          !ratedPlayerKeysFromDb.has(`${playerKey}:motm`)
+        ) {
           current.motmCount += 1;
         }
       });
@@ -722,7 +781,6 @@ export default function StatsScreen({
     filteredStatsMatches,
     playerSort,
     ratingsByMatchId,
-    playerById,
     playerByNumber,
     statPlayerIdByMatchAndNumber,
     statRowsByMatchId,

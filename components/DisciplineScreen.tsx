@@ -416,10 +416,46 @@ export default function DisciplineScreen({
         }
       >();
 
+      // Nejdřív sloučíme případné duplicitní DB řádky stejného hráče
+      // ve stejném zápase. Když je tam omylem 2x řádek s 1 ŽK,
+      // nesmí z toho vzniknout 2 pokuty.
+      const uniqueCardStats = new Map<
+        string,
+        FinishedMatchCardStatRow
+      >();
+
       ((cardStatsData as FinishedMatchCardStatRow[]) ?? []).forEach((row) => {
         if (!row.player_id) return;
 
-        const matchDate = matchDateById.get(row.finished_match_id) ?? period.end_date;
+        const key = `${row.finished_match_id}::${row.player_id}`;
+        const existing = uniqueCardStats.get(key);
+
+        if (!existing) {
+          uniqueCardStats.set(key, {
+            ...row,
+            yellow_cards: Number(row.yellow_cards ?? 0),
+            red_cards: Number(row.red_cards ?? 0),
+          });
+          return;
+        }
+
+        // finished_match_player_stats drží celkový počet karet hráče za zápas.
+        // Při duplicitním řádku proto bereme MAX, nikoliv součet.
+        existing.yellow_cards = Math.max(
+          Number(existing.yellow_cards ?? 0),
+          Number(row.yellow_cards ?? 0)
+        );
+        existing.red_cards = Math.max(
+          Number(existing.red_cards ?? 0),
+          Number(row.red_cards ?? 0)
+        );
+      });
+
+      Array.from(uniqueCardStats.values()).forEach((row) => {
+        if (!row.player_id) return;
+
+        const matchDate =
+          matchDateById.get(row.finished_match_id) ?? period.end_date;
 
         const addDesired = (
           reason: string,
@@ -444,6 +480,7 @@ export default function DisciplineScreen({
             return;
           }
 
+          // Přes různé zápasy se počty správně sčítají.
           existing.count += count;
 
           if (matchDate > existing.date) {

@@ -83,6 +83,84 @@ export async function getRatingsForMatches(
   }
 }
 
+
+async function syncFinishedMatchRatingSummary(
+  finishedMatchId: string
+): Promise<void> {
+  const [ratingsResponse, statsResponse] = await Promise.all([
+    supabase
+      .from("match_player_ratings")
+      .select("*")
+      .eq("finished_match_id", finishedMatchId)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("finished_match_player_stats")
+      .select("id,player_number")
+      .eq("finished_match_id", finishedMatchId),
+  ]);
+
+  if (ratingsResponse.error) {
+    console.error(
+      "Nepodařilo se načíst hodnocení pro synchronizaci:",
+      ratingsResponse.error
+    );
+    return;
+  }
+
+  if (statsResponse.error) {
+    console.error(
+      "Nepodařilo se načíst statistiky hráčů pro synchronizaci hodnocení:",
+      statsResponse.error
+    );
+    return;
+  }
+
+  const matchRatings = ((ratingsResponse.data as PlayerRatingRow[]) ?? []).map(
+    (row) => ({
+      ...row,
+      player_number: Number(row.player_number),
+      rating: Number(row.rating),
+    })
+  );
+
+  const statRows =
+    ((statsResponse.data as Array<{
+      id: string;
+      player_number: number;
+    }>) ?? []).map((row) => ({
+      ...row,
+      player_number: Number(row.player_number),
+    }));
+
+  const playerNumbers = statRows.map((row) => row.player_number);
+  const summary = buildMatchRatingSummary(playerNumbers, matchRatings);
+  const summaryByNumber = new Map(
+    summary.map((item) => [Number(item.playerNumber), item])
+  );
+
+  await Promise.all(
+    statRows.map(async (row) => {
+      const item = summaryByNumber.get(row.player_number);
+
+      const { error } = await supabase
+        .from("finished_match_player_stats")
+        .update({
+          average_rating: item?.averageRating ?? null,
+          rating_color: item?.color ?? null,
+          is_player_of_the_match: item?.isBest ?? false,
+        })
+        .eq("id", row.id);
+
+      if (error) {
+        console.error(
+          `Nepodařilo se uložit výslednou známku hráče #${row.player_number}:`,
+          error
+        );
+      }
+    })
+  );
+}
+
 export async function upsertMatchPlayerRating(input: {
   finishedMatchId: string;
   playerNumber: number;
@@ -111,6 +189,8 @@ export async function upsertMatchPlayerRating(input: {
         errorMessage: `Nepodařilo se uložit hodnocení: ${error.message}`,
       };
     }
+
+    await syncFinishedMatchRatingSummary(input.finishedMatchId);
 
     return { success: true };
   } catch (error) {
@@ -202,17 +282,9 @@ export function buildMatchRatingSummary(
       };
     }
 
-    let ratingsForAverage = [...playerRatings];
-
-    // 1–3 hlasy = běžný průměr.
-    // 4+ hlasů = odstraníme přesně jednu nejnižší a jednu nejvyšší známku.
-    if (ratingsForAverage.length >= 4) {
-      ratingsForAverage.sort((a, b) => a - b);
-      ratingsForAverage = ratingsForAverage.slice(1, -1);
-    }
-
-    const total = ratingsForAverage.reduce((sum, rating) => sum + rating, 0);
-    const averageRating = roundToOne(total / ratingsForAverage.length);
+    // Všechny odevzdané známky se započítají stejnou vahou.
+    const total = playerRatings.reduce((sum, rating) => sum + rating, 0);
+    const averageRating = roundToOne(total / playerRatings.length);
 
     return {
       playerNumber,
