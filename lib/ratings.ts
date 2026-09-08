@@ -44,7 +44,11 @@ export async function getMatchPlayerRatings(
       return [];
     }
 
-    return (data as PlayerRatingRow[]) ?? [];
+    return ((data as PlayerRatingRow[]) ?? []).map((row) => ({
+      ...row,
+      player_number: Number(row.player_number),
+      rating: Number(row.rating),
+    }));
   } catch (error) {
     console.error("Chyba v getMatchPlayerRatings:", error);
     return [];
@@ -68,7 +72,11 @@ export async function getRatingsForMatches(
       return [];
     }
 
-    return (data as PlayerRatingRow[]) ?? [];
+    return ((data as PlayerRatingRow[]) ?? []).map((row) => ({
+      ...row,
+      player_number: Number(row.player_number),
+      rating: Number(row.rating),
+    }));
   } catch (error) {
     console.error("Chyba v getRatingsForMatches:", error);
     return [];
@@ -168,12 +176,21 @@ export function buildMatchRatingSummary(
   playerNumbers: number[],
   ratings: PlayerRatingRow[]
 ): MatchPlayerRatingSummary[] {
-  const uniquePlayerNumbers = Array.from(new Set(playerNumbers));
+  const uniquePlayerNumbers = Array.from(
+    new Set(
+      playerNumbers
+        .map((playerNumber) => Number(playerNumber))
+        .filter((playerNumber) => Number.isFinite(playerNumber))
+    )
+  );
 
   const summaries = uniquePlayerNumbers.map((playerNumber) => {
-    const playerRatings = ratings.filter(
-      (rating) => rating.player_number === playerNumber
-    );
+    const playerRatings = ratings
+      .filter(
+        (rating) => Number(rating.player_number) === Number(playerNumber)
+      )
+      .map((rating) => Number(rating.rating))
+      .filter((rating) => Number.isFinite(rating));
 
     if (playerRatings.length === 0) {
       return {
@@ -185,8 +202,17 @@ export function buildMatchRatingSummary(
       };
     }
 
-    const total = playerRatings.reduce((sum, rating) => sum + Number(rating.rating), 0);
-    const averageRating = roundToOne(total / playerRatings.length);
+    let ratingsForAverage = [...playerRatings];
+
+    // 1–3 hlasy = běžný průměr.
+    // 4+ hlasů = odstraníme přesně jednu nejnižší a jednu nejvyšší známku.
+    if (ratingsForAverage.length >= 4) {
+      ratingsForAverage.sort((a, b) => a - b);
+      ratingsForAverage = ratingsForAverage.slice(1, -1);
+    }
+
+    const total = ratingsForAverage.reduce((sum, rating) => sum + rating, 0);
+    const averageRating = roundToOne(total / ratingsForAverage.length);
 
     return {
       playerNumber,
@@ -220,7 +246,9 @@ export function buildMatchRatingSummary(
   }
 
   return summaries.map((summary) => {
-    const isBest = bestPlayerNumber === summary.playerNumber && summary.averageRating !== null;
+    const isBest =
+      bestPlayerNumber === summary.playerNumber &&
+      summary.averageRating !== null;
 
     return {
       ...summary,
