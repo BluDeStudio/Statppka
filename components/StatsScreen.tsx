@@ -544,11 +544,8 @@ export default function StatsScreen({
     >();
 
     filteredStatsMatches.forEach((match) => {
-      const matchRatings = ratingsByMatchId.get(match.id) ?? [];
-      const matchStatsMap = new Map<string, AggregatedMatchStat>();
-      const statsByNumber = new Map<number, string>();
-
       const dbRows = statRowsByMatchId.get(match.id) ?? [];
+      const matchRatings = ratingsByMatchId.get(match.id) ?? [];
 
       const sourceStats =
         dbRows.length > 0
@@ -566,54 +563,15 @@ export default function StatsScreen({
             }))
           : match.playerStats;
 
+      // Hráči, kteří skutečně figurovali v tomto odehraném zápase.
+      const matchPlayerKeyByNumber = new Map<number, string>();
+
       sourceStats.forEach((stat) => {
         const playerNumber = Number(stat.playerNumber);
         const playerId = getPlayerIdForStat(match.id, stat);
         const playerKey = getPlayerKey(playerNumber, playerId);
 
-        mergeStatIntoMatchMap(matchStatsMap, stat, playerId, playerNumber);
-        statsByNumber.set(playerNumber, playerKey);
-      });
-
-      Array.from(matchStatsMap.entries()).forEach(([playerKey, stat]) => {
-        if (!playerMap.has(playerKey)) {
-          playerMap.set(playerKey, {
-            playerId: stat.playerId,
-            playerNumber: stat.playerNumber,
-            matches: 0,
-            goals: 0,
-            assists: 0,
-            ratingPoints: 0,
-            ratingVotes: 0,
-            motmCount: 0,
-            yellowCards: 0,
-            redCards: 0,
-          });
-        }
-
-        const current = playerMap.get(playerKey)!;
-        current.playerId = current.playerId ?? stat.playerId;
-        current.playerNumber = current.playerNumber || stat.playerNumber;
-        current.matches += 1;
-        current.goals += stat.goals;
-        current.assists += stat.assists;
-        current.yellowCards += stat.yellowCards;
-        current.redCards += stat.redCards;
-      });
-
-      // 1) Preferujeme výslednou známku uloženou přímo u odehraného zápasu.
-      // Každý zápas přidá hráči právě jednu výslednou známku.
-      const ratedPlayerKeysFromDb = new Set<string>();
-
-      dbRows.forEach((row) => {
-        const playerNumber = Number(row.player_number);
-        const playerId =
-          row.player_id ??
-          playerByNumber.get(playerNumber)?.id ??
-          null;
-        const playerKey =
-          statsByNumber.get(playerNumber) ??
-          getPlayerKey(playerNumber, playerId);
+        matchPlayerKeyByNumber.set(playerNumber, playerKey);
 
         if (!playerMap.has(playerKey)) {
           playerMap.set(playerKey, {
@@ -631,43 +589,41 @@ export default function StatsScreen({
         }
 
         const current = playerMap.get(playerKey)!;
-        const persistedRating =
-          row.average_rating === null || row.average_rating === undefined
-            ? null
-            : Number(row.average_rating);
-
-        if (
-          persistedRating !== null &&
-          Number.isFinite(persistedRating) &&
-          !ratedPlayerKeysFromDb.has(playerKey)
-        ) {
-          current.ratingPoints += persistedRating;
-          current.ratingVotes += 1;
-          ratedPlayerKeysFromDb.add(playerKey);
-        }
-
-        if (row.is_player_of_the_match && !ratedPlayerKeysFromDb.has(`${playerKey}:motm`)) {
-          current.motmCount += 1;
-          ratedPlayerKeysFromDb.add(`${playerKey}:motm`);
-        }
+        current.playerId = current.playerId ?? playerId;
+        current.playerNumber = playerNumber;
+        current.matches += 1;
+        current.goals += Number(stat.goals ?? 0);
+        current.assists += Number(stat.assists ?? 0);
+        current.yellowCards += Number(stat.yellowCards ?? 0);
+        current.redCards += Number(stat.redCards ?? 0);
       });
 
-      // 2) Fallback pro starší zápasy, které ještě nemají average_rating
-      // uložené ve finished_match_player_stats.
-      const ratingPlayerNumbers = Array.from(
-        new Set([
-          ...sourceStats.map((player) => Number(player.playerNumber)),
-          ...matchRatings.map((rating) => Number(rating.player_number)),
-        ])
+      // Známky vezmeme přímo z match_player_ratings podle čísla hráče
+      // v TOMTO konkrétním zápase. To je důležité hlavně u A-týmu,
+      // kde se historická čísla hráčů mohou lišit od aktuálních čísel.
+      const ratedNumbers = Array.from(
+        new Set(matchRatings.map((rating) => Number(rating.player_number)))
       );
 
       const matchSummary = buildMatchRatingSummary(
-        ratingPlayerNumbers,
+        ratedNumbers,
         matchRatings
       );
 
       matchSummary.forEach((summary) => {
         const playerNumber = Number(summary.playerNumber);
+
+        const playerKey =
+          matchPlayerKeyByNumber.get(playerNumber) ??
+          getPlayerKey(
+            playerNumber,
+            statPlayerIdByMatchAndNumber.get(
+              makeNumberKey(match.id, playerNumber)
+            ) ??
+              playerByNumber.get(playerNumber)?.id ??
+              null
+          );
+
         const playerId =
           statPlayerIdByMatchAndNumber.get(
             makeNumberKey(match.id, playerNumber)
@@ -675,10 +631,6 @@ export default function StatsScreen({
           playerByNumber.get(playerNumber)?.id ??
           null;
 
-        const playerKey =
-          statsByNumber.get(playerNumber) ??
-          getPlayerKey(playerNumber, playerId);
-
         if (!playerMap.has(playerKey)) {
           playerMap.set(playerKey, {
             playerId,
@@ -696,18 +648,13 @@ export default function StatsScreen({
 
         const current = playerMap.get(playerKey)!;
 
-        if (
-          summary.averageRating !== null &&
-          !ratedPlayerKeysFromDb.has(playerKey)
-        ) {
+        if (summary.averageRating !== null) {
+          // Jeden zápas = jedna výsledná známka do dlouhodobého průměru.
           current.ratingPoints += Number(summary.averageRating);
           current.ratingVotes += 1;
         }
 
-        if (
-          summary.isBest &&
-          !ratedPlayerKeysFromDb.has(`${playerKey}:motm`)
-        ) {
+        if (summary.isBest) {
           current.motmCount += 1;
         }
       });
