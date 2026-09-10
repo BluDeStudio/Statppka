@@ -130,6 +130,46 @@ function isDateInsidePeriod(dateValue: string, period: PeriodRow | null) {
   return normalizedDate >= normalizedStart && normalizedDate <= normalizedEnd;
 }
 
+
+function JerseyIcon({
+  color,
+  accent,
+}: {
+  color: string;
+  accent?: string;
+}) {
+  const stripe = accent ?? color;
+
+  return (
+    <svg
+      width="60"
+      height="66"
+      viewBox="0 0 60 66"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      style={{ display: "block", filter: "drop-shadow(0 7px 10px rgba(0,0,0,.32))" }}
+    >
+      <path
+        d="M20 5.5L25 2.5H35L40 5.5L54 12.5L49 25L42 21.5V63H18V21.5L11 25L6 12.5L20 5.5Z"
+        fill={color}
+        stroke="rgba(255,255,255,.72)"
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M25 2.5C25.7 7.1 27.7 9.5 30 9.5C32.3 9.5 34.3 7.1 35 2.5"
+        stroke="rgba(15,15,15,.82)"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+      <path d="M24 5.1V62.3" stroke={stripe} strokeWidth="3.6" opacity="0.95" />
+      <path d="M36 5.1V62.3" stroke={stripe} strokeWidth="3.6" opacity="0.95" />
+      <path d="M18.3 20.8H41.7" stroke="rgba(0,0,0,.18)" strokeWidth="1" />
+    </svg>
+  );
+}
+
 export default function MatchesScreen({
   clubId,
   clubName,
@@ -908,182 +948,110 @@ export default function MatchesScreen({
 
                 <div
                   style={{
-                    padding: "14px 14px 14px 18px",
+                    padding: "14px 14px 13px 18px",
                     display: "grid",
-                    gap: "13px",
+                    gap: "11px",
                   }}
                 >
                   <div
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-                      gap: "8px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "9px",
+                      flexWrap: "wrap",
+                      padding: "0 2px 2px",
                     }}
                   >
-                    <div
+                    <span
+                      aria-hidden="true"
                       style={{
-                        borderRadius: "12px",
-                        padding: "9px 8px",
-                        background: "rgba(255,255,255,0.045)",
-                        border: "1px solid rgba(255,255,255,0.08)",
+                        color: primaryColor,
+                        fontSize: "16px",
+                        lineHeight: 1,
                       }}
                     >
-                      <div
-                        style={{
-                          color: "#777",
-                          fontSize: "9px",
-                          fontWeight: 950,
-                          letterSpacing: "0.55px",
-                        }}
-                      >
-                        DATUM
-                      </div>
-                      <div
-                        style={{
-                          marginTop: "3px",
-                          color: "#fff",
-                          fontSize: "15px",
-                          fontWeight: 950,
-                          lineHeight: 1.1,
-                        }}
-                      >
-                        {formatDisplayDate(match.date)}
-                      </div>
-                    </div>
+                      ▦
+                    </span>
 
-                    <div
+                    <span
                       style={{
-                        borderRadius: "12px",
-                        padding: "9px 8px",
-                        background: "rgba(255,255,255,0.045)",
-                        border: "1px solid rgba(255,255,255,0.08)",
+                        color: "#ffffff",
+                        fontSize: "15px",
+                        fontWeight: 950,
+                        letterSpacing: "0.15px",
                       }}
                     >
-                      <div
-                        style={{
-                          color: "#777",
-                          fontSize: "9px",
-                          fontWeight: 950,
-                          letterSpacing: "0.55px",
-                        }}
-                      >
-                        ČAS
-                      </div>
-                      <div
-                        style={{
-                          marginTop: "3px",
-                          color: "#fff",
-                          fontSize: "15px",
-                          fontWeight: 950,
-                          lineHeight: 1.1,
-                        }}
-                      >
-                        {match.time || "—"}
-                      </div>
-                    </div>
+                      {formatDisplayDate(match.date)}
+                    </span>
 
-                    <div
-                      style={{
-                        borderRadius: "12px",
-                        padding: "9px 8px",
-                        background: `${primaryColor}14`,
-                        border: `1px solid ${primaryColor}35`,
-                      }}
-                    >
-                      <div
-                        style={{
-                          color: "#777",
-                          fontSize: "9px",
-                          fontWeight: 950,
-                          letterSpacing: "0.55px",
-                        }}
-                      >
-                        TÝM
-                      </div>
-                      <div
-                        style={{
-                          marginTop: "3px",
-                          color: primaryColor,
-                          fontSize: "15px",
-                          fontWeight: 950,
-                          lineHeight: 1.1,
-                        }}
-                      >
-                        {match.team}-TÝM
-                      </div>
-                    </div>
+                    <span style={{ color: "#686868", fontWeight: 900 }}>•</span>
 
-                    <div
+                    <span
                       style={{
-                        borderRadius: "12px",
-                        padding: "9px 8px",
-                        background: "rgba(255,255,255,0.045)",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        minWidth: 0,
+                        color: "#ffffff",
+                        fontSize: "15px",
+                        fontWeight: 950,
                       }}
                     >
-                      <div
-                        style={{
-                          color: "#777",
-                          fontSize: "9px",
-                          fontWeight: 950,
-                          letterSpacing: "0.55px",
-                        }}
-                      >
-                        MÍSTO
-                      </div>
-                      <div
-                        style={{
-                          marginTop: "3px",
-                          color: "#fff",
-                          fontSize: "12px",
-                          fontWeight: 900,
-                          lineHeight: 1.15,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {match.location || "—"}
-                      </div>
-                    </div>
+                      {match.time || "—"}
+                    </span>
+
+                    <span style={{ color: "#686868", fontWeight: 900 }}>•</span>
+
+                    <span
+                      style={{
+                        color: primaryColor,
+                        fontSize: "14px",
+                        fontWeight: 950,
+                      }}
+                    >
+                      {match.team}-TÝM
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "7px",
+                      marginTop: "-5px",
+                      padding: "0 2px 2px",
+                      color: "#d4d4d4",
+                      fontSize: "13px",
+                      fontWeight: 850,
+                    }}
+                  >
+                    <span style={{ color: "#ff4475", fontSize: "15px" }}>●</span>
+                    <span>{match.location || "Místo neuvedeno"}</span>
                   </div>
 
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1fr auto 1fr",
+                      gridTemplateColumns: "minmax(0,1fr) 54px minmax(0,1fr)",
                       alignItems: "center",
-                      gap: "12px",
-                      padding: "3px 0 1px",
+                      gap: "8px",
+                      padding: "3px 2px 6px",
                     }}
                   >
                     <div style={{ minWidth: 0, textAlign: "center" }}>
                       <div
                         style={{
-                          width: "54px",
-                          height: "54px",
-                          margin: "0 auto 7px",
-                          borderRadius: "16px",
-                          background: `${primaryColor}16`,
-                          border: `1px solid ${primaryColor}2e`,
+                          minHeight: "68px",
                           display: "flex",
-                          alignItems: "center",
                           justifyContent: "center",
-                          color: primaryColor,
-                          fontWeight: 950,
-                          fontSize: "20px",
+                          alignItems: "flex-end",
+                          marginBottom: "5px",
                         }}
                       >
-                        {match.team}
+                        <JerseyIcon color={primaryColor} accent="#111111" />
                       </div>
-
                       <div
                         style={{
                           color: "#ffffff",
                           fontWeight: 950,
-                          fontSize: "14px",
-                          lineHeight: 1.25,
+                          fontSize: "16px",
+                          lineHeight: 1.15,
                           wordBreak: "break-word",
                         }}
                       >
@@ -1093,11 +1061,14 @@ export default function MatchesScreen({
 
                     <div
                       style={{
+                        alignSelf: "center",
+                        paddingTop: "15px",
                         color: primaryColor,
                         fontWeight: 950,
-                        fontSize: "15px",
-                        letterSpacing: "0.5px",
-                        textShadow: `0 0 18px ${primaryColor}55`,
+                        fontSize: "20px",
+                        letterSpacing: "0.6px",
+                        textAlign: "center",
+                        textShadow: `0 0 16px ${primaryColor}66`,
                       }}
                     >
                       VS
@@ -1106,29 +1077,21 @@ export default function MatchesScreen({
                     <div style={{ minWidth: 0, textAlign: "center" }}>
                       <div
                         style={{
-                          width: "54px",
-                          height: "54px",
-                          margin: "0 auto 7px",
-                          borderRadius: "16px",
-                          background: "rgba(255,255,255,0.055)",
-                          border: "1px solid rgba(255,255,255,0.09)",
+                          minHeight: "68px",
                           display: "flex",
-                          alignItems: "center",
                           justifyContent: "center",
-                          color: "#a9a9a9",
-                          fontWeight: 950,
-                          fontSize: "16px",
+                          alignItems: "flex-end",
+                          marginBottom: "5px",
                         }}
                       >
-                        VS
+                        <JerseyIcon color="#f4f4f4" accent="#cfcfcf" />
                       </div>
-
                       <div
                         style={{
                           color: "#ffffff",
                           fontWeight: 950,
-                          fontSize: "14px",
-                          lineHeight: 1.25,
+                          fontSize: "16px",
+                          lineHeight: 1.15,
                           wordBreak: "break-word",
                         }}
                       >
@@ -1139,104 +1102,66 @@ export default function MatchesScreen({
 
                   <div
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(3, auto)",
+                      display: "flex",
                       justifyContent: "center",
+                      alignItems: "center",
                       gap: "6px",
-                      paddingTop: "2px",
+                      flexWrap: "wrap",
+                      paddingTop: "1px",
                     }}
                   >
                     <div
                       style={{
-                        borderRadius: "13px",
-                        padding: "6px 8px",
-                        background: "rgba(46,204,113,0.12)",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "5px",
+                        borderRadius: "999px",
+                        padding: "5px 8px",
+                        background: "rgba(46,204,113,0.09)",
                         border: "1px solid rgba(46,204,113,0.20)",
-                        textAlign: "center",
+                        color: "#72ef98",
+                        fontSize: "10px",
+                        fontWeight: 950,
                       }}
                     >
-                      <div
-                        style={{
-                          color: "#92efac",
-                          fontSize: "9px",
-                          fontWeight: 950,
-                        }}
-                      >
-                        ✓ BUDU
-                      </div>
-                      <div
-                        style={{
-                          marginTop: "3px",
-                          color: "#67ef8f",
-                          fontSize: "15px",
-                          fontWeight: 950,
-                          lineHeight: 1,
-                        }}
-                      >
-                        {summary.yesCount}
-                      </div>
+                      <span>BUDU</span>
+                      <strong style={{ fontSize: "12px" }}>{summary.yesCount}</strong>
                     </div>
 
                     <div
                       style={{
-                        borderRadius: "13px",
-                        padding: "6px 8px",
-                        background: "rgba(231,76,60,0.12)",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "5px",
+                        borderRadius: "999px",
+                        padding: "5px 8px",
+                        background: "rgba(231,76,60,0.09)",
                         border: "1px solid rgba(231,76,60,0.20)",
-                        textAlign: "center",
+                        color: "#ff8580",
+                        fontSize: "10px",
+                        fontWeight: 950,
                       }}
                     >
-                      <div
-                        style={{
-                          color: "#ff9890",
-                          fontSize: "9px",
-                          fontWeight: 950,
-                        }}
-                      >
-                        ✕ NEBUDU
-                      </div>
-                      <div
-                        style={{
-                          marginTop: "3px",
-                          color: "#ff7770",
-                          fontSize: "15px",
-                          fontWeight: 950,
-                          lineHeight: 1,
-                        }}
-                      >
-                        {summary.noCount}
-                      </div>
+                      <span>NEBUDU</span>
+                      <strong style={{ fontSize: "12px" }}>{summary.noCount}</strong>
                     </div>
 
                     <div
                       style={{
-                        borderRadius: "13px",
-                        padding: "6px 8px",
-                        background: "rgba(52,152,219,0.12)",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "5px",
+                        borderRadius: "999px",
+                        padding: "5px 8px",
+                        background: "rgba(52,152,219,0.09)",
                         border: "1px solid rgba(52,152,219,0.20)",
-                        textAlign: "center",
+                        color: "#7acbff",
+                        fontSize: "10px",
+                        fontWeight: 950,
                       }}
                     >
-                      <div
-                        style={{
-                          color: "#9fd3ff",
-                          fontSize: "9px",
-                          fontWeight: 950,
-                        }}
-                      >
-                        ? NEHLASOVAL
-                      </div>
-                      <div
-                        style={{
-                          marginTop: "3px",
-                          color: "#71c6ff",
-                          fontSize: "18px",
-                          fontWeight: 950,
-                          lineHeight: 1,
-                        }}
-                      >
-                        {summary.notVotedCount}
-                      </div>
+                      <span>NEHLASOVAL</span>
+                      <strong style={{ fontSize: "12px" }}>{summary.notVotedCount}</strong>
                     </div>
                   </div>
 
