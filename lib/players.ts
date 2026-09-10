@@ -8,6 +8,7 @@ export type Player = {
   position: string;
   profile_id?: string | null;
   birth_date?: string | null;
+  joined_at?: string | null;
   is_active: boolean;
   created_at?: string;
 };
@@ -20,6 +21,7 @@ export type ClubMemberPlayer = {
   position: string;
   profile_id?: string | null;
   birth_date?: string | null;
+  joined_at?: string | null;
   is_active: boolean;
   created_at?: string;
 };
@@ -192,6 +194,7 @@ export async function createPlayer(input: {
   number: number;
   position: string;
   birth_date?: string | null;
+  joined_at?: string | null;
 }): Promise<{ player: Player | null; errorMessage?: string }> {
   try {
     const trimmedName = input.name.trim();
@@ -227,6 +230,7 @@ export async function createPlayer(input: {
           number: input.number,
           position: trimmedPosition,
           birth_date: input.birth_date ?? null,
+          joined_at: input.joined_at ?? null,
           is_active: true,
         },
       ])
@@ -259,6 +263,7 @@ export async function updatePlayer(input: {
   number: number;
   position: string;
   birth_date?: string | null;
+  joined_at?: string | null;
 }): Promise<{ player: Player | null; errorMessage?: string }> {
   try {
     const trimmedName = input.name.trim();
@@ -292,6 +297,9 @@ export async function updatePlayer(input: {
         number: input.number,
         position: trimmedPosition,
         birth_date: input.birth_date ?? null,
+        ...(input.joined_at !== undefined
+          ? { joined_at: input.joined_at }
+          : {}),
       })
       .eq("id", input.playerId)
       .select()

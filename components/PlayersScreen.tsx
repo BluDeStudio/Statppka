@@ -84,6 +84,7 @@ export default function PlayersScreen({
   const [number, setNumber] = useState("");
   const [position, setPosition] = useState(defaultPositions[2]);
   const [birthDate, setBirthDate] = useState("");
+  const [joinedAt, setJoinedAt] = useState("");
   const [message, setMessage] = useState("");
 
   const loadAll = async () => {
@@ -164,6 +165,7 @@ export default function PlayersScreen({
     setNumber("");
     setPosition(defaultPositions[2]);
     setBirthDate("");
+    setJoinedAt("");
   };
 
   const handleOpenAddForm = () => {
@@ -183,6 +185,7 @@ export default function PlayersScreen({
         setNumber("");
         setPosition(defaultPositions[2]);
         setBirthDate("");
+        setJoinedAt("");
       }
 
       return next;
@@ -228,6 +231,7 @@ export default function PlayersScreen({
       number: parsedNumber,
       position,
       birth_date: birthDate || null,
+      joined_at: joinedAt || null,
     });
 
     if (result.player) {
@@ -259,6 +263,7 @@ export default function PlayersScreen({
     setNumber(String(player.number));
     setPosition(player.position);
     setBirthDate(player.birth_date ?? "");
+    setJoinedAt(player.joined_at ?? "");
     setMessage("");
   };
 
@@ -311,6 +316,7 @@ export default function PlayersScreen({
       number: parsedNumber,
       position,
       birth_date: birthDate || null,
+      ...(isAdmin ? { joined_at: joinedAt || null } : {}),
     });
 
     if (result.player) {
@@ -506,6 +512,29 @@ export default function PlayersScreen({
         onChange={(e) => setBirthDate(e.target.value)}
         style={styles.input}
       />
+
+      {isAdmin && (
+        <div style={{ display: "grid", gap: "6px" }}>
+          <label
+            style={{
+              color: "#b8b8b8",
+              fontSize: "12px",
+              fontWeight: 900,
+            }}
+          >
+            V KLUBU OD
+          </label>
+          <input
+            type="date"
+            value={joinedAt}
+            onChange={(e) => setJoinedAt(e.target.value)}
+            style={styles.input}
+          />
+          <div style={{ color: "#9b9b9b", fontSize: "11px", lineHeight: 1.4 }}>
+            Od tohoto data se hráč započítává do tréninkových anket a docházky.
+          </div>
+        </div>
+      )}
 
       <div
         style={{
@@ -784,6 +813,18 @@ export default function PlayersScreen({
                         {player.position}
                         {age !== null ? ` • ${age} let` : ""}
                       </div>
+
+                      {isAdmin && player.joined_at && (
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            color: "#9b9b9b",
+                            marginTop: "2px",
+                          }}
+                        >
+                          V klubu od {player.joined_at.split("-").reverse().join(".")}
+                        </div>
+                      )}
 
                       {hasBirthdayToday && (
                         <div
