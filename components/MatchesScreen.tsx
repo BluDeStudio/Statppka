@@ -862,6 +862,15 @@ export default function MatchesScreen({
               )
               .sort((a, b) => a.name.localeCompare(b.name, "cs"));
 
+            const totalPlayers =
+              summary.yesCount + summary.noCount + summary.notVotedCount;
+            const yesPercent =
+              totalPlayers > 0 ? (summary.yesCount / totalPlayers) * 100 : 0;
+            const noPercent =
+              totalPlayers > 0 ? (summary.noCount / totalPlayers) * 100 : 0;
+            const notVotedPercent =
+              totalPlayers > 0 ? (summary.notVotedCount / totalPlayers) * 100 : 0;
+
             return (
               <div
                 id={`match-${match.id}`}
@@ -870,7 +879,9 @@ export default function MatchesScreen({
                   ...modernCardStyle,
                   position: "relative",
                   overflow: "hidden",
-                  padding: "14px",
+                  padding: 0,
+                  border: `1px solid ${primaryColor}44`,
+                  boxShadow: `0 18px 42px rgba(0,0,0,0.34), 0 0 0 1px ${primaryColor}0d`,
                 }}
               >
                 <div
@@ -881,270 +892,443 @@ export default function MatchesScreen({
                     bottom: 0,
                     width: "5px",
                     background: primaryColor,
-                    boxShadow: `0 0 18px ${primaryColor}66`,
+                    boxShadow: `0 0 22px ${primaryColor}77`,
                   }}
                 />
 
                 <div
                   style={{
+                    padding: "14px 14px 14px 18px",
                     display: "grid",
-                    gap: "12px",
-                    paddingLeft: "4px",
+                    gap: "13px",
                   }}
                 >
-                  <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "10px",
+                      flexWrap: "wrap",
+                    }}
+                  >
                     <div
                       style={{
                         display: "flex",
                         flexWrap: "wrap",
                         gap: "7px",
                         alignItems: "center",
-                        color: "#b8b8b8",
+                        color: "#c8c8c8",
                         fontSize: "12px",
-                        fontWeight: 700,
+                        fontWeight: 800,
                       }}
                     >
-                      <span style={{ color: primaryColor }}>📅</span>
+                      <span style={{ color: primaryColor }}>▣</span>
                       <span>{formatDisplayDate(match.date)}</span>
                       {match.time && (
                         <>
-                          <span>•</span>
-                          <span>🕒 {match.time}</span>
+                          <span style={{ color: "#6f6f6f" }}>•</span>
+                          <span>{match.time}</span>
                         </>
                       )}
-                      <span>•</span>
+                      <span style={{ color: "#6f6f6f" }}>•</span>
                       <span>{match.team}-tým</span>
                     </div>
 
-                    <div
-                      style={{
-                        marginTop: "12px",
-                        display: "grid",
-                        gridTemplateColumns: "1fr auto 1fr",
-                        alignItems: "center",
-                        gap: "8px",
-                      }}
-                    >
-                      <div style={{ minWidth: 0 }}>
-                        <div
+                    {isAdmin && (
+                      <div style={{ display: "flex", gap: "7px" }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedMatchId(match.id);
+                            setSelectedMode("detail");
+                            setMessage("");
+                          }}
                           style={{
-                            fontWeight: 950,
-                            fontSize: "14px",
-                            lineHeight: 1.25,
-                            wordBreak: "break-word",
+                            border: `1px solid ${primaryColor}66`,
+                            borderRadius: "11px",
+                            padding: "8px 10px",
+                            background: `${primaryColor}14`,
                             color: "#ffffff",
+                            fontSize: "11px",
+                            fontWeight: 950,
+                            cursor: "pointer",
                           }}
                         >
-                          {match.homeTeam}
-                        </div>
+                          ⚙ SPRÁVA
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handleDeleteMatch(
+                              match.id,
+                              `${match.homeTeam} vs. ${match.awayTeam}`
+                            )
+                          }
+                          disabled={deletingMatchId === match.id}
+                          style={{
+                            border: "1px solid rgba(255,79,79,0.62)",
+                            borderRadius: "11px",
+                            padding: "8px 10px",
+                            background: "rgba(198,40,40,0.10)",
+                            color: "#ff7e7e",
+                            fontSize: "11px",
+                            fontWeight: 950,
+                            cursor:
+                              deletingMatchId === match.id ? "default" : "pointer",
+                            opacity: deletingMatchId === match.id ? 0.6 : 1,
+                          }}
+                        >
+                          {deletingMatchId === match.id ? "MAŽU..." : "🗑 SMAZAT"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto 1fr",
+                      alignItems: "center",
+                      gap: "12px",
+                      padding: "3px 0 1px",
+                    }}
+                  >
+                    <div style={{ minWidth: 0, textAlign: "center" }}>
+                      <div
+                        style={{
+                          width: "54px",
+                          height: "54px",
+                          margin: "0 auto 7px",
+                          borderRadius: "16px",
+                          background: `${primaryColor}16`,
+                          border: `1px solid ${primaryColor}2e`,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: primaryColor,
+                          fontWeight: 950,
+                          fontSize: "20px",
+                        }}
+                      >
+                        {match.team}
                       </div>
 
                       <div
                         style={{
-                          color: primaryColor,
+                          color: "#ffffff",
                           fontWeight: 950,
-                          fontSize: "12px",
-                          whiteSpace: "nowrap",
+                          fontSize: "14px",
+                          lineHeight: 1.25,
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {match.homeTeam}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        color: primaryColor,
+                        fontWeight: 950,
+                        fontSize: "18px",
+                        letterSpacing: "0.5px",
+                        textShadow: `0 0 18px ${primaryColor}55`,
+                      }}
+                    >
+                      VS
+                    </div>
+
+                    <div style={{ minWidth: 0, textAlign: "center" }}>
+                      <div
+                        style={{
+                          width: "54px",
+                          height: "54px",
+                          margin: "0 auto 7px",
+                          borderRadius: "16px",
+                          background: "rgba(255,255,255,0.055)",
+                          border: "1px solid rgba(255,255,255,0.09)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "#a9a9a9",
+                          fontWeight: 950,
+                          fontSize: "16px",
                         }}
                       >
                         VS
                       </div>
 
-                      <div style={{ minWidth: 0, textAlign: "right" }}>
-                        <div
-                          style={{
-                            fontWeight: 950,
-                            fontSize: "14px",
-                            lineHeight: 1.25,
-                            wordBreak: "break-word",
-                            color: "#ffffff",
-                          }}
-                        >
-                          {match.awayTeam}
-                        </div>
-                      </div>
-                    </div>
-
-                    {match.location && (
                       <div
                         style={{
-                          marginTop: "12px",
-                          fontSize: "13px",
-                          color: "#b8b8b8",
+                          color: "#ffffff",
+                          fontWeight: 950,
+                          fontSize: "14px",
+                          lineHeight: 1.25,
                           wordBreak: "break-word",
                         }}
                       >
-                        📍 {match.location}
+                        {match.awayTeam}
                       </div>
-                    )}
+                    </div>
                   </div>
 
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: isAdmin ? "1fr 1fr" : "1fr",
-                      gap: "8px",
-                    }}
-                  >
-                    <button
-                      style={softButtonStyle}
-                      onClick={() =>
-                        setExpandedAttendanceMatchId((prev) =>
-                          prev === match.id ? null : match.id
-                        )
-                      }
+                  {match.location && (
+                    <div
+                      style={{
+                        textAlign: "center",
+                        color: "#a9a9a9",
+                        fontSize: "12px",
+                        fontWeight: 750,
+                      }}
                     >
-                      👥 {isExpanded ? "Skrýt" : "Anketa"}
-                    </button>
-
-                    {isAdmin && (
-                      <button
-                        style={{
-                          ...softButtonStyle,
-                          background: `${primaryColor}22`,
-                          border: `1px solid ${primaryColor}44`,
-                          color: "#ffffff",
-                        }}
-                        onClick={() => {
-                          setSelectedMatchId(match.id);
-                          setSelectedMode("detail");
-                          setMessage("");
-                        }}
-                      >
-                        ⚙️ Správa
-                      </button>
-                    )}
-
-                    {canOpenLive && (
-                      <button
-                        style={{
-                          ...primaryButtonStyle,
-                          gridColumn: "1 / -1",
-                        }}
-                        onClick={() => {
-                          setSelectedMatchId(match.id);
-                          setSelectedMode("live");
-                          setMessage("");
-                        }}
-                      >
-                        LIVE ZÁPAS
-                      </button>
-                    )}
-
-                    {isAdmin && (
-                      <button
-                        style={{
-                          ...softButtonStyle,
-                          gridColumn: "1 / -1",
-                          background: "rgba(198,40,40,0.95)",
-                          border: "none",
-                          opacity: deletingMatchId === match.id ? 0.7 : 1,
-                        }}
-                        onClick={() =>
-                          void handleDeleteMatch(
-                            match.id,
-                            `${match.homeTeam} vs. ${match.awayTeam}`
-                          )
-                        }
-                        disabled={deletingMatchId === match.id}
-                      >
-                        {deletingMatchId === match.id ? "Mažu..." : "🗑️ Smazat"}
-                      </button>
-                    )}
-                  </div>
+                      📍 {match.location}
+                    </div>
+                  )}
 
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
+                      gridTemplateColumns: "1fr 1fr 1fr",
                       gap: "8px",
-                      paddingTop: "10px",
-                      borderTop: "1px solid rgba(255,255,255,0.07)",
+                      paddingTop: "2px",
                     }}
                   >
                     <div
                       style={{
-                        color: "#d4d4d4",
-                        fontSize: "12px",
+                        borderRadius: "13px",
+                        padding: "10px 8px",
+                        background: "rgba(46,204,113,0.12)",
+                        border: "1px solid rgba(46,204,113,0.20)",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: "#92efac",
+                          fontSize: "10px",
+                          fontWeight: 950,
+                        }}
+                      >
+                        ✓ BUDU
+                      </div>
+                      <div
+                        style={{
+                          marginTop: "3px",
+                          color: "#67ef8f",
+                          fontSize: "22px",
+                          fontWeight: 950,
+                          lineHeight: 1,
+                        }}
+                      >
+                        {summary.yesCount}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: "13px",
+                        padding: "10px 8px",
+                        background: "rgba(231,76,60,0.12)",
+                        border: "1px solid rgba(231,76,60,0.20)",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: "#ff9890",
+                          fontSize: "10px",
+                          fontWeight: 950,
+                        }}
+                      >
+                        ✕ NEBUDU
+                      </div>
+                      <div
+                        style={{
+                          marginTop: "3px",
+                          color: "#ff7770",
+                          fontSize: "22px",
+                          fontWeight: 950,
+                          lineHeight: 1,
+                        }}
+                      >
+                        {summary.noCount}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: "13px",
+                        padding: "10px 8px",
+                        background: "rgba(52,152,219,0.12)",
+                        border: "1px solid rgba(52,152,219,0.20)",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: "#9fd3ff",
+                          fontSize: "10px",
+                          fontWeight: 950,
+                        }}
+                      >
+                        ? NEHLASOVAL
+                      </div>
+                      <div
+                        style={{
+                          marginTop: "3px",
+                          color: "#71c6ff",
+                          fontSize: "22px",
+                          fontWeight: 950,
+                          lineHeight: 1,
+                        }}
+                      >
+                        {summary.notVotedCount}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div
+                      style={{
+                        height: "8px",
+                        borderRadius: "999px",
+                        overflow: "hidden",
+                        display: "flex",
+                        background: "rgba(255,255,255,0.08)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${yesPercent}%`,
+                          background: "#2ecc71",
+                        }}
+                      />
+                      <div
+                        style={{
+                          width: `${noPercent}%`,
+                          background: "#e74c3c",
+                        }}
+                      />
+                      <div
+                        style={{
+                          width: `${notVotedPercent}%`,
+                          background: "#3498db",
+                        }}
+                      />
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: "7px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: "8px",
+                        color: "#a9a9a9",
+                        fontSize: "11px",
                         fontWeight: 800,
                       }}
                     >
-                      👥 Hlasovalo: {summary.totalVotes}
-                    </div>
+                      <span>
+                        Hlasovalo {summary.totalVotes} z {totalPlayers}
+                      </span>
 
-                    <div
-                      style={{
-                        color: "#9af0b6",
-                        fontSize: "12px",
-                        fontWeight: 900,
-                      }}
-                    >
-                      ✓ BUDU: {summary.yesCount}
-                    </div>
-
-                    <div
-                      style={{
-                        color: "#ffb0a8",
-                        fontSize: "12px",
-                        fontWeight: 900,
-                      }}
-                    >
-                      ✕ NEBUDU: {summary.noCount}
-                    </div>
-
-                    <div
-                      style={{
-                        color: "#9fd3ff",
-                        fontSize: "12px",
-                        fontWeight: 900,
-                      }}
-                    >
-                      ? NEHLASOVAL: {summary.notVotedCount}
+                      {myStatus ? (
+                        <span
+                          style={{
+                            color: myStatus === "yes" ? "#67ef8f" : "#ff7770",
+                            fontWeight: 950,
+                          }}
+                        >
+                          TVOJE ODPOVĚĎ: {myStatus === "yes" ? "BUDU" : "NEBUDU"}
+                        </span>
+                      ) : (
+                        <span style={{ color: "#f2c94c", fontWeight: 950 }}>
+                          JEŠTĚ JSI NEHLASOVAL
+                        </span>
+                      )}
                     </div>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedAttendanceMatchId((prev) =>
+                        prev === match.id ? null : match.id
+                      )
+                    }
+                    style={{
+                      width: "100%",
+                      border: `1px solid ${primaryColor}66`,
+                      borderRadius: "13px",
+                      padding: "12px 14px",
+                      background: isExpanded
+                        ? `${primaryColor}1f`
+                        : "rgba(255,255,255,0.035)",
+                      color: "#ffffff",
+                      fontWeight: 950,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "10px",
+                    }}
+                  >
+                    <span>👥 {isExpanded ? "Zavřít anketu" : "Otevřít anketu"}</span>
+                    <span style={{ color: primaryColor, fontSize: "18px" }}>
+                      {isExpanded ? "⌃" : "›"}
+                    </span>
+                  </button>
+
+                  {canOpenLive && (
+                    <button
+                      style={primaryButtonStyle}
+                      onClick={() => {
+                        setSelectedMatchId(match.id);
+                        setSelectedMode("live");
+                        setMessage("");
+                      }}
+                    >
+                      LIVE ZÁPAS
+                    </button>
+                  )}
 
                   {isExpanded && (
                     <div
                       style={{
                         display: "grid",
                         gap: "12px",
-                        marginTop: "4px",
-                        paddingTop: "12px",
-                        borderTop: "1px solid rgba(255,255,255,0.07)",
+                        paddingTop: "13px",
+                        borderTop: "1px solid rgba(255,255,255,0.075)",
                       }}
                     >
-                      <button
-                        type="button"
-                        onClick={() => void handleCopyMatchLink(match.id)}
-                        style={{
-                          ...softButtonStyle,
-                          width: "100%",
-                        }}
-                      >
-                        Kopírovat odkaz na anketu
-                      </button>
-
-                      <div style={{ display: "flex", gap: "8px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
                         <button
                           type="button"
                           onClick={() => void handleVote(match.id, "yes")}
                           disabled={isSavingAttendance}
                           style={{
-                            flex: 1,
-                            border: "none",
+                            border: "1px solid rgba(46,204,113,0.48)",
                             borderRadius: "14px",
-                            padding: "12px",
+                            padding: "14px 10px",
                             background:
                               myStatus === "yes"
-                                ? "rgba(46, 204, 113, 0.95)"
-                                : "rgba(46, 204, 113, 0.18)",
-                            color: "white",
+                                ? "linear-gradient(135deg, rgba(46,204,113,1), rgba(35,183,96,0.92))"
+                                : "rgba(46,204,113,0.12)",
+                            color: "#ffffff",
                             fontWeight: 950,
+                            fontSize: "15px",
                             cursor: isSavingAttendance ? "default" : "pointer",
                             opacity: isSavingAttendance ? 0.7 : 1,
+                            boxShadow:
+                              myStatus === "yes"
+                                ? "0 10px 24px rgba(46,204,113,0.22)"
+                                : "none",
                           }}
                         >
-                          BUDU
+                          ✓ BUDU
                         </button>
 
                         <button
@@ -1152,117 +1336,203 @@ export default function MatchesScreen({
                           onClick={() => void handleVote(match.id, "no")}
                           disabled={isSavingAttendance}
                           style={{
-                            flex: 1,
-                            border: "none",
+                            border: "1px solid rgba(231,76,60,0.48)",
                             borderRadius: "14px",
-                            padding: "12px",
+                            padding: "14px 10px",
                             background:
                               myStatus === "no"
-                                ? "rgba(231, 76, 60, 0.95)"
-                                : "rgba(231, 76, 60, 0.18)",
-                            color: "white",
+                                ? "linear-gradient(135deg, rgba(231,76,60,1), rgba(196,58,47,0.92))"
+                                : "rgba(231,76,60,0.12)",
+                            color: "#ffffff",
                             fontWeight: 950,
+                            fontSize: "15px",
                             cursor: isSavingAttendance ? "default" : "pointer",
                             opacity: isSavingAttendance ? 0.7 : 1,
+                            boxShadow:
+                              myStatus === "no"
+                                ? "0 10px 24px rgba(231,76,60,0.22)"
+                                : "none",
                           }}
                         >
-                          NEBUDU
+                          ✕ NEBUDU
                         </button>
                       </div>
 
-                      <div style={{ display: "grid", gap: "10px" }}>
+                      <div
+                        style={{
+                          textAlign: "center",
+                          color: "#a9a9a9",
+                          fontSize: "12px",
+                          fontWeight: 800,
+                        }}
+                      >
+                        {myStatus ? (
+                          <>
+                            Tvoje odpověď:{" "}
+                            <span
+                              style={{
+                                color: myStatus === "yes" ? "#67ef8f" : "#ff7770",
+                                fontWeight: 950,
+                              }}
+                            >
+                              {myStatus === "yes" ? "BUDU" : "NEBUDU"}
+                            </span>
+                          </>
+                        ) : (
+                          <span style={{ color: "#f2c94c", fontWeight: 950 }}>
+                            Ještě jsi nehlasoval
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyMatchLink(match.id)}
+                        style={{
+                          ...softButtonStyle,
+                          width: "100%",
+                          padding: "12px",
+                          background: "rgba(255,255,255,0.04)",
+                        }}
+                      >
+                        🔗 Kopírovat odkaz na anketu
+                      </button>
+
+                      <div style={{ display: "grid", gap: "9px" }}>
                         <div
                           style={{
-                            padding: "12px",
-                            borderRadius: "16px",
-                            background: "rgba(46, 204, 113, 0.10)",
-                            border: "1px solid rgba(46, 204, 113, 0.20)",
+                            borderRadius: "14px",
+                            background: "rgba(46,204,113,0.08)",
+                            border: "1px solid rgba(46,204,113,0.28)",
+                            overflow: "hidden",
                           }}
                         >
                           <div
                             style={{
-                              fontWeight: 950,
-                              color: "#9af0b6",
-                              marginBottom: "8px",
-                            }}
-                          >
-                            BUDU ({yesRows.length})
-                          </div>
-
-                          {yesRows.length === 0 ? (
-                            <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
-                              Zatím nikdo.
-                            </div>
-                          ) : (
-                            <div style={{ display: "grid", gap: "6px" }}>
-                              {yesRows.map((row) => (
-                                <div
-                                  key={`${match.id}-yes-${row.user_id}`}
-                                  style={{ fontSize: "13px", color: "white" }}
-                                >
-                                  {getPlayerNameByUserId(row.user_id)}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div
-                          style={{
-                            padding: "12px",
-                            borderRadius: "16px",
-                            background: "rgba(231, 76, 60, 0.10)",
-                            border: "1px solid rgba(231, 76, 60, 0.20)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: 950,
-                              color: "#ffb0a8",
-                              marginBottom: "8px",
-                            }}
-                          >
-                            NEBUDU ({noRows.length})
-                          </div>
-
-                          {noRows.length === 0 ? (
-                            <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
-                              Zatím nikdo.
-                            </div>
-                          ) : (
-                            <div style={{ display: "grid", gap: "6px" }}>
-                              {noRows.map((row) => (
-                                <div
-                                  key={`${match.id}-no-${row.user_id}`}
-                                  style={{ fontSize: "13px", color: "white" }}
-                                >
-                                  {getPlayerNameByUserId(row.user_id)}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div
-                          style={{
-                            padding: "12px",
-                            borderRadius: "16px",
-                            background: "rgba(52, 152, 219, 0.10)",
-                            border: "1px solid rgba(52, 152, 219, 0.20)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: 950,
-                              color: "#9fd3ff",
-                              marginBottom: "8px",
+                              padding: "11px 12px",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "space-between",
                               gap: "8px",
+                              color: "#92efac",
+                              fontWeight: 950,
                             }}
                           >
-                            <span>NEHLASOVAL ({notVotedPlayers.length})</span>
+                            <span>👤 Budou ({yesRows.length})</span>
+                          </div>
+
+                          <div
+                            style={{
+                              padding: "0 12px 12px",
+                              display: "grid",
+                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                              gap: "6px 12px",
+                            }}
+                          >
+                            {yesRows.length === 0 ? (
+                              <div
+                                style={{
+                                  gridColumn: "1 / -1",
+                                  fontSize: "13px",
+                                  color: "#8f8f8f",
+                                }}
+                              >
+                                Zatím nikdo.
+                              </div>
+                            ) : (
+                              yesRows.map((row) => (
+                                <div
+                                  key={`${match.id}-yes-${row.user_id}`}
+                                  style={{
+                                    minWidth: 0,
+                                    fontSize: "13px",
+                                    color: "#ffffff",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                  }}
+                                >
+                                  {getPlayerNameByUserId(row.user_id)}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            borderRadius: "14px",
+                            background: "rgba(231,76,60,0.08)",
+                            border: "1px solid rgba(231,76,60,0.28)",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              padding: "11px 12px",
+                              color: "#ff9890",
+                              fontWeight: 950,
+                            }}
+                          >
+                            👤 Nebudou ({noRows.length})
+                          </div>
+
+                          <div
+                            style={{
+                              padding: "0 12px 12px",
+                              display: "grid",
+                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                              gap: "6px 12px",
+                            }}
+                          >
+                            {noRows.length === 0 ? (
+                              <div
+                                style={{
+                                  gridColumn: "1 / -1",
+                                  fontSize: "13px",
+                                  color: "#8f8f8f",
+                                }}
+                              >
+                                Zatím nikdo.
+                              </div>
+                            ) : (
+                              noRows.map((row) => (
+                                <div
+                                  key={`${match.id}-no-${row.user_id}`}
+                                  style={{
+                                    minWidth: 0,
+                                    fontSize: "13px",
+                                    color: "#ffffff",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                  }}
+                                >
+                                  {getPlayerNameByUserId(row.user_id)}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            borderRadius: "14px",
+                            background: "rgba(52,152,219,0.08)",
+                            border: "1px solid rgba(52,152,219,0.28)",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              padding: "11px 12px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: "8px",
+                              color: "#9fd3ff",
+                              fontWeight: 950,
+                            }}
+                          >
+                            <span>👤 Nehlasovali ({notVotedPlayers.length})</span>
 
                             {isAdmin && notVotedPlayers.length > 0 && (
                               <button
@@ -1276,37 +1546,57 @@ export default function MatchesScreen({
                                 disabled={isSavingFine}
                                 style={{
                                   border: "none",
-                                  borderRadius: "12px",
-                                  padding: "8px 10px",
-                                  background: "rgba(241, 196, 15, 0.95)",
+                                  borderRadius: "10px",
+                                  padding: "7px 9px",
+                                  background: "rgba(241,196,15,0.95)",
                                   color: "#111111",
                                   fontWeight: 950,
+                                  fontSize: "11px",
                                   cursor: isSavingFine ? "default" : "pointer",
                                   opacity: isSavingFine ? 0.7 : 1,
                                   whiteSpace: "nowrap",
                                 }}
                               >
-                                {isSavingFine ? "Ukládám..." : "POKUTA"}
+                                {isSavingFine ? "UKLÁDÁM..." : "POKUTA"}
                               </button>
                             )}
                           </div>
 
-                          {notVotedPlayers.length === 0 ? (
-                            <div style={{ fontSize: "13px", color: "#b8b8b8" }}>
-                              Všichni hlasovali.
-                            </div>
-                          ) : (
-                            <div style={{ display: "grid", gap: "6px" }}>
-                              {notVotedPlayers.map((player) => (
+                          <div
+                            style={{
+                              padding: "0 12px 12px",
+                              display: "grid",
+                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                              gap: "6px 12px",
+                            }}
+                          >
+                            {notVotedPlayers.length === 0 ? (
+                              <div
+                                style={{
+                                  gridColumn: "1 / -1",
+                                  fontSize: "13px",
+                                  color: "#8f8f8f",
+                                }}
+                              >
+                                Všichni hlasovali.
+                              </div>
+                            ) : (
+                              notVotedPlayers.map((player) => (
                                 <div
                                   key={`${match.id}-not-voted-${player.id}`}
-                                  style={{ fontSize: "13px", color: "white" }}
+                                  style={{
+                                    minWidth: 0,
+                                    fontSize: "13px",
+                                    color: "#ffffff",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                  }}
                                 >
                                   {player.name}
                                 </div>
-                              ))}
-                            </div>
-                          )}
+                              ))
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
