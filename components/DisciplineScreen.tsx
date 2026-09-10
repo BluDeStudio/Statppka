@@ -783,9 +783,25 @@ export default function DisciplineScreen({
   const attendanceStats = useMemo(() => {
     return activeDisciplinePlayers.map((player) => {
       let attended = 0;
-      const total = filteredOlderTrainings.length;
 
-      filteredOlderTrainings.forEach((training) => {
+      // Každému hráči se do docházky počítají pouze tréninky,
+      // které proběhly v době, kdy už byl členem klubu.
+      // joined_at = NULL zachovává původní chování a počítá celou historii.
+      const playerTrainings = filteredOlderTrainings.filter((training) => {
+        if (!player.joined_at) return true;
+
+        const trainingDate = normalizeDateToIso(training.date);
+        const joinedAt = normalizeDateToIso(player.joined_at);
+
+        // Při neplatném/starém formátu data raději zachováme původní chování.
+        if (!trainingDate || !joinedAt) return true;
+
+        return trainingDate >= joinedAt;
+      });
+
+      const total = playerTrainings.length;
+
+      playerTrainings.forEach((training) => {
         const rows = presenceMap[training.id] || [];
         const isPresent = rows.some(
           (row) => row.player_id === player.id && row.present
