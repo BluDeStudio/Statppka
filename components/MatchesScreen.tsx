@@ -902,9 +902,6 @@ export default function MatchesScreen({
               )
               .sort((a, b) => a.name.localeCompare(b.name, "cs"));
 
-            const totalPlayers =
-              summary.yesCount + summary.noCount + summary.notVotedCount;
-
             return (
               <div
                 id={`match-${match.id}`}
@@ -925,134 +922,202 @@ export default function MatchesScreen({
                   }
                 }}
                 style={{
-                  ...modernCardStyle,
                   position: "relative",
                   overflow: "hidden",
-                  padding: 0,
-                  border: `1px solid ${primaryColor}44`,
-                  boxShadow: `0 18px 42px rgba(0,0,0,0.34), 0 0 0 1px ${primaryColor}0d`,
+                  borderRadius: "18px",
+                  border: isExpanded
+                    ? `1px solid ${primaryColor}55`
+                    : "1px solid rgba(255,255,255,0.08)",
+                  background:
+                    "linear-gradient(180deg, rgba(20,20,20,0.98) 0%, rgba(12,12,12,0.99) 100%)",
+                  boxShadow: isExpanded
+                    ? `0 16px 38px rgba(0,0,0,.32), 0 0 0 1px ${primaryColor}10`
+                    : "0 10px 26px rgba(0,0,0,.24)",
                   cursor: "pointer",
+                  transition: "border-color .18s ease, transform .18s ease, box-shadow .18s ease",
                 }}
               >
                 <div
                   style={{
                     position: "absolute",
                     left: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: "5px",
+                    top: "18px",
+                    bottom: "18px",
+                    width: "2px",
+                    borderRadius: "0 999px 999px 0",
                     background: primaryColor,
-                    boxShadow: `0 0 22px ${primaryColor}77`,
+                    opacity: 0.88,
                   }}
                 />
 
                 <div
                   style={{
-                    padding: "14px 14px 13px 18px",
+                    padding: "16px 16px 14px 18px",
                     display: "grid",
-                    gap: "11px",
+                    gap: "14px",
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "9px",
-                      flexWrap: "wrap",
-                      padding: "0 2px 2px",
-                    }}
-                  >
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        color: primaryColor,
-                        fontSize: "16px",
-                        lineHeight: 1,
-                      }}
-                    >
-                      ▦
-                    </span>
-
-                    <span
-                      style={{
-                        color: "#ffffff",
-                        fontSize: "15px",
-                        fontWeight: 950,
-                        letterSpacing: "0.15px",
-                      }}
-                    >
-                      {formatDisplayDate(match.date)}
-                    </span>
-
-                    <span style={{ color: "#686868", fontWeight: 900 }}>•</span>
-
-                    <span
-                      style={{
-                        color: "#ffffff",
-                        fontSize: "15px",
-                        fontWeight: 950,
-                      }}
-                    >
-                      {match.time || "—"}
-                    </span>
-
-                    <span style={{ color: "#686868", fontWeight: 900 }}>•</span>
-
-                    <span
-                      style={{
-                        color: primaryColor,
-                        fontSize: "14px",
-                        fontWeight: 950,
-                      }}
-                    >
-                      {match.team}-TÝM
-                    </span>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "7px",
-                      marginTop: "-5px",
-                      padding: "0 2px 2px",
-                      color: "#d4d4d4",
-                      fontSize: "13px",
-                      fontWeight: 850,
-                    }}
-                  >
-                    <span style={{ color: "#ff4475", fontSize: "15px" }}>●</span>
-                    <span>{match.location || "Místo neuvedeno"}</span>
-                  </div>
-
+                  {/* DATUM / ČAS / TÝM */}
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "minmax(0,1fr) 54px minmax(0,1fr)",
+                      gridTemplateColumns: "1.35fr .85fr .8fr",
+                      alignItems: "end",
+                      gap: "12px",
+                    }}
+                  >
+                    <div>
+                      <div
+                        style={{
+                          marginBottom: "3px",
+                          color: "#717171",
+                          fontSize: "9px",
+                          fontWeight: 900,
+                          letterSpacing: "1px",
+                        }}
+                      >
+                        DATUM
+                      </div>
+                      <div
+                        style={{
+                          color: "#fff",
+                          fontSize: "17px",
+                          lineHeight: 1,
+                          fontWeight: 950,
+                          letterSpacing: "-0.2px",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {formatDisplayDate(match.date)}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div
+                        style={{
+                          marginBottom: "3px",
+                          color: "#717171",
+                          fontSize: "9px",
+                          fontWeight: 900,
+                          letterSpacing: "1px",
+                        }}
+                      >
+                        ČAS
+                      </div>
+                      <div
+                        style={{
+                          color: "#fff",
+                          fontSize: "17px",
+                          lineHeight: 1,
+                          fontWeight: 950,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {match.time || "—"}
+                      </div>
+                    </div>
+
+                    <div style={{ textAlign: "right" }}>
+                      <div
+                        style={{
+                          marginBottom: "3px",
+                          color: "#717171",
+                          fontSize: "9px",
+                          fontWeight: 900,
+                          letterSpacing: "1px",
+                        }}
+                      >
+                        TÝM
+                      </div>
+                      <div
+                        style={{
+                          color: primaryColor,
+                          fontSize: "16px",
+                          lineHeight: 1,
+                          fontWeight: 950,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {match.team}-TÝM
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* MÍSTO */}
+                  <div
+                    style={{
+                      display: "flex",
                       alignItems: "center",
                       gap: "8px",
-                      padding: "3px 2px 6px",
+                      marginTop: "-3px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: "#ff4b7b",
+                        fontSize: "13px",
+                        lineHeight: 1,
+                      }}
+                    >
+                      ●
+                    </span>
+                    <div style={{ minWidth: 0 }}>
+                      <span
+                        style={{
+                          color: "#737373",
+                          fontSize: "9px",
+                          fontWeight: 900,
+                          letterSpacing: ".9px",
+                          marginRight: "7px",
+                        }}
+                      >
+                        MÍSTO
+                      </span>
+                      <span
+                        style={{
+                          color: "#d8d8d8",
+                          fontSize: "13px",
+                          fontWeight: 800,
+                        }}
+                      >
+                        {match.location || "Místo neuvedeno"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* ZÁPAS */}
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0,1fr) 42px minmax(0,1fr)",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "4px 4px 1px",
                     }}
                   >
                     <div style={{ minWidth: 0, textAlign: "center" }}>
                       <div
                         style={{
-                          minHeight: "68px",
+                          height: "54px",
                           display: "flex",
+                          alignItems: "center",
                           justifyContent: "center",
-                          alignItems: "flex-end",
-                          marginBottom: "5px",
+                          marginBottom: "7px",
                         }}
                       >
-                        <JerseyIcon color={primaryColor} accent="#111111" />
+                        <div style={{ transform: "scale(.80)", transformOrigin: "center" }}>
+                          <JerseyIcon color={primaryColor} accent="#111111" />
+                        </div>
                       </div>
+
                       <div
                         style={{
-                          color: "#ffffff",
+                          color: "#fff",
+                          fontSize: "15px",
                           fontWeight: 950,
-                          fontSize: "16px",
                           lineHeight: 1.15,
-                          wordBreak: "break-word",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
                         }}
                       >
                         {match.homeTeam}
@@ -1061,14 +1126,11 @@ export default function MatchesScreen({
 
                     <div
                       style={{
-                        alignSelf: "center",
-                        paddingTop: "15px",
                         color: primaryColor,
+                        fontSize: "18px",
                         fontWeight: 950,
-                        fontSize: "20px",
-                        letterSpacing: "0.6px",
                         textAlign: "center",
-                        textShadow: `0 0 16px ${primaryColor}66`,
+                        letterSpacing: ".5px",
                       }}
                     >
                       VS
@@ -1077,22 +1139,26 @@ export default function MatchesScreen({
                     <div style={{ minWidth: 0, textAlign: "center" }}>
                       <div
                         style={{
-                          minHeight: "68px",
+                          height: "54px",
                           display: "flex",
+                          alignItems: "center",
                           justifyContent: "center",
-                          alignItems: "flex-end",
-                          marginBottom: "5px",
+                          marginBottom: "7px",
                         }}
                       >
-                        <JerseyIcon color="#f4f4f4" accent="#cfcfcf" />
+                        <div style={{ transform: "scale(.80)", transformOrigin: "center" }}>
+                          <JerseyIcon color="#f5f5f5" accent="#cfcfcf" />
+                        </div>
                       </div>
+
                       <div
                         style={{
-                          color: "#ffffff",
+                          color: "#fff",
+                          fontSize: "15px",
                           fontWeight: 950,
-                          fontSize: "16px",
                           lineHeight: 1.15,
-                          wordBreak: "break-word",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
                         }}
                       >
                         {match.awayTeam}
@@ -1100,115 +1166,95 @@ export default function MatchesScreen({
                     </div>
                   </div>
 
+                  {/* STAVY */}
                   <div
                     style={{
                       display: "flex",
                       justifyContent: "center",
                       alignItems: "center",
-                      gap: "6px",
                       flexWrap: "wrap",
-                      paddingTop: "1px",
+                      gap: "7px",
                     }}
                   >
-                    <div
+                    <span
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
                         gap: "5px",
-                        borderRadius: "999px",
-                        padding: "5px 8px",
-                        background: "rgba(46,204,113,0.09)",
-                        border: "1px solid rgba(46,204,113,0.20)",
-                        color: "#72ef98",
-                        fontSize: "10px",
+                        padding: "4px 8px",
+                        borderRadius: "8px",
+                        background: "rgba(46,204,113,.07)",
+                        color: "#70e994",
+                        fontSize: "9px",
                         fontWeight: 950,
+                        letterSpacing: ".25px",
                       }}
                     >
-                      <span>BUDU</span>
-                      <strong style={{ fontSize: "12px" }}>{summary.yesCount}</strong>
-                    </div>
+                      BUDU <b style={{ fontSize: "11px" }}>{summary.yesCount}</b>
+                    </span>
 
-                    <div
+                    <span
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
                         gap: "5px",
-                        borderRadius: "999px",
-                        padding: "5px 8px",
-                        background: "rgba(231,76,60,0.09)",
-                        border: "1px solid rgba(231,76,60,0.20)",
+                        padding: "4px 8px",
+                        borderRadius: "8px",
+                        background: "rgba(231,76,60,.07)",
                         color: "#ff8580",
-                        fontSize: "10px",
+                        fontSize: "9px",
                         fontWeight: 950,
+                        letterSpacing: ".25px",
                       }}
                     >
-                      <span>NEBUDU</span>
-                      <strong style={{ fontSize: "12px" }}>{summary.noCount}</strong>
-                    </div>
+                      NEBUDU <b style={{ fontSize: "11px" }}>{summary.noCount}</b>
+                    </span>
 
-                    <div
+                    <span
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
                         gap: "5px",
-                        borderRadius: "999px",
-                        padding: "5px 8px",
-                        background: "rgba(52,152,219,0.09)",
-                        border: "1px solid rgba(52,152,219,0.20)",
+                        padding: "4px 8px",
+                        borderRadius: "8px",
+                        background: "rgba(52,152,219,.07)",
                         color: "#7acbff",
+                        fontSize: "9px",
+                        fontWeight: 950,
+                        letterSpacing: ".25px",
+                      }}
+                    >
+                      NEHLASOVAL{" "}
+                      <b style={{ fontSize: "11px" }}>{summary.notVotedCount}</b>
+                    </span>
+                  </div>
+
+                  {/* MŮJ STAV */}
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "center",
+                      marginTop: "-5px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: myStatus ? "#72e994" : "#f2c94c",
                         fontSize: "10px",
                         fontWeight: 950,
+                        letterSpacing: ".65px",
                       }}
                     >
-                      <span>NEHLASOVAL</span>
-                      <strong style={{ fontSize: "12px" }}>{summary.notVotedCount}</strong>
-                    </div>
+                      {myStatus ? "✓ HLASOVAL JSI" : "• NEHLASOVAL JSI"}
+                    </span>
                   </div>
-
-                  <div>
-                    <div
-                      style={{
-                        marginTop: "1px",
-                        display: "flex",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "5px",
-                          borderRadius: "999px",
-                          padding: "6px 9px",
-                          background: myStatus
-                            ? myStatus === "yes"
-                              ? "rgba(46,204,113,0.11)"
-                              : "rgba(231,76,60,0.11)"
-                            : "rgba(241,196,15,0.10)",
-                          border: myStatus
-                            ? myStatus === "yes"
-                              ? "1px solid rgba(46,204,113,0.24)"
-                              : "1px solid rgba(231,76,60,0.24)"
-                            : "1px solid rgba(241,196,15,0.22)",
-                          color: myStatus
-                            ? myStatus === "yes"
-                              ? "#67ef8f"
-                              : "#ff7770"
-                            : "#f2c94c",
-                          fontSize: "10px",
-                          fontWeight: 950,
-                          letterSpacing: "0.25px",
-                        }}
-                      >
-                        {myStatus ? "✓ HLASOVAL JSI" : "• NEHLASOVAL JSI"}
-                      </span>
-                    </div>
-                  </div>
-
 
                   {canOpenLive && (
                     <button
-                      style={primaryButtonStyle}
+                      style={{
+                        ...primaryButtonStyle,
+                        marginTop: "-2px",
+                      }}
                       onClick={(event) => {
                         event.stopPropagation();
                         setSelectedMatchId(match.id);
@@ -1220,38 +1266,44 @@ export default function MatchesScreen({
                     </button>
                   )}
 
+                  {/* ROZBALENÁ ANKETA */}
                   {isExpanded && (
                     <div
                       onClick={(event) => event.stopPropagation()}
                       style={{
                         display: "grid",
                         gap: "12px",
-                        paddingTop: "13px",
-                        borderTop: "1px solid rgba(255,255,255,0.075)",
+                        paddingTop: "14px",
+                        borderTop: "1px solid rgba(255,255,255,.07)",
                       }}
                     >
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr",
+                          gap: "8px",
+                        }}
+                      >
                         <button
                           type="button"
                           onClick={() => void handleVote(match.id, "yes")}
                           disabled={isSavingAttendance}
                           style={{
-                            border: "1px solid rgba(46,204,113,0.48)",
-                            borderRadius: "14px",
-                            padding: "14px 10px",
+                            border:
+                              myStatus === "yes"
+                                ? "1px solid rgba(46,204,113,.75)"
+                                : "1px solid rgba(46,204,113,.30)",
+                            borderRadius: "12px",
+                            padding: "13px 10px",
                             background:
                               myStatus === "yes"
-                                ? "linear-gradient(135deg, rgba(46,204,113,1), rgba(35,183,96,0.92))"
-                                : "rgba(46,204,113,0.12)",
-                            color: "#ffffff",
+                                ? "linear-gradient(135deg, rgba(40,210,100,.95), rgba(25,165,78,.95))"
+                                : "rgba(46,204,113,.08)",
+                            color: "#fff",
                             fontWeight: 950,
-                            fontSize: "15px",
+                            fontSize: "14px",
                             cursor: isSavingAttendance ? "default" : "pointer",
-                            opacity: isSavingAttendance ? 0.7 : 1,
-                            boxShadow:
-                              myStatus === "yes"
-                                ? "0 10px 24px rgba(46,204,113,0.22)"
-                                : "none",
+                            opacity: isSavingAttendance ? 0.65 : 1,
                           }}
                         >
                           ✓ BUDU
@@ -1262,22 +1314,21 @@ export default function MatchesScreen({
                           onClick={() => void handleVote(match.id, "no")}
                           disabled={isSavingAttendance}
                           style={{
-                            border: "1px solid rgba(231,76,60,0.48)",
-                            borderRadius: "14px",
-                            padding: "14px 10px",
+                            border:
+                              myStatus === "no"
+                                ? "1px solid rgba(231,76,60,.75)"
+                                : "1px solid rgba(231,76,60,.30)",
+                            borderRadius: "12px",
+                            padding: "13px 10px",
                             background:
                               myStatus === "no"
-                                ? "linear-gradient(135deg, rgba(231,76,60,1), rgba(196,58,47,0.92))"
-                                : "rgba(231,76,60,0.12)",
-                            color: "#ffffff",
+                                ? "linear-gradient(135deg, rgba(225,72,60,.95), rgba(170,48,42,.95))"
+                                : "rgba(231,76,60,.08)",
+                            color: "#fff",
                             fontWeight: 950,
-                            fontSize: "15px",
+                            fontSize: "14px",
                             cursor: isSavingAttendance ? "default" : "pointer",
-                            opacity: isSavingAttendance ? 0.7 : 1,
-                            boxShadow:
-                              myStatus === "no"
-                                ? "0 10px 24px rgba(231,76,60,0.22)"
-                                : "none",
+                            opacity: isSavingAttendance ? 0.65 : 1,
                           }}
                         >
                           ✕ NEBUDU
@@ -1287,8 +1338,8 @@ export default function MatchesScreen({
                       <div
                         style={{
                           textAlign: "center",
-                          color: "#a9a9a9",
-                          fontSize: "12px",
+                          color: "#8f8f8f",
+                          fontSize: "11px",
                           fontWeight: 800,
                         }}
                       >
@@ -1297,7 +1348,7 @@ export default function MatchesScreen({
                             Tvoje odpověď:{" "}
                             <span
                               style={{
-                                color: myStatus === "yes" ? "#67ef8f" : "#ff7770",
+                                color: myStatus === "yes" ? "#72e994" : "#ff8580",
                                 fontWeight: 950,
                               }}
                             >
@@ -1317,50 +1368,47 @@ export default function MatchesScreen({
                         style={{
                           ...softButtonStyle,
                           width: "100%",
-                          padding: "12px",
-                          background: "rgba(255,255,255,0.04)",
+                          padding: "11px 12px",
+                          borderRadius: "11px",
+                          background: "rgba(255,255,255,.035)",
                         }}
                       >
                         🔗 Kopírovat odkaz na anketu
                       </button>
 
-                      <div style={{ display: "grid", gap: "9px" }}>
+                      <div style={{ display: "grid", gap: "8px" }}>
                         <div
                           style={{
-                            borderRadius: "14px",
-                            background: "rgba(46,204,113,0.08)",
-                            border: "1px solid rgba(46,204,113,0.28)",
+                            borderRadius: "12px",
+                            background: "rgba(46,204,113,.05)",
+                            border: "1px solid rgba(46,204,113,.20)",
                             overflow: "hidden",
                           }}
                         >
                           <div
                             style={{
-                              padding: "11px 12px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: "8px",
-                              color: "#92efac",
+                              padding: "10px 11px",
+                              color: "#82eaa0",
+                              fontSize: "12px",
                               fontWeight: 950,
                             }}
                           >
-                            <span>👤 Budou ({yesRows.length})</span>
+                            BUDOU ({yesRows.length})
                           </div>
-
                           <div
                             style={{
-                              padding: "0 12px 12px",
+                              padding: "0 11px 11px",
                               display: "grid",
-                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                              gap: "6px 12px",
+                              gridTemplateColumns: "repeat(2,minmax(0,1fr))",
+                              gap: "6px 10px",
                             }}
                           >
                             {yesRows.length === 0 ? (
                               <div
                                 style={{
                                   gridColumn: "1 / -1",
-                                  fontSize: "13px",
-                                  color: "#8f8f8f",
+                                  color: "#777",
+                                  fontSize: "12px",
                                 }}
                               >
                                 Zatím nikdo.
@@ -1371,8 +1419,8 @@ export default function MatchesScreen({
                                   key={`${match.id}-yes-${row.user_id}`}
                                   style={{
                                     minWidth: 0,
-                                    fontSize: "13px",
-                                    color: "#ffffff",
+                                    color: "#e8e8e8",
+                                    fontSize: "12px",
                                     overflow: "hidden",
                                     textOverflow: "ellipsis",
                                   }}
@@ -1386,36 +1434,36 @@ export default function MatchesScreen({
 
                         <div
                           style={{
-                            borderRadius: "14px",
-                            background: "rgba(231,76,60,0.08)",
-                            border: "1px solid rgba(231,76,60,0.28)",
+                            borderRadius: "12px",
+                            background: "rgba(231,76,60,.05)",
+                            border: "1px solid rgba(231,76,60,.20)",
                             overflow: "hidden",
                           }}
                         >
                           <div
                             style={{
-                              padding: "11px 12px",
-                              color: "#ff9890",
+                              padding: "10px 11px",
+                              color: "#ff9190",
+                              fontSize: "12px",
                               fontWeight: 950,
                             }}
                           >
-                            👤 Nebudou ({noRows.length})
+                            NEBUDOU ({noRows.length})
                           </div>
-
                           <div
                             style={{
-                              padding: "0 12px 12px",
+                              padding: "0 11px 11px",
                               display: "grid",
-                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                              gap: "6px 12px",
+                              gridTemplateColumns: "repeat(2,minmax(0,1fr))",
+                              gap: "6px 10px",
                             }}
                           >
                             {noRows.length === 0 ? (
                               <div
                                 style={{
                                   gridColumn: "1 / -1",
-                                  fontSize: "13px",
-                                  color: "#8f8f8f",
+                                  color: "#777",
+                                  fontSize: "12px",
                                 }}
                               >
                                 Zatím nikdo.
@@ -1426,8 +1474,8 @@ export default function MatchesScreen({
                                   key={`${match.id}-no-${row.user_id}`}
                                   style={{
                                     minWidth: 0,
-                                    fontSize: "13px",
-                                    color: "#ffffff",
+                                    color: "#e8e8e8",
+                                    fontSize: "12px",
                                     overflow: "hidden",
                                     textOverflow: "ellipsis",
                                   }}
@@ -1441,46 +1489,43 @@ export default function MatchesScreen({
 
                         <div
                           style={{
-                            borderRadius: "14px",
-                            background: "rgba(52,152,219,0.08)",
-                            border: "1px solid rgba(52,152,219,0.28)",
+                            borderRadius: "12px",
+                            background: "rgba(52,152,219,.05)",
+                            border: "1px solid rgba(52,152,219,.20)",
                             overflow: "hidden",
                           }}
                         >
                           <div
                             style={{
-                              padding: "11px 12px",
+                              padding: "10px 11px",
                               display: "flex",
-                              alignItems: "center",
                               justifyContent: "space-between",
+                              alignItems: "center",
                               gap: "8px",
-                              color: "#9fd3ff",
+                              color: "#83ccff",
+                              fontSize: "12px",
                               fontWeight: 950,
                             }}
                           >
-                            <span>👤 Nehlasovali ({notVotedPlayers.length})</span>
+                            <span>NEHLASOVALI ({notVotedPlayers.length})</span>
 
                             {isAdmin && notVotedPlayers.length > 0 && (
                               <button
                                 type="button"
                                 onClick={() =>
-                                  void handleCreateNoVoteFines(
-                                    match,
-                                    notVotedPlayers
-                                  )
+                                  void handleCreateNoVoteFines(match, notVotedPlayers)
                                 }
                                 disabled={isSavingFine}
                                 style={{
                                   border: "none",
-                                  borderRadius: "10px",
-                                  padding: "7px 9px",
-                                  background: "rgba(241,196,15,0.95)",
-                                  color: "#111111",
+                                  borderRadius: "8px",
+                                  padding: "6px 8px",
+                                  background: "rgba(241,196,15,.95)",
+                                  color: "#111",
+                                  fontSize: "10px",
                                   fontWeight: 950,
-                                  fontSize: "11px",
                                   cursor: isSavingFine ? "default" : "pointer",
-                                  opacity: isSavingFine ? 0.7 : 1,
-                                  whiteSpace: "nowrap",
+                                  opacity: isSavingFine ? 0.65 : 1,
                                 }}
                               >
                                 {isSavingFine ? "UKLÁDÁM..." : "POKUTA"}
@@ -1490,18 +1535,18 @@ export default function MatchesScreen({
 
                           <div
                             style={{
-                              padding: "0 12px 12px",
+                              padding: "0 11px 11px",
                               display: "grid",
-                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                              gap: "6px 12px",
+                              gridTemplateColumns: "repeat(2,minmax(0,1fr))",
+                              gap: "6px 10px",
                             }}
                           >
                             {notVotedPlayers.length === 0 ? (
                               <div
                                 style={{
                                   gridColumn: "1 / -1",
-                                  fontSize: "13px",
-                                  color: "#8f8f8f",
+                                  color: "#777",
+                                  fontSize: "12px",
                                 }}
                               >
                                 Všichni hlasovali.
@@ -1512,8 +1557,8 @@ export default function MatchesScreen({
                                   key={`${match.id}-not-voted-${player.id}`}
                                   style={{
                                     minWidth: 0,
-                                    fontSize: "13px",
-                                    color: "#ffffff",
+                                    color: "#e8e8e8",
+                                    fontSize: "12px",
                                     overflow: "hidden",
                                     textOverflow: "ellipsis",
                                   }}
@@ -1528,16 +1573,17 @@ export default function MatchesScreen({
                     </div>
                   )}
 
+                  {/* ADMIN AKCE */}
                   {isAdmin && (
                     <div
                       onClick={(event) => event.stopPropagation()}
                       style={{
                         display: "flex",
-                        alignItems: "center",
                         justifyContent: "flex-end",
                         gap: "7px",
-                        paddingTop: "3px",
-                        borderTop: "1px solid rgba(255,255,255,0.06)",
+                        paddingTop: "9px",
+                        marginTop: "-2px",
+                        borderTop: "1px solid rgba(255,255,255,.055)",
                       }}
                     >
                       <button
@@ -1550,9 +1596,9 @@ export default function MatchesScreen({
                         style={{
                           border: "none",
                           borderRadius: "9px",
-                          padding: "6px 9px",
-                          background: "rgba(255,255,255,0.055)",
-                          color: "#a9a9a9",
+                          padding: "7px 10px",
+                          background: "rgba(255,255,255,.055)",
+                          color: "#9a9a9a",
                           fontSize: "10px",
                           fontWeight: 950,
                           cursor: "pointer",
@@ -1573,9 +1619,9 @@ export default function MatchesScreen({
                         style={{
                           border: "none",
                           borderRadius: "9px",
-                          padding: "6px 9px",
-                          background: "rgba(198,40,40,0.08)",
-                          color: "#e96e6e",
+                          padding: "7px 10px",
+                          background: "rgba(231,76,60,.07)",
+                          color: "#e77676",
                           fontSize: "10px",
                           fontWeight: 950,
                           cursor:
