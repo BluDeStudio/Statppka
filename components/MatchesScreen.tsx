@@ -32,6 +32,7 @@ type MatchesScreenProps = {
 
 type AttendanceStatus = "yes" | "no";
 type MatchFilter = "ALL" | "A" | "B";
+type OpponentJersey = "red" | "black" | "green" | "yellow" | "blue";
 
 type Player = {
   id: string;
@@ -140,23 +141,23 @@ function normalizeTeamName(value: string) {
     .trim();
 }
 
-const OPPONENT_JERSEYS = [
-  "/jerseys/red.png",
-  "/jerseys/black.png",
-  "/jerseys/green.png",
-  "/jerseys/yellow.png",
-  "/jerseys/blue.png",
+const JERSEY_OPTIONS: {
+  id: OpponentJersey;
+  label: string;
+  src: string;
+}[] = [
+  { id: "red", label: "Červený", src: "/jerseys/red.png" },
+  { id: "black", label: "Černý", src: "/jerseys/black.png" },
+  { id: "green", label: "Zelený", src: "/jerseys/green.png" },
+  { id: "yellow", label: "Žlutý", src: "/jerseys/yellow.png" },
+  { id: "blue", label: "Modrý", src: "/jerseys/blue.png" },
 ];
 
-function getOpponentJersey(teamName: string) {
-  const normalized = normalizeTeamName(teamName);
-  let hash = 0;
-
-  for (let i = 0; i < normalized.length; i += 1) {
-    hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
-  }
-
-  return OPPONENT_JERSEYS[hash % OPPONENT_JERSEYS.length];
+function getJerseySrc(jersey?: OpponentJersey | null) {
+  return (
+    JERSEY_OPTIONS.find((option) => option.id === jersey)?.src ??
+    "/jerseys/red.png"
+  );
 }
 
 function JerseyImage({
@@ -226,6 +227,7 @@ export default function MatchesScreen({
   const [newTime, setNewTime] = useState("");
   const [newLocation, setNewLocation] = useState("");
   const [newVenue, setNewVenue] = useState<"home" | "away">("home");
+  const [newOpponentJersey, setNewOpponentJersey] = useState<OpponentJersey>("red");
   const [message, setMessage] = useState("");
   const [deletingMatchId, setDeletingMatchId] = useState<string | null>(null);
   const [savingMatch, setSavingMatch] = useState(false);
@@ -658,6 +660,7 @@ export default function MatchesScreen({
       team: newTeam,
       homeTeam,
       awayTeam,
+      opponent_jersey: newOpponentJersey,
     };
 
     const result = await onAddMatch(newMatch);
@@ -674,6 +677,7 @@ export default function MatchesScreen({
     setNewTime("");
     setNewLocation("");
     setNewVenue("home");
+    setNewOpponentJersey("red");
     setShowAddForm(false);
     setSavingMatch(false);
     setMessage("Zápas byl uložen.");
@@ -904,13 +908,17 @@ export default function MatchesScreen({
               normalizedAwayTeam === normalizedTeamA ||
               normalizedAwayTeam === normalizedTeamB;
 
+            const opponentJersey =
+              ((match as PlannedMatch & { opponent_jersey?: OpponentJersey })
+                .opponent_jersey ?? "red") as OpponentJersey;
+
             const homeJerseySrc = homeIsOurTeam
               ? "/jerseys/fc-ppb.png"
-              : getOpponentJersey(match.homeTeam);
+              : getJerseySrc(opponentJersey);
 
             const awayJerseySrc = awayIsOurTeam
               ? "/jerseys/fc-ppb.png"
-              : getOpponentJersey(match.awayTeam);
+              : getJerseySrc(opponentJersey);
 
             const yesRows = attendanceRows
               .filter((row) => row.status === "yes")
@@ -960,15 +968,15 @@ export default function MatchesScreen({
                 style={{
                   position: "relative",
                   overflow: "hidden",
-                  borderRadius: "15px",
+                  borderRadius: "17px",
                   border: isExpanded
                     ? `1px solid ${primaryColor}55`
-                    : "1px solid rgba(255,255,255,0.08)",
+                    : "1px solid rgba(255,255,255,0.10)",
                   background:
-                    "linear-gradient(180deg, rgba(18,18,18,.98) 0%, rgba(11,11,11,.99) 100%)",
+                    "linear-gradient(145deg, rgba(24,28,31,.97) 0%, rgba(14,17,19,.99) 100%)",
                   boxShadow: isExpanded
-                    ? `0 15px 34px rgba(0,0,0,.30), 0 0 0 1px ${primaryColor}0d`
-                    : "0 9px 22px rgba(0,0,0,.22)",
+                    ? `0 15px 36px rgba(0,0,0,.34), 0 0 0 1px ${primaryColor}0d`
+                    : "0 10px 26px rgba(0,0,0,.24)",
                   cursor: "pointer",
                 }}
               >
@@ -976,65 +984,188 @@ export default function MatchesScreen({
                   style={{
                     position: "absolute",
                     left: 0,
-                    top: "16px",
-                    bottom: "16px",
-                    width: "2px",
-                    borderRadius: "0 999px 999px 0",
+                    top: 0,
+                    bottom: 0,
+                    width: "4px",
                     background: primaryColor,
+                    boxShadow: `0 0 16px ${primaryColor}40`,
                   }}
                 />
 
                 <div
                   style={{
-                    padding: "14px 15px 12px 17px",
+                    padding: "15px 15px 13px 18px",
                     display: "grid",
-                    gap: "10px",
+                    gap: "11px",
                   }}
                 >
                   <div
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: "1.25fr .75fr .65fr",
-                      alignItems: "end",
-                      gap: "12px",
+                      display: "flex",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "8px",
+                      color: "#aeb4bb",
+                      fontSize: "12px",
+                      fontWeight: 750,
                     }}
                   >
-                    <div>
-                      <div style={{ color: "#777", fontSize: "8px", fontWeight: 950, letterSpacing: ".95px", marginBottom: "2px" }}>DATUM</div>
-                      <div style={{ color: "#fff", fontSize: "17px", lineHeight: 1, fontWeight: 950, whiteSpace: "nowrap" }}>{formatDisplayDate(match.date)}</div>
-                    </div>
-                    <div>
-                      <div style={{ color: "#777", fontSize: "8px", fontWeight: 950, letterSpacing: ".95px", marginBottom: "2px" }}>ČAS</div>
-                      <div style={{ color: "#fff", fontSize: "17px", lineHeight: 1, fontWeight: 950, whiteSpace: "nowrap" }}>{match.time || "—"}</div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ color: "#777", fontSize: "8px", fontWeight: 950, letterSpacing: ".95px", marginBottom: "2px" }}>TÝM</div>
-                      <div style={{ color: primaryColor, fontSize: "15px", lineHeight: 1, fontWeight: 950, whiteSpace: "nowrap" }}>{match.team}-TÝM</div>
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-                    <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: "7px" }}>
-                      <span style={{ color: "#ff4b7b", fontSize: "11px", lineHeight: 1 }}>●</span>
-                      <span style={{ color: "#777", fontSize: "8px", fontWeight: 950, letterSpacing: ".8px" }}>MÍSTO</span>
-                      <span style={{ color: "#d8d8d8", fontSize: "12px", fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{match.location || "Místo neuvedeno"}</span>
-                    </div>
-                    <span style={{ flexShrink: 0, color: myStatus ? "#70e994" : "#f2c94c", fontSize: "9px", fontWeight: 950, letterSpacing: ".35px" }}>
-                      {myStatus ? "✓ HLASOVAL JSI" : "• NEHLASOVAL JSI"}
+                    <span>▣</span>
+                    <span>{formatDisplayDate(match.date)}</span>
+                    <span style={{ color: "#666d73" }}>•</span>
+                    <span>◷</span>
+                    <span>{match.time || "—"}</span>
+                    <span style={{ color: "#666d73" }}>•</span>
+                    <span>♙</span>
+                    <span style={{ color: primaryColor, fontWeight: 950 }}>
+                      {match.team}-tým
                     </span>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 42px 1fr", alignItems: "center", gap: "8px", padding: "1px 4px 0" }}>
-                    <div style={{ minWidth: 0, textAlign: "center", color: "#fff", fontSize: "14px", fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis" }}>{match.homeTeam}</div>
-                    <div style={{ color: primaryColor, textAlign: "center", fontSize: "17px", fontWeight: 950 }}>VS</div>
-                    <div style={{ minWidth: 0, textAlign: "center", color: "#fff", fontSize: "14px", fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis" }}>{match.awayTeam}</div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 42px 1fr",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "4px 8px 7px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        minWidth: 0,
+                        textAlign: "center",
+                        color: "#fff",
+                        fontSize: "16px",
+                        fontWeight: 950,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {match.homeTeam}
+                    </div>
+
+                    <div
+                      style={{
+                        textAlign: "center",
+                        color: "#858c93",
+                        fontSize: "15px",
+                        fontWeight: 950,
+                      }}
+                    >
+                      VS
+                    </div>
+
+                    <div
+                      style={{
+                        minWidth: 0,
+                        textAlign: "center",
+                        color: "#fff",
+                        fontSize: "16px",
+                        fontWeight: 950,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {match.awayTeam}
+                    </div>
                   </div>
 
-                  <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "6px" }}>
-                    <span style={{ padding: "4px 7px", borderRadius: "7px", background: "rgba(46,204,113,.07)", color: "#70e994", fontSize: "8px", fontWeight: 950 }}>BUDU <b style={{ fontSize: "10px" }}>{summary.yesCount}</b></span>
-                    <span style={{ padding: "4px 7px", borderRadius: "7px", background: "rgba(231,76,60,.07)", color: "#ff8580", fontSize: "8px", fontWeight: 950 }}>NEBUDU <b style={{ fontSize: "10px" }}>{summary.noCount}</b></span>
-                    <span style={{ padding: "4px 7px", borderRadius: "7px", background: "rgba(52,152,219,.07)", color: "#7acbff", fontSize: "8px", fontWeight: 950 }}>NEHLASOVAL <b style={{ fontSize: "10px" }}>{summary.notVotedCount}</b></span>
+                  <div
+                    style={{
+                      height: "1px",
+                      background: "rgba(255,255,255,.075)",
+                    }}
+                  />
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "9px",
+                      minWidth: 0,
+                      color: "#aeb4bb",
+                    }}
+                  >
+                    <span style={{ fontSize: "13px" }}>●</span>
+                    <span
+                      style={{
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {match.location || "Místo neuvedeno"}
+                    </span>
                   </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "10px",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: "6px",
+                        color: "#c4c9ce",
+                        fontSize: "11px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: primaryColor,
+                          fontSize: "18px",
+                          lineHeight: 1,
+                          fontWeight: 950,
+                        }}
+                      >
+                        {summary.yesCount}
+                      </span>
+                      <span>budu</span>
+                      <span style={{ color: "#666d73" }}>•</span>
+                      <span>{summary.noCount} nebudu</span>
+                      <span style={{ color: "#666d73" }}>•</span>
+                      <span>{summary.notVotedCount} bez hlasu</span>
+                    </div>
+
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "5px",
+                        padding: "6px 10px",
+                        borderRadius: "999px",
+                        border: myStatus
+                          ? `1px solid ${primaryColor}88`
+                          : "1px solid rgba(241,196,15,.65)",
+                        color: myStatus ? primaryColor : "#f2c94c",
+                        fontSize: "10px",
+                        fontWeight: 900,
+                      }}
+                    >
+                      {myStatus ? "✓ Hlasoval jsi" : "● Nehlasoval jsi"}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      height: "1px",
+                      background: "rgba(255,255,255,.06)",
+                    }}
+                  />
 
                   {isExpanded && (
                     <div
@@ -1166,6 +1297,73 @@ export default function MatchesScreen({
                 onChange={(e) => setNewOpponent(e.target.value)}
                 style={styles.input}
               />
+
+              <div style={{ display: "grid", gap: "9px", padding: "2px 0 4px" }}>
+                <div
+                  style={{
+                    color: "#f0f0f0",
+                    fontSize: "12px",
+                    fontWeight: 900,
+                    letterSpacing: ".35px",
+                  }}
+                >
+                  DRES SOUPEŘE
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+                    gap: "7px",
+                  }}
+                >
+                  {JERSEY_OPTIONS.map((option) => {
+                    const selected = newOpponentJersey === option.id;
+
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => setNewOpponentJersey(option.id)}
+                        style={{
+                          minWidth: 0,
+                          padding: "7px 3px 6px",
+                          borderRadius: "12px",
+                          border: selected
+                            ? `1px solid ${primaryColor}`
+                            : "1px solid rgba(255,255,255,.08)",
+                          background: selected
+                            ? `${primaryColor}12`
+                            : "rgba(255,255,255,.035)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <img
+                          src={option.src}
+                          alt={option.label}
+                          style={{
+                            width: "100%",
+                            height: "48px",
+                            objectFit: "contain",
+                            display: "block",
+                          }}
+                        />
+                        <div
+                          style={{
+                            marginTop: "4px",
+                            color: selected ? primaryColor : "#9ea4aa",
+                            fontSize: "8px",
+                            fontWeight: 900,
+                            textAlign: "center",
+                          }}
+                        >
+                          {option.label.toUpperCase()}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
               <input
                 type="date"
