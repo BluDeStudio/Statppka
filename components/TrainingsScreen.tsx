@@ -2042,11 +2042,24 @@ export default function TrainingsScreen({
                             Zatím nikdo.
                           </div>
                         ) : (
-                          <div style={{ display: "grid", gap: "6px" }}>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                              gap: "6px 12px",
+                            }}
+                          >
                             {yesRows.map((row) => (
                               <div
                                 key={`${training.id}-yes-${rowToPlayerId(row)}`}
-                                style={{ fontSize: "13px", color: "white" }}
+                                style={{
+                                  minWidth: 0,
+                                  fontSize: "13px",
+                                  color: "white",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
                               >
                                 {getPlayerName(rowToPlayerId(row))}
                               </div>
@@ -2078,11 +2091,24 @@ export default function TrainingsScreen({
                             Zatím nikdo.
                           </div>
                         ) : (
-                          <div style={{ display: "grid", gap: "6px" }}>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                              gap: "6px 12px",
+                            }}
+                          >
                             {maybeRows.map((row) => (
                               <div
                                 key={`${training.id}-maybe-${rowToPlayerId(row)}`}
-                                style={{ fontSize: "13px", color: "white" }}
+                                style={{
+                                  minWidth: 0,
+                                  fontSize: "13px",
+                                  color: "white",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
                               >
                                 {getPlayerName(rowToPlayerId(row))}
                               </div>
@@ -2114,11 +2140,24 @@ export default function TrainingsScreen({
                             Zatím nikdo.
                           </div>
                         ) : (
-                          <div style={{ display: "grid", gap: "6px" }}>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                              gap: "6px 12px",
+                            }}
+                          >
                             {noRows.map((row) => (
                               <div
                                 key={`${training.id}-no-${rowToPlayerId(row)}`}
-                                style={{ fontSize: "13px", color: "white" }}
+                                style={{
+                                  minWidth: 0,
+                                  fontSize: "13px",
+                                  color: "white",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
                               >
                                 {getPlayerName(rowToPlayerId(row))}
                               </div>
@@ -2150,11 +2189,24 @@ export default function TrainingsScreen({
                             Všichni hlasovali.
                           </div>
                         ) : (
-                          <div style={{ display: "grid", gap: "6px" }}>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                              gap: "6px 12px",
+                            }}
+                          >
                             {nonVotedPlayers.map((player) => (
                               <div
                                 key={`${training.id}-not-voted-${player.id}`}
-                                style={{ fontSize: "13px", color: "white" }}
+                                style={{
+                                  minWidth: 0,
+                                  fontSize: "13px",
+                                  color: "white",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
                               >
                                 {player.name}
                               </div>
