@@ -117,6 +117,7 @@ export type PlannedMatch = {
   team: "A" | "B";
   homeTeam: string;
   awayTeam: string;
+  opponent_jersey?: "red" | "black" | "green" | "yellow" | "blue";
   status?: "planned" | "prepared" | "live" | "halftime" | "finished";
   current_period?: number;
   first_half_started_at?: string | null;

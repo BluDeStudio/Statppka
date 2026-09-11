@@ -169,6 +169,8 @@ export async function getPlannedMatchesByClubId(
         team: row.team as "A" | "B",
         homeTeam: row.home_team as string,
         awayTeam: row.away_team as string,
+        opponent_jersey:
+          (row.opponent_jersey as PlannedMatch["opponent_jersey"]) ?? "red",
         status: (row.status as PlannedMatch["status"]) ?? "planned",
         current_period: (row.current_period as number | null) ?? 0,
         first_half_started_at:
@@ -205,6 +207,7 @@ export async function createPlannedMatch(input: {
       team: input.match.team,
       home_team: input.match.homeTeam,
       away_team: input.match.awayTeam,
+      opponent_jersey: input.match.opponent_jersey ?? "red",
       created_by: input.createdBy,
     };
 
@@ -234,6 +237,8 @@ export async function createPlannedMatch(input: {
         team: data.team as "A" | "B",
         homeTeam: data.home_team as string,
         awayTeam: data.away_team as string,
+        opponent_jersey:
+          (data.opponent_jersey as PlannedMatch["opponent_jersey"]) ?? "red",
         status: (data.status as PlannedMatch["status"]) ?? "planned",
         current_period: (data.current_period as number | null) ?? 0,
         first_half_started_at:
