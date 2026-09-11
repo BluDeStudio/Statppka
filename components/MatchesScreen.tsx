@@ -131,44 +131,59 @@ function isDateInsidePeriod(dateValue: string, period: PeriodRow | null) {
 }
 
 
-function JerseyIcon({
-  color,
-  accent,
-}: {
-  color: string;
-  accent?: string;
-}) {
-  const stripe = accent ?? color;
 
+
+function normalizeTeamName(value: string) {
+  return value
+    .toLocaleLowerCase("cs")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const OPPONENT_JERSEYS = [
+  "/jerseys/red.png",
+  "/jerseys/black.png",
+  "/jerseys/green.png",
+  "/jerseys/yellow.png",
+  "/jerseys/blue.png",
+];
+
+function getOpponentJersey(teamName: string) {
+  const normalized = normalizeTeamName(teamName);
+  let hash = 0;
+
+  for (let i = 0; i < normalized.length; i += 1) {
+    hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
+  }
+
+  return OPPONENT_JERSEYS[hash % OPPONENT_JERSEYS.length];
+}
+
+function JerseyImage({
+  src,
+  alt,
+}: {
+  src: string;
+  alt: string;
+}) {
   return (
-    <svg
-      width="60"
-      height="66"
-      viewBox="0 0 60 66"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-      style={{ display: "block", filter: "drop-shadow(0 7px 10px rgba(0,0,0,.32))" }}
-    >
-      <path
-        d="M20 5.5L25 2.5H35L40 5.5L54 12.5L49 25L42 21.5V63H18V21.5L11 25L6 12.5L20 5.5Z"
-        fill={color}
-        stroke="rgba(255,255,255,.72)"
-        strokeWidth="1.1"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M25 2.5C25.7 7.1 27.7 9.5 30 9.5C32.3 9.5 34.3 7.1 35 2.5"
-        stroke="rgba(15,15,15,.82)"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-      <path d="M24 5.1V62.3" stroke={stripe} strokeWidth="3.6" opacity="0.95" />
-      <path d="M36 5.1V62.3" stroke={stripe} strokeWidth="3.6" opacity="0.95" />
-      <path d="M18.3 20.8H41.7" stroke="rgba(0,0,0,.18)" strokeWidth="1" />
-    </svg>
+    <img
+      src={src}
+      alt={alt}
+      draggable={false}
+      style={{
+        width: "76px",
+        height: "76px",
+        objectFit: "contain",
+        display: "block",
+        filter: "drop-shadow(0 12px 14px rgba(0,0,0,.42))",
+        userSelect: "none",
+        pointerEvents: "none",
+      }}
+    />
   );
 }
+
 
 export default function MatchesScreen({
   clubId,
@@ -876,6 +891,27 @@ export default function MatchesScreen({
             const isSavingAttendance = savingAttendanceMatchId === match.id;
             const isSavingFine = savingFineMatchId === match.id;
 
+            const normalizedHomeTeam = normalizeTeamName(match.homeTeam);
+            const normalizedAwayTeam = normalizeTeamName(match.awayTeam);
+            const normalizedTeamA = normalizeTeamName(teamLabelA);
+            const normalizedTeamB = normalizeTeamName(teamLabelB);
+
+            const homeIsOurTeam =
+              normalizedHomeTeam === normalizedTeamA ||
+              normalizedHomeTeam === normalizedTeamB;
+
+            const awayIsOurTeam =
+              normalizedAwayTeam === normalizedTeamA ||
+              normalizedAwayTeam === normalizedTeamB;
+
+            const homeJerseySrc = homeIsOurTeam
+              ? "/jerseys/fc-ppb.png"
+              : getOpponentJersey(match.homeTeam);
+
+            const awayJerseySrc = awayIsOurTeam
+              ? "/jerseys/fc-ppb.png"
+              : getOpponentJersey(match.awayTeam);
+
             const yesRows = attendanceRows
               .filter((row) => row.status === "yes")
               .sort((a, b) =>
@@ -924,713 +960,158 @@ export default function MatchesScreen({
                 style={{
                   position: "relative",
                   overflow: "hidden",
-                  borderRadius: "18px",
+                  borderRadius: "15px",
                   border: isExpanded
                     ? `1px solid ${primaryColor}55`
                     : "1px solid rgba(255,255,255,0.08)",
                   background:
-                    "linear-gradient(180deg, rgba(20,20,20,0.98) 0%, rgba(12,12,12,0.99) 100%)",
+                    "linear-gradient(180deg, rgba(18,18,18,.98) 0%, rgba(11,11,11,.99) 100%)",
                   boxShadow: isExpanded
-                    ? `0 16px 38px rgba(0,0,0,.32), 0 0 0 1px ${primaryColor}10`
-                    : "0 10px 26px rgba(0,0,0,.24)",
+                    ? `0 15px 34px rgba(0,0,0,.30), 0 0 0 1px ${primaryColor}0d`
+                    : "0 9px 22px rgba(0,0,0,.22)",
                   cursor: "pointer",
-                  transition: "border-color .18s ease, transform .18s ease, box-shadow .18s ease",
                 }}
               >
                 <div
                   style={{
                     position: "absolute",
                     left: 0,
-                    top: "18px",
-                    bottom: "18px",
+                    top: "16px",
+                    bottom: "16px",
                     width: "2px",
                     borderRadius: "0 999px 999px 0",
                     background: primaryColor,
-                    opacity: 0.88,
                   }}
                 />
 
                 <div
                   style={{
-                    padding: "16px 16px 14px 18px",
+                    padding: "14px 15px 12px 17px",
                     display: "grid",
-                    gap: "14px",
+                    gap: "10px",
                   }}
                 >
-                  {/* DATUM / ČAS / TÝM */}
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1.35fr .85fr .8fr",
+                      gridTemplateColumns: "1.25fr .75fr .65fr",
                       alignItems: "end",
                       gap: "12px",
                     }}
                   >
                     <div>
-                      <div
-                        style={{
-                          marginBottom: "3px",
-                          color: "#717171",
-                          fontSize: "9px",
-                          fontWeight: 900,
-                          letterSpacing: "1px",
-                        }}
-                      >
-                        DATUM
-                      </div>
-                      <div
-                        style={{
-                          color: "#fff",
-                          fontSize: "17px",
-                          lineHeight: 1,
-                          fontWeight: 950,
-                          letterSpacing: "-0.2px",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {formatDisplayDate(match.date)}
-                      </div>
+                      <div style={{ color: "#777", fontSize: "8px", fontWeight: 950, letterSpacing: ".95px", marginBottom: "2px" }}>DATUM</div>
+                      <div style={{ color: "#fff", fontSize: "17px", lineHeight: 1, fontWeight: 950, whiteSpace: "nowrap" }}>{formatDisplayDate(match.date)}</div>
                     </div>
-
                     <div>
-                      <div
-                        style={{
-                          marginBottom: "3px",
-                          color: "#717171",
-                          fontSize: "9px",
-                          fontWeight: 900,
-                          letterSpacing: "1px",
-                        }}
-                      >
-                        ČAS
-                      </div>
-                      <div
-                        style={{
-                          color: "#fff",
-                          fontSize: "17px",
-                          lineHeight: 1,
-                          fontWeight: 950,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {match.time || "—"}
-                      </div>
+                      <div style={{ color: "#777", fontSize: "8px", fontWeight: 950, letterSpacing: ".95px", marginBottom: "2px" }}>ČAS</div>
+                      <div style={{ color: "#fff", fontSize: "17px", lineHeight: 1, fontWeight: 950, whiteSpace: "nowrap" }}>{match.time || "—"}</div>
                     </div>
-
                     <div style={{ textAlign: "right" }}>
-                      <div
-                        style={{
-                          marginBottom: "3px",
-                          color: "#717171",
-                          fontSize: "9px",
-                          fontWeight: 900,
-                          letterSpacing: "1px",
-                        }}
-                      >
-                        TÝM
-                      </div>
-                      <div
-                        style={{
-                          color: primaryColor,
-                          fontSize: "16px",
-                          lineHeight: 1,
-                          fontWeight: 950,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {match.team}-TÝM
-                      </div>
+                      <div style={{ color: "#777", fontSize: "8px", fontWeight: 950, letterSpacing: ".95px", marginBottom: "2px" }}>TÝM</div>
+                      <div style={{ color: primaryColor, fontSize: "15px", lineHeight: 1, fontWeight: 950, whiteSpace: "nowrap" }}>{match.team}-TÝM</div>
                     </div>
                   </div>
 
-                  {/* MÍSTO */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      marginTop: "-3px",
-                    }}
-                  >
-                    <span
-                      style={{
-                        color: "#ff4b7b",
-                        fontSize: "13px",
-                        lineHeight: 1,
-                      }}
-                    >
-                      ●
-                    </span>
-                    <div style={{ minWidth: 0 }}>
-                      <span
-                        style={{
-                          color: "#737373",
-                          fontSize: "9px",
-                          fontWeight: 900,
-                          letterSpacing: ".9px",
-                          marginRight: "7px",
-                        }}
-                      >
-                        MÍSTO
-                      </span>
-                      <span
-                        style={{
-                          color: "#d8d8d8",
-                          fontSize: "13px",
-                          fontWeight: 800,
-                        }}
-                      >
-                        {match.location || "Místo neuvedeno"}
-                      </span>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
+                    <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: "7px" }}>
+                      <span style={{ color: "#ff4b7b", fontSize: "11px", lineHeight: 1 }}>●</span>
+                      <span style={{ color: "#777", fontSize: "8px", fontWeight: 950, letterSpacing: ".8px" }}>MÍSTO</span>
+                      <span style={{ color: "#d8d8d8", fontSize: "12px", fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{match.location || "Místo neuvedeno"}</span>
                     </div>
-                  </div>
-
-                  {/* ZÁPAS */}
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "minmax(0,1fr) 42px minmax(0,1fr)",
-                      alignItems: "center",
-                      gap: "8px",
-                      padding: "4px 4px 1px",
-                    }}
-                  >
-                    <div style={{ minWidth: 0, textAlign: "center" }}>
-                      <div
-                        style={{
-                          height: "54px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          marginBottom: "7px",
-                        }}
-                      >
-                        <div style={{ transform: "scale(.80)", transformOrigin: "center" }}>
-                          <JerseyIcon color={primaryColor} accent="#111111" />
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          color: "#fff",
-                          fontSize: "15px",
-                          fontWeight: 950,
-                          lineHeight: 1.15,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {match.homeTeam}
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        color: primaryColor,
-                        fontSize: "18px",
-                        fontWeight: 950,
-                        textAlign: "center",
-                        letterSpacing: ".5px",
-                      }}
-                    >
-                      VS
-                    </div>
-
-                    <div style={{ minWidth: 0, textAlign: "center" }}>
-                      <div
-                        style={{
-                          height: "54px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          marginBottom: "7px",
-                        }}
-                      >
-                        <div style={{ transform: "scale(.80)", transformOrigin: "center" }}>
-                          <JerseyIcon color="#f5f5f5" accent="#cfcfcf" />
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          color: "#fff",
-                          fontSize: "15px",
-                          fontWeight: 950,
-                          lineHeight: 1.15,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {match.awayTeam}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* STAVY */}
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      gap: "7px",
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "5px",
-                        padding: "4px 8px",
-                        borderRadius: "8px",
-                        background: "rgba(46,204,113,.07)",
-                        color: "#70e994",
-                        fontSize: "9px",
-                        fontWeight: 950,
-                        letterSpacing: ".25px",
-                      }}
-                    >
-                      BUDU <b style={{ fontSize: "11px" }}>{summary.yesCount}</b>
-                    </span>
-
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "5px",
-                        padding: "4px 8px",
-                        borderRadius: "8px",
-                        background: "rgba(231,76,60,.07)",
-                        color: "#ff8580",
-                        fontSize: "9px",
-                        fontWeight: 950,
-                        letterSpacing: ".25px",
-                      }}
-                    >
-                      NEBUDU <b style={{ fontSize: "11px" }}>{summary.noCount}</b>
-                    </span>
-
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "5px",
-                        padding: "4px 8px",
-                        borderRadius: "8px",
-                        background: "rgba(52,152,219,.07)",
-                        color: "#7acbff",
-                        fontSize: "9px",
-                        fontWeight: 950,
-                        letterSpacing: ".25px",
-                      }}
-                    >
-                      NEHLASOVAL{" "}
-                      <b style={{ fontSize: "11px" }}>{summary.notVotedCount}</b>
-                    </span>
-                  </div>
-
-                  {/* MŮJ STAV */}
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "center",
-                      marginTop: "-5px",
-                    }}
-                  >
-                    <span
-                      style={{
-                        color: myStatus ? "#72e994" : "#f2c94c",
-                        fontSize: "10px",
-                        fontWeight: 950,
-                        letterSpacing: ".65px",
-                      }}
-                    >
+                    <span style={{ flexShrink: 0, color: myStatus ? "#70e994" : "#f2c94c", fontSize: "9px", fontWeight: 950, letterSpacing: ".35px" }}>
                       {myStatus ? "✓ HLASOVAL JSI" : "• NEHLASOVAL JSI"}
                     </span>
                   </div>
 
-                  {canOpenLive && (
-                    <button
-                      style={{
-                        ...primaryButtonStyle,
-                        marginTop: "-2px",
-                      }}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setSelectedMatchId(match.id);
-                        setSelectedMode("live");
-                        setMessage("");
-                      }}
-                    >
-                      LIVE ZÁPAS
-                    </button>
-                  )}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 42px 1fr", alignItems: "center", gap: "8px", padding: "1px 4px 0" }}>
+                    <div style={{ minWidth: 0, textAlign: "center", color: "#fff", fontSize: "14px", fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis" }}>{match.homeTeam}</div>
+                    <div style={{ color: primaryColor, textAlign: "center", fontSize: "17px", fontWeight: 950 }}>VS</div>
+                    <div style={{ minWidth: 0, textAlign: "center", color: "#fff", fontSize: "14px", fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis" }}>{match.awayTeam}</div>
+                  </div>
 
-                  {/* ROZBALENÁ ANKETA */}
+                  <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "6px" }}>
+                    <span style={{ padding: "4px 7px", borderRadius: "7px", background: "rgba(46,204,113,.07)", color: "#70e994", fontSize: "8px", fontWeight: 950 }}>BUDU <b style={{ fontSize: "10px" }}>{summary.yesCount}</b></span>
+                    <span style={{ padding: "4px 7px", borderRadius: "7px", background: "rgba(231,76,60,.07)", color: "#ff8580", fontSize: "8px", fontWeight: 950 }}>NEBUDU <b style={{ fontSize: "10px" }}>{summary.noCount}</b></span>
+                    <span style={{ padding: "4px 7px", borderRadius: "7px", background: "rgba(52,152,219,.07)", color: "#7acbff", fontSize: "8px", fontWeight: 950 }}>NEHLASOVAL <b style={{ fontSize: "10px" }}>{summary.notVotedCount}</b></span>
+                  </div>
+
                   {isExpanded && (
                     <div
                       onClick={(event) => event.stopPropagation()}
                       style={{
                         display: "grid",
-                        gap: "12px",
+                        gap: "13px",
                         paddingTop: "14px",
+                        marginTop: "2px",
                         borderTop: "1px solid rgba(255,255,255,.07)",
                       }}
                     >
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr",
-                          gap: "8px",
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => void handleVote(match.id, "yes")}
-                          disabled={isSavingAttendance}
-                          style={{
-                            border:
-                              myStatus === "yes"
-                                ? "1px solid rgba(46,204,113,.75)"
-                                : "1px solid rgba(46,204,113,.30)",
-                            borderRadius: "12px",
-                            padding: "13px 10px",
-                            background:
-                              myStatus === "yes"
-                                ? "linear-gradient(135deg, rgba(40,210,100,.95), rgba(25,165,78,.95))"
-                                : "rgba(46,204,113,.08)",
-                            color: "#fff",
-                            fontWeight: 950,
-                            fontSize: "14px",
-                            cursor: isSavingAttendance ? "default" : "pointer",
-                            opacity: isSavingAttendance ? 0.65 : 1,
-                          }}
-                        >
-                          ✓ BUDU
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => void handleVote(match.id, "no")}
-                          disabled={isSavingAttendance}
-                          style={{
-                            border:
-                              myStatus === "no"
-                                ? "1px solid rgba(231,76,60,.75)"
-                                : "1px solid rgba(231,76,60,.30)",
-                            borderRadius: "12px",
-                            padding: "13px 10px",
-                            background:
-                              myStatus === "no"
-                                ? "linear-gradient(135deg, rgba(225,72,60,.95), rgba(170,48,42,.95))"
-                                : "rgba(231,76,60,.08)",
-                            color: "#fff",
-                            fontWeight: 950,
-                            fontSize: "14px",
-                            cursor: isSavingAttendance ? "default" : "pointer",
-                            opacity: isSavingAttendance ? 0.65 : 1,
-                          }}
-                        >
-                          ✕ NEBUDU
-                        </button>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 42px 1fr", alignItems: "center", gap: "8px", padding: "2px 4px 4px" }}>
+                        <div style={{ textAlign: "center", minWidth: 0 }}>
+                          <div style={{ height: "92px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <JerseyImage src={homeJerseySrc} alt={`Dres ${match.homeTeam}`} />
+                          </div>
+                          <div style={{ color: "#fff", fontSize: "14px", fontWeight: 950, lineHeight: 1.15 }}>{match.homeTeam}</div>
+                        </div>
+                        <div style={{ textAlign: "center", color: primaryColor, fontSize: "19px", fontWeight: 950 }}>VS</div>
+                        <div style={{ textAlign: "center", minWidth: 0 }}>
+                          <div style={{ height: "92px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <JerseyImage src={awayJerseySrc} alt={`Dres ${match.awayTeam}`} />
+                          </div>
+                          <div style={{ color: "#fff", fontSize: "14px", fontWeight: 950, lineHeight: 1.15 }}>{match.awayTeam}</div>
+                        </div>
                       </div>
 
-                      <div
-                        style={{
-                          textAlign: "center",
-                          color: "#8f8f8f",
-                          fontSize: "11px",
-                          fontWeight: 800,
-                        }}
-                      >
-                        {myStatus ? (
-                          <>
-                            Tvoje odpověď:{" "}
-                            <span
-                              style={{
-                                color: myStatus === "yes" ? "#72e994" : "#ff8580",
-                                fontWeight: 950,
-                              }}
-                            >
-                              {myStatus === "yes" ? "BUDU" : "NEBUDU"}
-                            </span>
-                          </>
-                        ) : (
-                          <span style={{ color: "#f2c94c", fontWeight: 950 }}>
-                            Ještě jsi nehlasoval
-                          </span>
-                        )}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                        <button type="button" onClick={() => void handleVote(match.id, "yes")} disabled={isSavingAttendance} style={{ border: myStatus === "yes" ? "1px solid rgba(46,204,113,.75)" : "1px solid rgba(46,204,113,.30)", borderRadius: "11px", padding: "12px 10px", background: myStatus === "yes" ? "linear-gradient(135deg, rgba(40,210,100,.96), rgba(25,165,78,.96))" : "rgba(46,204,113,.08)", color: "#fff", fontWeight: 950, fontSize: "14px", cursor: isSavingAttendance ? "default" : "pointer", opacity: isSavingAttendance ? 0.65 : 1 }}>✓ BUDU</button>
+                        <button type="button" onClick={() => void handleVote(match.id, "no")} disabled={isSavingAttendance} style={{ border: myStatus === "no" ? "1px solid rgba(231,76,60,.75)" : "1px solid rgba(231,76,60,.30)", borderRadius: "11px", padding: "12px 10px", background: myStatus === "no" ? "linear-gradient(135deg, rgba(225,72,60,.96), rgba(170,48,42,.96))" : "rgba(231,76,60,.08)", color: "#fff", fontWeight: 950, fontSize: "14px", cursor: isSavingAttendance ? "default" : "pointer", opacity: isSavingAttendance ? 0.65 : 1 }}>✕ NEBUDU</button>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => void handleCopyMatchLink(match.id)}
-                        style={{
-                          ...softButtonStyle,
-                          width: "100%",
-                          padding: "11px 12px",
-                          borderRadius: "11px",
-                          background: "rgba(255,255,255,.035)",
-                        }}
-                      >
-                        🔗 Kopírovat odkaz na anketu
-                      </button>
+                      <div style={{ textAlign: "center", color: "#8f8f8f", fontSize: "11px", fontWeight: 800 }}>
+                        {myStatus ? <>Tvoje odpověď: <span style={{ color: myStatus === "yes" ? "#72e994" : "#ff8580", fontWeight: 950 }}>{myStatus === "yes" ? "BUDU" : "NEBUDU"}</span></> : <span style={{ color: "#f2c94c", fontWeight: 950 }}>Ještě jsi nehlasoval</span>}
+                      </div>
+
+                      <button type="button" onClick={() => void handleCopyMatchLink(match.id)} style={{ ...softButtonStyle, width: "100%", padding: "11px 12px", borderRadius: "10px", background: "rgba(255,255,255,.035)" }}>🔗 Kopírovat odkaz na anketu</button>
+
+                      {canOpenLive && (
+                        <button style={primaryButtonStyle} onClick={() => { setSelectedMatchId(match.id); setSelectedMode("live"); setMessage(""); }}>LIVE ZÁPAS</button>
+                      )}
 
                       <div style={{ display: "grid", gap: "8px" }}>
-                        <div
-                          style={{
-                            borderRadius: "12px",
-                            background: "rgba(46,204,113,.05)",
-                            border: "1px solid rgba(46,204,113,.20)",
-                            overflow: "hidden",
-                          }}
-                        >
-                          <div
-                            style={{
-                              padding: "10px 11px",
-                              color: "#82eaa0",
-                              fontSize: "12px",
-                              fontWeight: 950,
-                            }}
-                          >
-                            BUDOU ({yesRows.length})
-                          </div>
-                          <div
-                            style={{
-                              padding: "0 11px 11px",
-                              display: "grid",
-                              gridTemplateColumns: "repeat(2,minmax(0,1fr))",
-                              gap: "6px 10px",
-                            }}
-                          >
-                            {yesRows.length === 0 ? (
-                              <div
-                                style={{
-                                  gridColumn: "1 / -1",
-                                  color: "#777",
-                                  fontSize: "12px",
-                                }}
-                              >
-                                Zatím nikdo.
-                              </div>
-                            ) : (
-                              yesRows.map((row) => (
-                                <div
-                                  key={`${match.id}-yes-${row.user_id}`}
-                                  style={{
-                                    minWidth: 0,
-                                    color: "#e8e8e8",
-                                    fontSize: "12px",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                  }}
-                                >
-                                  {getPlayerNameByUserId(row.user_id)}
-                                </div>
-                              ))
-                            )}
+                        <div style={{ borderRadius: "11px", background: "rgba(46,204,113,.045)", border: "1px solid rgba(46,204,113,.18)", overflow: "hidden" }}>
+                          <div style={{ padding: "10px 11px", color: "#82eaa0", fontSize: "12px", fontWeight: 950 }}>BUDOU ({yesRows.length})</div>
+                          <div style={{ padding: "0 11px 11px", display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "6px 10px" }}>
+                            {yesRows.length === 0 ? <div style={{ gridColumn: "1 / -1", color: "#777", fontSize: "12px" }}>Zatím nikdo.</div> : yesRows.map((row) => <div key={`${match.id}-yes-${row.user_id}`} style={{ minWidth: 0, color: "#e8e8e8", fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis" }}>{getPlayerNameByUserId(row.user_id)}</div>)}
                           </div>
                         </div>
 
-                        <div
-                          style={{
-                            borderRadius: "12px",
-                            background: "rgba(231,76,60,.05)",
-                            border: "1px solid rgba(231,76,60,.20)",
-                            overflow: "hidden",
-                          }}
-                        >
-                          <div
-                            style={{
-                              padding: "10px 11px",
-                              color: "#ff9190",
-                              fontSize: "12px",
-                              fontWeight: 950,
-                            }}
-                          >
-                            NEBUDOU ({noRows.length})
-                          </div>
-                          <div
-                            style={{
-                              padding: "0 11px 11px",
-                              display: "grid",
-                              gridTemplateColumns: "repeat(2,minmax(0,1fr))",
-                              gap: "6px 10px",
-                            }}
-                          >
-                            {noRows.length === 0 ? (
-                              <div
-                                style={{
-                                  gridColumn: "1 / -1",
-                                  color: "#777",
-                                  fontSize: "12px",
-                                }}
-                              >
-                                Zatím nikdo.
-                              </div>
-                            ) : (
-                              noRows.map((row) => (
-                                <div
-                                  key={`${match.id}-no-${row.user_id}`}
-                                  style={{
-                                    minWidth: 0,
-                                    color: "#e8e8e8",
-                                    fontSize: "12px",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                  }}
-                                >
-                                  {getPlayerNameByUserId(row.user_id)}
-                                </div>
-                              ))
-                            )}
+                        <div style={{ borderRadius: "11px", background: "rgba(231,76,60,.045)", border: "1px solid rgba(231,76,60,.18)", overflow: "hidden" }}>
+                          <div style={{ padding: "10px 11px", color: "#ff9190", fontSize: "12px", fontWeight: 950 }}>NEBUDOU ({noRows.length})</div>
+                          <div style={{ padding: "0 11px 11px", display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "6px 10px" }}>
+                            {noRows.length === 0 ? <div style={{ gridColumn: "1 / -1", color: "#777", fontSize: "12px" }}>Zatím nikdo.</div> : noRows.map((row) => <div key={`${match.id}-no-${row.user_id}`} style={{ minWidth: 0, color: "#e8e8e8", fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis" }}>{getPlayerNameByUserId(row.user_id)}</div>)}
                           </div>
                         </div>
 
-                        <div
-                          style={{
-                            borderRadius: "12px",
-                            background: "rgba(52,152,219,.05)",
-                            border: "1px solid rgba(52,152,219,.20)",
-                            overflow: "hidden",
-                          }}
-                        >
-                          <div
-                            style={{
-                              padding: "10px 11px",
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              gap: "8px",
-                              color: "#83ccff",
-                              fontSize: "12px",
-                              fontWeight: 950,
-                            }}
-                          >
+                        <div style={{ borderRadius: "11px", background: "rgba(52,152,219,.045)", border: "1px solid rgba(52,152,219,.18)", overflow: "hidden" }}>
+                          <div style={{ padding: "10px 11px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", color: "#83ccff", fontSize: "12px", fontWeight: 950 }}>
                             <span>NEHLASOVALI ({notVotedPlayers.length})</span>
-
                             {isAdmin && notVotedPlayers.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void handleCreateNoVoteFines(match, notVotedPlayers)
-                                }
-                                disabled={isSavingFine}
-                                style={{
-                                  border: "none",
-                                  borderRadius: "8px",
-                                  padding: "6px 8px",
-                                  background: "rgba(241,196,15,.95)",
-                                  color: "#111",
-                                  fontSize: "10px",
-                                  fontWeight: 950,
-                                  cursor: isSavingFine ? "default" : "pointer",
-                                  opacity: isSavingFine ? 0.65 : 1,
-                                }}
-                              >
-                                {isSavingFine ? "UKLÁDÁM..." : "POKUTA"}
-                              </button>
+                              <button type="button" onClick={() => void handleCreateNoVoteFines(match, notVotedPlayers)} disabled={isSavingFine} style={{ border: "none", borderRadius: "8px", padding: "6px 8px", background: "rgba(241,196,15,.95)", color: "#111", fontSize: "10px", fontWeight: 950, cursor: isSavingFine ? "default" : "pointer", opacity: isSavingFine ? 0.65 : 1 }}>{isSavingFine ? "UKLÁDÁM..." : "POKUTA"}</button>
                             )}
                           </div>
-
-                          <div
-                            style={{
-                              padding: "0 11px 11px",
-                              display: "grid",
-                              gridTemplateColumns: "repeat(2,minmax(0,1fr))",
-                              gap: "6px 10px",
-                            }}
-                          >
-                            {notVotedPlayers.length === 0 ? (
-                              <div
-                                style={{
-                                  gridColumn: "1 / -1",
-                                  color: "#777",
-                                  fontSize: "12px",
-                                }}
-                              >
-                                Všichni hlasovali.
-                              </div>
-                            ) : (
-                              notVotedPlayers.map((player) => (
-                                <div
-                                  key={`${match.id}-not-voted-${player.id}`}
-                                  style={{
-                                    minWidth: 0,
-                                    color: "#e8e8e8",
-                                    fontSize: "12px",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                  }}
-                                >
-                                  {player.name}
-                                </div>
-                              ))
-                            )}
+                          <div style={{ padding: "0 11px 11px", display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "6px 10px" }}>
+                            {notVotedPlayers.length === 0 ? <div style={{ gridColumn: "1 / -1", color: "#777", fontSize: "12px" }}>Všichni hlasovali.</div> : notVotedPlayers.map((player) => <div key={`${match.id}-not-voted-${player.id}`} style={{ minWidth: 0, color: "#e8e8e8", fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis" }}>{player.name}</div>)}
                           </div>
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {/* ADMIN AKCE */}
                   {isAdmin && (
-                    <div
-                      onClick={(event) => event.stopPropagation()}
-                      style={{
-                        display: "flex",
-                        justifyContent: "flex-end",
-                        gap: "7px",
-                        paddingTop: "9px",
-                        marginTop: "-2px",
-                        borderTop: "1px solid rgba(255,255,255,.055)",
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedMatchId(match.id);
-                          setSelectedMode("detail");
-                          setMessage("");
-                        }}
-                        style={{
-                          border: "none",
-                          borderRadius: "9px",
-                          padding: "7px 10px",
-                          background: "rgba(255,255,255,.055)",
-                          color: "#9a9a9a",
-                          fontSize: "10px",
-                          fontWeight: 950,
-                          cursor: "pointer",
-                        }}
-                      >
-                        ⚙ SPRÁVA
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void handleDeleteMatch(
-                            match.id,
-                            `${match.homeTeam} vs. ${match.awayTeam}`
-                          )
-                        }
-                        disabled={deletingMatchId === match.id}
-                        style={{
-                          border: "none",
-                          borderRadius: "9px",
-                          padding: "7px 10px",
-                          background: "rgba(231,76,60,.07)",
-                          color: "#e77676",
-                          fontSize: "10px",
-                          fontWeight: 950,
-                          cursor:
-                            deletingMatchId === match.id ? "default" : "pointer",
-                          opacity: deletingMatchId === match.id ? 0.6 : 1,
-                        }}
-                      >
-                        {deletingMatchId === match.id ? "MAŽU..." : "🗑 SMAZAT"}
-                      </button>
+                    <div onClick={(event) => event.stopPropagation()} style={{ display: "flex", justifyContent: "flex-end", gap: "7px", paddingTop: "8px", borderTop: "1px solid rgba(255,255,255,.05)" }}>
+                      <button type="button" onClick={() => { setSelectedMatchId(match.id); setSelectedMode("detail"); setMessage(""); }} style={{ border: "none", borderRadius: "8px", padding: "6px 9px", background: "rgba(255,255,255,.05)", color: "#929292", fontSize: "9px", fontWeight: 950, cursor: "pointer" }}>⚙ SPRÁVA</button>
+                      <button type="button" onClick={() => void handleDeleteMatch(match.id, `${match.homeTeam} vs. ${match.awayTeam}`)} disabled={deletingMatchId === match.id} style={{ border: "none", borderRadius: "8px", padding: "6px 9px", background: "rgba(231,76,60,.06)", color: "#e77676", fontSize: "9px", fontWeight: 950, cursor: deletingMatchId === match.id ? "default" : "pointer", opacity: deletingMatchId === match.id ? 0.6 : 1 }}>{deletingMatchId === match.id ? "MAŽU..." : "🗑 SMAZAT"}</button>
                     </div>
                   )}
                 </div>
