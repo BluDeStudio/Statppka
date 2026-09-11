@@ -9,6 +9,7 @@ type PlayedMatchesScreenProps = {
   finishedMatches: FinishedMatch[];
   onSelectMatch: (matchId: string) => void;
   onDeleteMatch: (matchId: string) => Promise<{ success: boolean; errorMessage?: string }>;
+  clubName: string;
   primaryColor?: string;
 };
 
@@ -28,10 +29,79 @@ function formatDisplayDate(date: string) {
   return `${day}.${month}.${year}`;
 }
 
+
+function normalizeTeamName(value: string) {
+  return value
+    .toLocaleLowerCase("cs-CZ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitMatchTitle(matchTitle: string) {
+  const parts = matchTitle.split(/\s+vs\.?\s+/i);
+
+  if (parts.length < 2) {
+    return {
+      homeTeam: "",
+      awayTeam: "",
+    };
+  }
+
+  return {
+    homeTeam: parts[0]?.trim() ?? "",
+    awayTeam: parts.slice(1).join(" vs. ").trim(),
+  };
+}
+
+function isOurTeamAway(
+  matchTitle: string,
+  clubName: string,
+  team: "A" | "B"
+) {
+  const { homeTeam, awayTeam } = splitMatchTitle(matchTitle);
+
+  if (!homeTeam || !awayTeam) return false;
+
+  const home = normalizeTeamName(homeTeam);
+  const away = normalizeTeamName(awayTeam);
+  const club = normalizeTeamName(clubName);
+
+  const expectedTeamNames =
+    team === "B"
+      ? [`${club} b`, `${club} b-tým`, `${club} b tým`]
+      : [club, `${club} a`, `${club} a-tým`, `${club} a tým`];
+
+  if (expectedTeamNames.includes(home)) return false;
+  if (expectedTeamNames.includes(away)) return true;
+
+  // Bezpečný fallback pro starší zápisy názvů.
+  // Pokud neumíme jednoznačně určit stranu našeho týmu, skóre nepřehazujeme.
+  return false;
+}
+
+function orientScoreForMatchTitle(
+  score: string,
+  matchTitle: string,
+  clubName: string,
+  team: "A" | "B"
+) {
+  const match = score.match(/^\s*(\d+)\s*:\s*(\d+)\s*$/);
+
+  if (!match) return score;
+
+  const ourGoals = match[1];
+  const opponentGoals = match[2];
+
+  return isOurTeamAway(matchTitle, clubName, team)
+    ? `${opponentGoals}:${ourGoals}`
+    : `${ourGoals}:${opponentGoals}`;
+}
+
 export default function PlayedMatchesScreen({
   finishedMatches,
   onSelectMatch,
   onDeleteMatch,
+  clubName,
   primaryColor = "#22c55e",
 }: PlayedMatchesScreenProps) {
   const [filter, setFilter] = useState<"ALL" | "A" | "B">("ALL");
@@ -184,7 +254,13 @@ export default function PlayedMatchesScreen({
         <div style={{ display: "grid", gap: "12px" }}>
           {filteredMatches.map((match) => {
             const latestMatch = latestMatches[match.id];
-            const displayScore = latestMatch?.score ?? match.score;
+            const rawScore = latestMatch?.score ?? match.score;
+            const displayScore = orientScoreForMatchTitle(
+              rawScore,
+              match.matchTitle,
+              clubName,
+              match.team
+            );
 
             return (
             <div

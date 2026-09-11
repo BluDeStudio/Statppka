@@ -16,6 +16,7 @@ import type { FinishedMatch, FinishedMatchEvent } from "@/app/page";
 
 type PlayedMatchDetailScreenProps = {
   clubId: string;
+  clubName: string;
   match: FinishedMatch;
   onBack: () => void;
   isAdmin?: boolean;
@@ -622,8 +623,77 @@ function normalizeGoalkeeperSegments(
     });
 }
 
+
+function normalizeTeamName(value: string) {
+  return value
+    .toLocaleLowerCase("cs-CZ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitMatchTitle(matchTitle: string) {
+  const parts = matchTitle.split(/\s+vs\.?\s+/i);
+
+  if (parts.length < 2) {
+    return {
+      homeTeam: "",
+      awayTeam: "",
+    };
+  }
+
+  return {
+    homeTeam: parts[0]?.trim() ?? "",
+    awayTeam: parts.slice(1).join(" vs. ").trim(),
+  };
+}
+
+function isOurTeamAway(
+  matchTitle: string,
+  clubName: string,
+  team: "A" | "B"
+) {
+  const { homeTeam, awayTeam } = splitMatchTitle(matchTitle);
+
+  if (!homeTeam || !awayTeam) return false;
+
+  const home = normalizeTeamName(homeTeam);
+  const away = normalizeTeamName(awayTeam);
+  const club = normalizeTeamName(clubName);
+
+  const expectedTeamNames =
+    team === "B"
+      ? [`${club} b`, `${club} b-tým`, `${club} b tým`]
+      : [club, `${club} a`, `${club} a-tým`, `${club} a tým`];
+
+  if (expectedTeamNames.includes(home)) return false;
+  if (expectedTeamNames.includes(away)) return true;
+
+  // Bezpečný fallback pro starší zápisy názvů.
+  // Pokud neumíme jednoznačně určit stranu našeho týmu, skóre nepřehazujeme.
+  return false;
+}
+
+function orientScoreForMatchTitle(
+  score: string,
+  matchTitle: string,
+  clubName: string,
+  team: "A" | "B"
+) {
+  const match = score.match(/^\s*(\d+)\s*:\s*(\d+)\s*$/);
+
+  if (!match) return score;
+
+  const ourGoals = match[1];
+  const opponentGoals = match[2];
+
+  return isOurTeamAway(matchTitle, clubName, team)
+    ? `${opponentGoals}:${ourGoals}`
+    : `${ourGoals}:${opponentGoals}`;
+}
+
 export default function PlayedMatchDetailScreen({
   clubId,
+  clubName,
   match,
   onBack,
   isAdmin = false,
@@ -1070,6 +1140,20 @@ export default function PlayedMatchDetailScreen({
     scoreAgainst > 0 ? scoreAgainst : goalkeeperGoalsAgainstPreview;
   const computedMainScore = `${scoreFor}:${previewGoalsAgainst}`;
   const computedScore = `${scoreFor}:${scoreAgainst}`;
+
+  const displayComputedMainScore = orientScoreForMatchTitle(
+    computedMainScore,
+    localMatch.matchTitle,
+    clubName,
+    localMatch.team
+  );
+
+  const displayComputedScore = orientScoreForMatchTitle(
+    computedScore,
+    localMatch.matchTitle,
+    clubName,
+    localMatch.team
+  );
 
   const playerHasEvent = (stat: PlayerStatWithId) => {
     const playerId = getStatPlayerId(stat);
@@ -2413,7 +2497,7 @@ export default function PlayedMatchDetailScreen({
                 letterSpacing: "2px",
               }}
             >
-              {computedMainScore}
+              {displayComputedMainScore}
             </div>
 
             <div
@@ -2424,7 +2508,7 @@ export default function PlayedMatchDetailScreen({
                 fontWeight: 800,
               }}
             >
-              Skóre podle událostí: {computedScore}
+              Skóre podle událostí: {displayComputedScore}
             </div>
           </div>
         </div>

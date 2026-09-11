@@ -2563,6 +2563,7 @@ export default function Home() {
                   {matchesTab === "played" && !isLiveMatch && (
                     <PlayedMatchesScreen
                       finishedMatches={finishedMatches}
+                      clubName={currentClub.name}
                       onSelectMatch={(matchId) => setSelectedPlayedMatchId(matchId)}
                       onDeleteMatch={async (matchId) => {
                         const result = await deleteFinishedMatch(matchId);
@@ -2641,6 +2642,7 @@ export default function Home() {
           {selectedPlayedMatchId !== null && selectedPlayedMatch && (
   <PlayedMatchDetailScreen
     clubId={currentClub.id}
+    clubName={currentClub.name}
     match={selectedPlayedMatch}
     isAdmin={isCurrentUserAdmin}
     onBack={() => {
