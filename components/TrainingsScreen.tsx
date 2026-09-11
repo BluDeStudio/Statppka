@@ -1461,10 +1461,17 @@ export default function TrainingsScreen({
                 id={`training-${training.id}`}
                 key={training.id}
                 style={{
-                  ...glassCardStyle,
                   position: "relative",
                   overflow: "hidden",
-                  padding: "14px",
+                  borderRadius: "17px",
+                  border: isExpanded
+                    ? `1px solid ${primaryColor}55`
+                    : "1px solid rgba(255,255,255,0.10)",
+                  background:
+                    "linear-gradient(145deg, rgba(24,28,31,.97) 0%, rgba(14,17,19,.99) 100%)",
+                  boxShadow: isExpanded
+                    ? `0 15px 36px rgba(0,0,0,.34), 0 0 0 1px ${primaryColor}0d`
+                    : "0 10px 26px rgba(0,0,0,.24)",
                 }}
               >
                 <div
@@ -1473,9 +1480,9 @@ export default function TrainingsScreen({
                     left: 0,
                     top: 0,
                     bottom: 0,
-                    width: "5px",
+                    width: "4px",
                     background: primaryColor,
-                    boxShadow: `0 0 18px ${primaryColor}66`,
+                    boxShadow: `0 0 16px ${primaryColor}40`,
                   }}
                 />
 
@@ -1490,189 +1497,248 @@ export default function TrainingsScreen({
                     width: "100%",
                     background: "transparent",
                     border: "none",
-                    padding: 0,
+                    padding: "15px 15px 12px 18px",
                     color: "white",
                     cursor: "pointer",
                     textAlign: "left",
+                    display: "grid",
+                    gap: "11px",
                   }}
                 >
                   <div
                     style={{
-                      display: "grid",
+                      display: "flex",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "8px",
+                      color: "#aeb4bb",
+                      fontSize: "12px",
+                      fontWeight: 750,
+                    }}
+                  >
+                    <span style={{ opacity: 0.85 }}>▣</span>
+                    <span>{formatDisplayDate(training.date)}</span>
+
+                    {getTrainingTimeLabel(training) && (
+                      <>
+                        <span style={{ color: "#666d73" }}>•</span>
+                        <span style={{ opacity: 0.85 }}>◷</span>
+                        <span>{getTrainingTimeLabel(training)}</span>
+                      </>
+                    )}
+
+                    <span style={{ color: "#666d73" }}>•</span>
+                    <span
+                      style={{
+                        color: primaryColor,
+                        fontWeight: 950,
+                      }}
+                    >
+                      {isTrainingPlanned(training) ? "PLÁNOVANÝ" : "STARŠÍ"}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
                       gap: "12px",
-                      paddingLeft: "4px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: "#ffffff",
+                        fontSize: "17px",
+                        fontWeight: 950,
+                        letterSpacing: "-0.15px",
+                      }}
+                    >
+                      Trénink
+                    </div>
+
+                    <div
+                      style={{
+                        color: "#7f878d",
+                        fontSize: "18px",
+                        lineHeight: 1,
+                        transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                        transition: "transform .18s ease",
+                      }}
+                    >
+                      ⌄
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      height: "1px",
+                      background: "rgba(255,255,255,.075)",
+                    }}
+                  />
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "9px",
+                      minWidth: 0,
+                      color: "#aeb4bb",
+                    }}
+                  >
+                    <span style={{ fontSize: "13px" }}>●</span>
+                    <span
+                      style={{
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {training.location || "Místo neuvedeno"}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "10px",
+                      flexWrap: "wrap",
                     }}
                   >
                     <div
                       style={{
                         display: "flex",
-                        alignItems: "flex-start",
-                        justifyContent: "space-between",
-                        gap: "12px",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: "6px",
+                        color: "#c4c9ce",
+                        fontSize: "11px",
                       }}
                     >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div
-                          style={{
-                            color: "#9b9b9b",
-                            fontSize: "11px",
-                            fontWeight: 950,
-                            letterSpacing: "0.8px",
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          {isTrainingPlanned(training)
-                            ? "Plánovaný trénink"
-                            : "Starší trénink"}
-                        </div>
-
-                        <div
-                          style={{
-                            fontWeight: 950,
-                            fontSize: "18px",
-                            marginTop: "5px",
-                          }}
-                        >
-                          Trénink
-                        </div>
-
-                        <div
-                          style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            gap: "7px",
-                            alignItems: "center",
-                            fontSize: "13px",
-                            color: "#b8b8b8",
-                            fontWeight: 700,
-                            marginTop: "8px",
-                          }}
-                        >
-                          <span style={{ color: primaryColor }}>📅</span>
-                          <span>{formatDisplayDate(training.date)}</span>
-
-                          {getTrainingTimeLabel(training) && (
-                            <>
-                              <span>•</span>
-                              <span>🕒 {getTrainingTimeLabel(training)}</span>
-                            </>
-                          )}
-                        </div>
-
-                        {training.location && (
-                          <div
-                            style={{
-                              fontSize: "13px",
-                              color: "#b8b8b8",
-                              marginTop: "8px",
-                              wordBreak: "break-word",
-                            }}
-                          >
-                            📍 {training.location}
-                          </div>
-                        )}
-                      </div>
-
-                      <div
+                      <span
                         style={{
-                          fontSize: "22px",
-                          color: "#b8b8b8",
-                          transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                          transition: "transform 0.2s ease",
+                          color: primaryColor,
+                          fontSize: "18px",
                           lineHeight: 1,
+                          fontWeight: 950,
                         }}
                       >
-                        ⌄
-                      </div>
-                    </div>
+                        {summary.yesCount}
+                      </span>
+                      <span>budu</span>
 
-                    <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: "7px",
-                      }}
-                    >
-                      <div
-                        style={summaryPillStyle(
-                          "rgba(255,255,255,0.08)",
-                          "#d4d4d4",
-                          "1px solid rgba(255,255,255,0.10)"
-                        )}
-                      >
-                        Hlasovalo: {summary.total}
-                      </div>
+                      <span style={{ color: "#666d73" }}>•</span>
+                      <span>{summary.maybeCount} možná</span>
 
-                      <div
-                        style={summaryPillStyle(
-                          "rgba(46, 204, 113, 0.16)",
-                          "#9af0b6",
-                          "1px solid rgba(46, 204, 113, 0.24)"
-                        )}
-                      >
-                        BUDU: {summary.yesCount}
-                      </div>
+                      <span style={{ color: "#666d73" }}>•</span>
+                      <span>{summary.noCount} nebudu</span>
 
-                      <div
-                        style={summaryPillStyle(
-                          "rgba(52, 152, 219, 0.16)",
-                          "#9fd3ff",
-                          "1px solid rgba(52, 152, 219, 0.24)"
-                        )}
-                      >
-                        MOŽNÁ: {summary.maybeCount}
-                      </div>
-
-                      <div
-                        style={summaryPillStyle(
-                          "rgba(231, 76, 60, 0.16)",
-                          "#ffb0a8",
-                          "1px solid rgba(231, 76, 60, 0.24)"
-                        )}
-                      >
-                        NEBUDU: {summary.noCount}
-                      </div>
-
-                      <div
-                        style={summaryPillStyle(
-                          "rgba(255, 193, 7, 0.16)",
-                          "#ffd97a",
-                          "1px solid rgba(255, 193, 7, 0.24)"
-                        )}
-                      >
-                        NEHLASOVALO: {summary.notVotedCount}
-                      </div>
+                      <span style={{ color: "#666d73" }}>•</span>
+                      <span>{summary.notVotedCount} bez hlasu</span>
 
                       {!isTrainingPlanned(training) && (
-                        <div
-                          style={summaryPillStyle(
-                            `${primaryColor}22`,
-                            primaryColor,
-                            `1px solid ${primaryColor}44`
-                          )}
-                        >
-                          ÚČAST: {presenceCount}
-                        </div>
+                        <>
+                          <span style={{ color: "#666d73" }}>•</span>
+                          <span style={{ color: primaryColor }}>
+                            {presenceCount} účast
+                          </span>
+                        </>
                       )}
                     </div>
+
+                    {isTrainingPlanned(training) && (
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          padding: "6px 10px",
+                          borderRadius: "999px",
+                          border: myStatus
+                            ? `1px solid ${primaryColor}88`
+                            : "1px solid rgba(241,196,15,.65)",
+                          color: myStatus ? primaryColor : "#f2c94c",
+                          fontSize: "10px",
+                          fontWeight: 900,
+                        }}
+                      >
+                        {myStatus ? "✓ Hlasoval jsi" : "● Nehlasoval jsi"}
+                      </span>
+                    )}
                   </div>
                 </button>
+
+                {isAdmin && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      gap: "7px",
+                      padding: "10px 15px 12px 18px",
+                      borderTop: "1px solid rgba(255,255,255,.055)",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleStartEdit(training)}
+                      disabled={saving}
+                      style={{
+                        border: "none",
+                        borderRadius: "9px",
+                        padding: "7px 10px",
+                        background: "rgba(255,255,255,.055)",
+                        color: "#9a9a9a",
+                        fontSize: "10px",
+                        fontWeight: 950,
+                        cursor: saving ? "default" : "pointer",
+                        opacity: saving ? 0.65 : 1,
+                      }}
+                    >
+                      ⚙ SPRÁVA
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteTraining(training.id)}
+                      disabled={saving}
+                      style={{
+                        border: "none",
+                        borderRadius: "9px",
+                        padding: "7px 10px",
+                        background: "rgba(231,76,60,.07)",
+                        color: "#e77676",
+                        fontSize: "10px",
+                        fontWeight: 950,
+                        cursor: saving ? "default" : "pointer",
+                        opacity: saving ? 0.65 : 1,
+                      }}
+                    >
+                      🗑 SMAZAT
+                    </button>
+                  </div>
+                )}
 
                 {isExpanded && (
                   <div
                     style={{
                       display: "grid",
                       gap: "12px",
-                      marginTop: "14px",
+                      margin: "0 15px 14px 18px",
                       paddingTop: "14px",
-                      borderTop: "1px solid rgba(255,255,255,0.08)",
+                      borderTop: "1px solid rgba(255,255,255,0.07)",
                     }}
                   >
                     {training.note && (
                       <div
                         style={{
                           padding: "12px",
-                          borderRadius: "16px",
+                          borderRadius: "11px",
                           background: "rgba(255,255,255,0.04)",
                           color: "#d9d9d9",
                           fontSize: "14px",
@@ -1687,13 +1753,25 @@ export default function TrainingsScreen({
                     <button
                       type="button"
                       onClick={() => void handleCopyTrainingLink(training.id)}
-                      style={softButtonStyle}
+                      style={{
+                        ...softButtonStyle,
+                        width: "100%",
+                        padding: "11px 12px",
+                        borderRadius: "10px",
+                        background: "rgba(255,255,255,.035)",
+                      }}
                     >
-                      Kopírovat odkaz na anketu
+                      🔗 Kopírovat odkaz na anketu
                     </button>
 
                     {isTrainingPlanned(training) && (
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr 1fr",
+                          gap: "8px",
+                        }}
+                      >
                         <button
                           type="button"
                           onClick={() => void handleVote(training.id, "yes")}
@@ -1759,36 +1837,6 @@ export default function TrainingsScreen({
                       </div>
                     )}
 
-                    {isAdmin && (
-                      <div style={{ display: "flex", gap: "8px" }}>
-                        <button
-                          type="button"
-                          onClick={() => handleStartEdit(training)}
-                          disabled={saving}
-                          style={{
-                            flex: 1,
-                            ...primaryButtonStyle,
-                            opacity: saving ? 0.7 : 1,
-                          }}
-                        >
-                          UPRAVIT
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => void handleDeleteTraining(training.id)}
-                          disabled={saving}
-                          style={{
-                            flex: 1,
-                            ...dangerButtonStyle,
-                            opacity: saving ? 0.7 : 1,
-                          }}
-                        >
-                          SMAZAT
-                        </button>
-                      </div>
-                    )}
-
                     {!isTrainingPlanned(training) && isAdmin && (
                       <div style={{ display: "grid", gap: "10px" }}>
                         {canShowPollFineButton && (
@@ -1839,7 +1887,7 @@ export default function TrainingsScreen({
                               display: "grid",
                               gap: "10px",
                               padding: "12px",
-                              borderRadius: "16px",
+                              borderRadius: "11px",
                               background: "rgba(255,255,255,0.04)",
                               border: "1px solid rgba(255,255,255,0.06)",
                             }}
@@ -1974,7 +2022,7 @@ export default function TrainingsScreen({
                       <div
                         style={{
                           padding: "12px",
-                          borderRadius: "16px",
+                          borderRadius: "11px",
                           background: "rgba(46, 204, 113, 0.10)",
                           border: "1px solid rgba(46, 204, 113, 0.20)",
                         }}
@@ -2010,7 +2058,7 @@ export default function TrainingsScreen({
                       <div
                         style={{
                           padding: "12px",
-                          borderRadius: "16px",
+                          borderRadius: "11px",
                           background: "rgba(52, 152, 219, 0.10)",
                           border: "1px solid rgba(52, 152, 219, 0.20)",
                         }}
@@ -2046,7 +2094,7 @@ export default function TrainingsScreen({
                       <div
                         style={{
                           padding: "12px",
-                          borderRadius: "16px",
+                          borderRadius: "11px",
                           background: "rgba(231, 76, 60, 0.10)",
                           border: "1px solid rgba(231, 76, 60, 0.20)",
                         }}
@@ -2082,7 +2130,7 @@ export default function TrainingsScreen({
                       <div
                         style={{
                           padding: "12px",
-                          borderRadius: "16px",
+                          borderRadius: "11px",
                           background: "rgba(255, 193, 7, 0.10)",
                           border: "1px solid rgba(255, 193, 7, 0.20)",
                         }}
@@ -2119,7 +2167,7 @@ export default function TrainingsScreen({
                         <div
                           style={{
                             padding: "12px",
-                            borderRadius: "16px",
+                            borderRadius: "11px",
                             background: `${primaryColor}14`,
                             border: `1px solid ${primaryColor}33`,
                           }}
