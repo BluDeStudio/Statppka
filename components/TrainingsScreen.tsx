@@ -315,24 +315,10 @@ export default function TrainingsScreen({
     [players]
   );
 
-  const isPlayerEligibleForTraining = (player: Player, training: Training) => {
-    if (player.is_active === false) return false;
-
-    const trainingDate = normalizeDateToIso(training.date);
-    const joinedAt = normalizeDateToIso(player.joined_at);
-
-    // NULL = hráč je členem od začátku evidované historie.
-    if (!joinedAt) return true;
-    if (!trainingDate) return false;
-
-    return trainingDate >= joinedAt;
-  };
-
-  const getEligiblePlayersForTraining = (training: Training) =>
-    activePlayers.filter((player) => isPlayerEligibleForTraining(player, training));
-
-  const getEligiblePlayerIdsForTraining = (training: Training) =>
-    new Set(getEligiblePlayersForTraining(training).map((player) => player.id));
+  const activePlayerIds = useMemo(
+    () => new Set(activePlayers.map((player) => player.id)),
+    [activePlayers]
+  );
 
   const activePeriod = useMemo(
     () => periods.find((period) => period.is_active) ?? null,
@@ -438,11 +424,9 @@ export default function TrainingsScreen({
     return presenceMap[trainingId] ?? [];
   };
 
-  const getTrainingSummary = (training: Training) => {
-    const eligiblePlayers = getEligiblePlayersForTraining(training);
-    const eligiblePlayerIds = new Set(eligiblePlayers.map((player) => player.id));
-    const rows = getTrainingAttendanceRows(training.id).filter((row) =>
-      eligiblePlayerIds.has(row.player_id)
+  const getTrainingSummary = (trainingId: string) => {
+    const rows = getTrainingAttendanceRows(trainingId).filter((row) =>
+      activePlayerIds.has(row.player_id)
     );
     const yesCount = rows.filter((row) => row.status === "yes").length;
     const maybeCount = rows.filter((row) => row.status === "maybe").length;
@@ -459,7 +443,7 @@ export default function TrainingsScreen({
         .map((row) => row.player_id)
     );
 
-    const notVotedCount = eligiblePlayers.filter(
+    const notVotedCount = activePlayers.filter(
       (player) => !votedPlayerIds.has(player.id)
     ).length;
 
@@ -472,11 +456,9 @@ export default function TrainingsScreen({
     };
   };
 
-  const getNonVotedPlayers = (training: Training) => {
-    const eligiblePlayers = getEligiblePlayersForTraining(training);
-    const eligiblePlayerIds = new Set(eligiblePlayers.map((player) => player.id));
-    const rows = getTrainingAttendanceRows(training.id).filter((row) =>
-      eligiblePlayerIds.has(row.player_id)
+  const getNonVotedPlayers = (trainingId: string) => {
+    const rows = getTrainingAttendanceRows(trainingId).filter((row) =>
+      activePlayerIds.has(row.player_id)
     );
     const votedPlayerIds = new Set(
       rows
@@ -489,16 +471,15 @@ export default function TrainingsScreen({
         .map((row) => row.player_id)
     );
 
-    return eligiblePlayers
+    return activePlayers
       .filter((player) => !votedPlayerIds.has(player.id))
       .sort((a, b) => a.name.localeCompare(b.name, "cs"));
   };
 
-  const getPresenceSummary = (training: Training) => {
-    const eligiblePlayerIds = getEligiblePlayerIdsForTraining(training);
-    const rows = getTrainingPresenceRows(training.id);
+  const getPresenceSummary = (trainingId: string) => {
+    const rows = getTrainingPresenceRows(trainingId);
     return rows.filter(
-      (row) => row.present && eligiblePlayerIds.has(row.player_id)
+      (row) => row.present && activePlayerIds.has(row.player_id)
     ).length;
   };
 
@@ -744,12 +725,6 @@ export default function TrainingsScreen({
       return;
     }
 
-    const training = trainings.find((item) => item.id === trainingId);
-    if (!training || !isPlayerEligibleForTraining(linkedPlayer, training)) {
-      setMessage("Tento trénink je před datem tvého vstupu do klubu.");
-      return;
-    }
-
     setSaving(true);
     setMessage("");
 
@@ -782,17 +757,14 @@ export default function TrainingsScreen({
     setSaving(false);
   };
 
-  const handleStartPresenceEdit = (training: Training) => {
+  const handleStartPresenceEdit = (trainingId: string) => {
     if (!isAdmin) {
       setMessage("Pouze admin může upravovat docházku.");
       return;
     }
 
-    const trainingId = training.id;
-    const eligiblePlayerIds = getEligiblePlayerIdsForTraining(training);
-
     const existingPresence = getTrainingPresenceRows(trainingId)
-      .filter((row) => row.present && eligiblePlayerIds.has(row.player_id))
+      .filter((row) => row.present && activePlayerIds.has(row.player_id))
       .map((row) => row.player_id);
 
     if (existingPresence.length > 0) {
@@ -804,7 +776,7 @@ export default function TrainingsScreen({
 
     const defaultFromAttendance = getTrainingAttendanceRows(trainingId)
       .filter(
-        (row) => row.status === "yes" && eligiblePlayerIds.has(row.player_id)
+        (row) => row.status === "yes" && activePlayerIds.has(row.player_id)
       )
       .map((row) => row.player_id);
 
@@ -874,7 +846,7 @@ export default function TrainingsScreen({
       return;
     }
 
-    const nonVotedPlayers = getNonVotedPlayers(training);
+    const nonVotedPlayers = getNonVotedPlayers(training.id);
 
     if (nonVotedPlayers.length === 0) {
       setMessage("Nikdo nezůstal bez hlasování.");
@@ -1397,18 +1369,16 @@ export default function TrainingsScreen({
       ) : (
         <div style={{ display: "grid", gap: "12px" }}>
           {visibleTrainings.map((training) => {
-            const eligiblePlayers = getEligiblePlayersForTraining(training);
-            const eligiblePlayerIds = new Set(eligiblePlayers.map((player) => player.id));
-            const summary = getTrainingSummary(training);
-            const presenceCount = getPresenceSummary(training);
+            const summary = getTrainingSummary(training.id);
+            const presenceCount = getPresenceSummary(training.id);
             const myStatus = getMyAttendanceStatus(training.id);
             const attendanceRows = getTrainingAttendanceRows(training.id);
             const presenceRows = getTrainingPresenceRows(training.id);
-            const nonVotedPlayers = getNonVotedPlayers(training);
+            const nonVotedPlayers = getNonVotedPlayers(training.id);
 
             const yesRows = attendanceRows
               .filter(
-                (row) => row.status === "yes" && eligiblePlayerIds.has(row.player_id)
+                (row) => row.status === "yes" && activePlayerIds.has(row.player_id)
               )
               .sort((a, b) =>
                 getPlayerName(rowToPlayerId(a)).localeCompare(
@@ -1419,7 +1389,7 @@ export default function TrainingsScreen({
 
             const maybeRows = attendanceRows
               .filter(
-                (row) => row.status === "maybe" && eligiblePlayerIds.has(row.player_id)
+                (row) => row.status === "maybe" && activePlayerIds.has(row.player_id)
               )
               .sort((a, b) =>
                 getPlayerName(rowToPlayerId(a)).localeCompare(
@@ -1430,7 +1400,7 @@ export default function TrainingsScreen({
 
             const noRows = attendanceRows
               .filter(
-                (row) => row.status === "no" && eligiblePlayerIds.has(row.player_id)
+                (row) => row.status === "no" && activePlayerIds.has(row.player_id)
               )
               .sort((a, b) =>
                 getPlayerName(rowToPlayerId(a)).localeCompare(
@@ -1440,7 +1410,7 @@ export default function TrainingsScreen({
               );
 
             const presentRows = presenceRows
-              .filter((row) => row.present && eligiblePlayerIds.has(row.player_id))
+              .filter((row) => row.present && activePlayerIds.has(row.player_id))
               .sort((a, b) =>
                 getPlayerName(a.player_id).localeCompare(
                   getPlayerName(b.player_id),
@@ -1461,17 +1431,10 @@ export default function TrainingsScreen({
                 id={`training-${training.id}`}
                 key={training.id}
                 style={{
+                  ...glassCardStyle,
                   position: "relative",
                   overflow: "hidden",
-                  borderRadius: "17px",
-                  border: isExpanded
-                    ? `1px solid ${primaryColor}55`
-                    : "1px solid rgba(255,255,255,0.10)",
-                  background:
-                    "linear-gradient(145deg, rgba(24,28,31,.97) 0%, rgba(14,17,19,.99) 100%)",
-                  boxShadow: isExpanded
-                    ? `0 15px 36px rgba(0,0,0,.34), 0 0 0 1px ${primaryColor}0d`
-                    : "0 10px 26px rgba(0,0,0,.24)",
+                  padding: "14px",
                 }}
               >
                 <div
@@ -1480,9 +1443,9 @@ export default function TrainingsScreen({
                     left: 0,
                     top: 0,
                     bottom: 0,
-                    width: "4px",
+                    width: "5px",
                     background: primaryColor,
-                    boxShadow: `0 0 16px ${primaryColor}40`,
+                    boxShadow: `0 0 18px ${primaryColor}66`,
                   }}
                 />
 
@@ -1497,248 +1460,200 @@ export default function TrainingsScreen({
                     width: "100%",
                     background: "transparent",
                     border: "none",
-                    padding: "15px 15px 12px 18px",
+                    padding: 0,
                     color: "white",
                     cursor: "pointer",
                     textAlign: "left",
-                    display: "grid",
-                    gap: "11px",
                   }}
                 >
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      gap: "8px",
-                      color: "#aeb4bb",
-                      fontSize: "12px",
-                      fontWeight: 750,
-                    }}
-                  >
-                    <span style={{ opacity: 0.85 }}>▣</span>
-                    <span>{formatDisplayDate(training.date)}</span>
-
-                    {getTrainingTimeLabel(training) && (
-                      <>
-                        <span style={{ color: "#666d73" }}>•</span>
-                        <span style={{ opacity: 0.85 }}>◷</span>
-                        <span>{getTrainingTimeLabel(training)}</span>
-                      </>
-                    )}
-
-                    <span style={{ color: "#666d73" }}>•</span>
-                    <span
-                      style={{
-                        color: primaryColor,
-                        fontWeight: 950,
-                      }}
-                    >
-                      {isTrainingPlanned(training) ? "PLÁNOVANÝ" : "STARŠÍ"}
-                    </span>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
+                      display: "grid",
                       gap: "12px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        color: "#ffffff",
-                        fontSize: "17px",
-                        fontWeight: 950,
-                        letterSpacing: "-0.15px",
-                      }}
-                    >
-                      Trénink
-                    </div>
-
-                    <div
-                      style={{
-                        color: "#7f878d",
-                        fontSize: "18px",
-                        lineHeight: 1,
-                        transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                        transition: "transform .18s ease",
-                      }}
-                    >
-                      ⌄
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      height: "1px",
-                      background: "rgba(255,255,255,.075)",
-                    }}
-                  />
-
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "9px",
-                      minWidth: 0,
-                      color: "#aeb4bb",
-                    }}
-                  >
-                    <span style={{ fontSize: "13px" }}>●</span>
-                    <span
-                      style={{
-                        minWidth: 0,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        fontSize: "13px",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {training.location || "Místo neuvedeno"}
-                    </span>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "10px",
-                      flexWrap: "wrap",
+                      paddingLeft: "4px",
                     }}
                   >
                     <div
                       style={{
                         display: "flex",
-                        alignItems: "center",
-                        flexWrap: "wrap",
-                        gap: "6px",
-                        color: "#c4c9ce",
-                        fontSize: "11px",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        gap: "12px",
                       }}
                     >
-                      <span
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            color: "#9b9b9b",
+                            fontSize: "11px",
+                            fontWeight: 950,
+                            letterSpacing: "0.8px",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {isTrainingPlanned(training)
+                            ? "Plánovaný trénink"
+                            : "Starší trénink"}
+                        </div>
+
+                        <div
+                          style={{
+                            fontWeight: 950,
+                            fontSize: "18px",
+                            marginTop: "5px",
+                          }}
+                        >
+                          Trénink
+                        </div>
+
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: "7px",
+                            alignItems: "center",
+                            fontSize: "13px",
+                            color: "#b8b8b8",
+                            fontWeight: 700,
+                            marginTop: "8px",
+                          }}
+                        >
+                          <span style={{ color: primaryColor, display: "inline-flex", alignItems: "center" }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <rect x="3" y="5" width="18" height="16" rx="2" />
+                              <path d="M16 3v4M8 3v4M3 10h18" />
+                            </svg>
+                          </span>
+                          <span>{formatDisplayDate(training.date)}</span>
+
+                          {getTrainingTimeLabel(training) && (
+                            <>
+                              <span>•</span>
+                              <span style={{ color: primaryColor, display: "inline-flex", alignItems: "center" }}>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                  <circle cx="12" cy="12" r="9" />
+                                  <path d="M12 7v5l3 2" />
+                                </svg>
+                              </span>
+                              <span>{getTrainingTimeLabel(training)}</span>
+                            </>
+                          )}
+                        </div>
+
+                        {training.location && (
+                          <div
+                            style={{
+                              fontSize: "13px",
+                              color: "#b8b8b8",
+                              marginTop: "8px",
+                              wordBreak: "break-word",
+                            }}
+                          >
+                            📍 {training.location}
+                          </div>
+                        )}
+                      </div>
+
+                      <div
                         style={{
-                          color: primaryColor,
-                          fontSize: "18px",
+                          fontSize: "22px",
+                          color: "#b8b8b8",
+                          transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                          transition: "transform 0.2s ease",
                           lineHeight: 1,
-                          fontWeight: 950,
                         }}
                       >
-                        {summary.yesCount}
-                      </span>
-                      <span>budu</span>
-
-                      <span style={{ color: "#666d73" }}>•</span>
-                      <span>{summary.maybeCount} možná</span>
-
-                      <span style={{ color: "#666d73" }}>•</span>
-                      <span>{summary.noCount} nebudu</span>
-
-                      <span style={{ color: "#666d73" }}>•</span>
-                      <span>{summary.notVotedCount} bez hlasu</span>
-
-                      {!isTrainingPlanned(training) && (
-                        <>
-                          <span style={{ color: "#666d73" }}>•</span>
-                          <span style={{ color: primaryColor }}>
-                            {presenceCount} účast
-                          </span>
-                        </>
-                      )}
+                        ⌄
+                      </div>
                     </div>
 
-                    {isTrainingPlanned(training) && (
-                      <span
-                        style={{
-                          flexShrink: 0,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "5px",
-                          padding: "6px 10px",
-                          borderRadius: "999px",
-                          border: myStatus
-                            ? `1px solid ${primaryColor}88`
-                            : "1px solid rgba(241,196,15,.65)",
-                          color: myStatus ? primaryColor : "#f2c94c",
-                          fontSize: "10px",
-                          fontWeight: 900,
-                        }}
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "7px",
+                      }}
+                    >
+                      <div
+                        style={summaryPillStyle(
+                          "rgba(255,255,255,0.08)",
+                          "#d4d4d4",
+                          "1px solid rgba(255,255,255,0.10)"
+                        )}
                       >
-                        {myStatus ? "✓ Hlasoval jsi" : "● Nehlasoval jsi"}
-                      </span>
-                    )}
+                        Hlasovalo: {summary.total}
+                      </div>
+
+                      <div
+                        style={summaryPillStyle(
+                          "rgba(46, 204, 113, 0.16)",
+                          "#9af0b6",
+                          "1px solid rgba(46, 204, 113, 0.24)"
+                        )}
+                      >
+                        BUDU: {summary.yesCount}
+                      </div>
+
+                      <div
+                        style={summaryPillStyle(
+                          "rgba(52, 152, 219, 0.16)",
+                          "#9fd3ff",
+                          "1px solid rgba(52, 152, 219, 0.24)"
+                        )}
+                      >
+                        MOŽNÁ: {summary.maybeCount}
+                      </div>
+
+                      <div
+                        style={summaryPillStyle(
+                          "rgba(231, 76, 60, 0.16)",
+                          "#ffb0a8",
+                          "1px solid rgba(231, 76, 60, 0.24)"
+                        )}
+                      >
+                        NEBUDU: {summary.noCount}
+                      </div>
+
+                      <div
+                        style={summaryPillStyle(
+                          "rgba(255, 193, 7, 0.16)",
+                          "#ffd97a",
+                          "1px solid rgba(255, 193, 7, 0.24)"
+                        )}
+                      >
+                        NEHLASOVALO: {summary.notVotedCount}
+                      </div>
+
+                      {!isTrainingPlanned(training) && (
+                        <div
+                          style={summaryPillStyle(
+                            `${primaryColor}22`,
+                            primaryColor,
+                            `1px solid ${primaryColor}44`
+                          )}
+                        >
+                          ÚČAST: {presenceCount}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </button>
-
-                {isAdmin && (
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "flex-end",
-                      gap: "7px",
-                      padding: "10px 15px 12px 18px",
-                      borderTop: "1px solid rgba(255,255,255,.055)",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => handleStartEdit(training)}
-                      disabled={saving}
-                      style={{
-                        border: "none",
-                        borderRadius: "9px",
-                        padding: "7px 10px",
-                        background: "rgba(255,255,255,.055)",
-                        color: "#9a9a9a",
-                        fontSize: "10px",
-                        fontWeight: 950,
-                        cursor: saving ? "default" : "pointer",
-                        opacity: saving ? 0.65 : 1,
-                      }}
-                    >
-                      ⚙ SPRÁVA
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteTraining(training.id)}
-                      disabled={saving}
-                      style={{
-                        border: "none",
-                        borderRadius: "9px",
-                        padding: "7px 10px",
-                        background: "rgba(231,76,60,.07)",
-                        color: "#e77676",
-                        fontSize: "10px",
-                        fontWeight: 950,
-                        cursor: saving ? "default" : "pointer",
-                        opacity: saving ? 0.65 : 1,
-                      }}
-                    >
-                      🗑 SMAZAT
-                    </button>
-                  </div>
-                )}
 
                 {isExpanded && (
                   <div
                     style={{
                       display: "grid",
                       gap: "12px",
-                      margin: "0 15px 14px 18px",
+                      marginTop: "14px",
                       paddingTop: "14px",
-                      borderTop: "1px solid rgba(255,255,255,0.07)",
+                      borderTop: "1px solid rgba(255,255,255,0.08)",
                     }}
                   >
                     {training.note && (
                       <div
                         style={{
                           padding: "12px",
-                          borderRadius: "11px",
+                          borderRadius: "16px",
                           background: "rgba(255,255,255,0.04)",
                           color: "#d9d9d9",
                           fontSize: "14px",
@@ -1753,25 +1668,13 @@ export default function TrainingsScreen({
                     <button
                       type="button"
                       onClick={() => void handleCopyTrainingLink(training.id)}
-                      style={{
-                        ...softButtonStyle,
-                        width: "100%",
-                        padding: "11px 12px",
-                        borderRadius: "10px",
-                        background: "rgba(255,255,255,.035)",
-                      }}
+                      style={softButtonStyle}
                     >
-                      🔗 Kopírovat odkaz na anketu
+                      Kopírovat odkaz na anketu
                     </button>
 
                     {isTrainingPlanned(training) && (
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr 1fr",
-                          gap: "8px",
-                        }}
-                      >
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
                         <button
                           type="button"
                           onClick={() => void handleVote(training.id, "yes")}
@@ -1837,6 +1740,36 @@ export default function TrainingsScreen({
                       </div>
                     )}
 
+                    {isAdmin && (
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button
+                          type="button"
+                          onClick={() => handleStartEdit(training)}
+                          disabled={saving}
+                          style={{
+                            flex: 1,
+                            ...primaryButtonStyle,
+                            opacity: saving ? 0.7 : 1,
+                          }}
+                        >
+                          UPRAVIT
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteTraining(training.id)}
+                          disabled={saving}
+                          style={{
+                            flex: 1,
+                            ...dangerButtonStyle,
+                            opacity: saving ? 0.7 : 1,
+                          }}
+                        >
+                          SMAZAT
+                        </button>
+                      </div>
+                    )}
+
                     {!isTrainingPlanned(training) && isAdmin && (
                       <div style={{ display: "grid", gap: "10px" }}>
                         {canShowPollFineButton && (
@@ -1865,7 +1798,7 @@ export default function TrainingsScreen({
 
                         <button
                           type="button"
-                          onClick={() => handleStartPresenceEdit(training)}
+                          onClick={() => handleStartPresenceEdit(training.id)}
                           disabled={saving}
                           style={{
                             ...styles.primaryButton,
@@ -1887,7 +1820,7 @@ export default function TrainingsScreen({
                               display: "grid",
                               gap: "10px",
                               padding: "12px",
-                              borderRadius: "11px",
+                              borderRadius: "16px",
                               background: "rgba(255,255,255,0.04)",
                               border: "1px solid rgba(255,255,255,0.06)",
                             }}
@@ -1913,7 +1846,7 @@ export default function TrainingsScreen({
                             </div>
 
                             <div style={{ display: "grid", gap: "8px" }}>
-                              {eligiblePlayers
+                              {activePlayers
                                 .slice()
                                 .sort((a, b) => a.number - b.number)
                                 .map((player) => {
@@ -2022,7 +1955,7 @@ export default function TrainingsScreen({
                       <div
                         style={{
                           padding: "12px",
-                          borderRadius: "11px",
+                          borderRadius: "16px",
                           background: "rgba(46, 204, 113, 0.10)",
                           border: "1px solid rgba(46, 204, 113, 0.20)",
                         }}
@@ -2042,24 +1975,11 @@ export default function TrainingsScreen({
                             Zatím nikdo.
                           </div>
                         ) : (
-                          <div
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                              gap: "6px 12px",
-                            }}
-                          >
+                          <div style={{ display: "grid", gap: "6px" }}>
                             {yesRows.map((row) => (
                               <div
                                 key={`${training.id}-yes-${rowToPlayerId(row)}`}
-                                style={{
-                                  minWidth: 0,
-                                  fontSize: "13px",
-                                  color: "white",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                }}
+                                style={{ fontSize: "13px", color: "white" }}
                               >
                                 {getPlayerName(rowToPlayerId(row))}
                               </div>
@@ -2071,7 +1991,7 @@ export default function TrainingsScreen({
                       <div
                         style={{
                           padding: "12px",
-                          borderRadius: "11px",
+                          borderRadius: "16px",
                           background: "rgba(52, 152, 219, 0.10)",
                           border: "1px solid rgba(52, 152, 219, 0.20)",
                         }}
@@ -2091,24 +2011,11 @@ export default function TrainingsScreen({
                             Zatím nikdo.
                           </div>
                         ) : (
-                          <div
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                              gap: "6px 12px",
-                            }}
-                          >
+                          <div style={{ display: "grid", gap: "6px" }}>
                             {maybeRows.map((row) => (
                               <div
                                 key={`${training.id}-maybe-${rowToPlayerId(row)}`}
-                                style={{
-                                  minWidth: 0,
-                                  fontSize: "13px",
-                                  color: "white",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                }}
+                                style={{ fontSize: "13px", color: "white" }}
                               >
                                 {getPlayerName(rowToPlayerId(row))}
                               </div>
@@ -2120,7 +2027,7 @@ export default function TrainingsScreen({
                       <div
                         style={{
                           padding: "12px",
-                          borderRadius: "11px",
+                          borderRadius: "16px",
                           background: "rgba(231, 76, 60, 0.10)",
                           border: "1px solid rgba(231, 76, 60, 0.20)",
                         }}
@@ -2140,24 +2047,11 @@ export default function TrainingsScreen({
                             Zatím nikdo.
                           </div>
                         ) : (
-                          <div
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                              gap: "6px 12px",
-                            }}
-                          >
+                          <div style={{ display: "grid", gap: "6px" }}>
                             {noRows.map((row) => (
                               <div
                                 key={`${training.id}-no-${rowToPlayerId(row)}`}
-                                style={{
-                                  minWidth: 0,
-                                  fontSize: "13px",
-                                  color: "white",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                }}
+                                style={{ fontSize: "13px", color: "white" }}
                               >
                                 {getPlayerName(rowToPlayerId(row))}
                               </div>
@@ -2169,7 +2063,7 @@ export default function TrainingsScreen({
                       <div
                         style={{
                           padding: "12px",
-                          borderRadius: "11px",
+                          borderRadius: "16px",
                           background: "rgba(255, 193, 7, 0.10)",
                           border: "1px solid rgba(255, 193, 7, 0.20)",
                         }}
@@ -2189,24 +2083,11 @@ export default function TrainingsScreen({
                             Všichni hlasovali.
                           </div>
                         ) : (
-                          <div
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                              gap: "6px 12px",
-                            }}
-                          >
+                          <div style={{ display: "grid", gap: "6px" }}>
                             {nonVotedPlayers.map((player) => (
                               <div
                                 key={`${training.id}-not-voted-${player.id}`}
-                                style={{
-                                  minWidth: 0,
-                                  fontSize: "13px",
-                                  color: "white",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                }}
+                                style={{ fontSize: "13px", color: "white" }}
                               >
                                 {player.name}
                               </div>
@@ -2219,7 +2100,7 @@ export default function TrainingsScreen({
                         <div
                           style={{
                             padding: "12px",
-                            borderRadius: "11px",
+                            borderRadius: "16px",
                             background: `${primaryColor}14`,
                             border: `1px solid ${primaryColor}33`,
                           }}
