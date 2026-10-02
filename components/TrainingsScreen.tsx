@@ -511,16 +511,28 @@ export default function TrainingsScreen({
     )[0];
   };
 
-  const handleCopyTrainingLink = async (trainingId: string) => {
+  const handleCopyTrainingLink = async (training: Training) => {
     if (typeof window === "undefined") return;
 
-    const url = `${window.location.origin}${window.location.pathname}?open=training&id=${trainingId}`;
+    const url = `${window.location.origin}${window.location.pathname}?open=training&id=${training.id}`;
+    const dateLabel = formatDisplayDate(training.date);
+    const timeLabel = getTrainingTimeLabel(training);
+
+    const shareText = [
+      "TRÉNINK",
+      `${dateLabel}${timeLabel ? ` • ${timeLabel}` : ""}`,
+      training.location ? `📍 ${training.location}` : null,
+      "",
+      url,
+    ]
+      .filter((line): line is string => line !== null)
+      .join("\n");
 
     try {
-      await navigator.clipboard.writeText(url);
-      setMessage("Odkaz na anketu tréninku byl zkopírován.");
+      await navigator.clipboard.writeText(shareText);
+      setMessage("Trénink byl zkopírován ke sdílení.");
     } catch {
-      setMessage(url);
+      setMessage(shareText);
     }
   };
 
@@ -1632,7 +1644,7 @@ export default function TrainingsScreen({
 
                     <button
                       type="button"
-                      onClick={() => void handleCopyTrainingLink(training.id)}
+                      onClick={() => void handleCopyTrainingLink(training)}
                       style={softButtonStyle}
                     >
                       Kopírovat odkaz na anketu
