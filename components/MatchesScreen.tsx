@@ -186,6 +186,8 @@ function JerseyImage({
 }
 
 
+const LIVE_VIEW_STORAGE_KEY = "myteamhub_live_match_view_v1";
+
 export default function MatchesScreen({
   clubId,
   clubName,
@@ -207,6 +209,7 @@ export default function MatchesScreen({
   const [selectedMode, setSelectedMode] = useState<"detail" | "live" | null>(
     null
   );
+  const [savedLiveViewRestored, setSavedLiveViewRestored] = useState(false);
   const [matchOverrides, setMatchOverrides] = useState<
     Record<string, PlannedMatch>
   >({});
@@ -237,6 +240,41 @@ export default function MatchesScreen({
   const [savingFineMatchId, setSavingFineMatchId] = useState<string | null>(
     null
   );
+
+  // Pokud mobil webview skutečně zahodí, obnovíme pouze ID LIVE zápasu.
+  // Skóre, události ani čas se sem neukládají – MatchLiveScreen je znovu načte ze Supabase.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const raw = window.localStorage.getItem(LIVE_VIEW_STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as { clubId?: string; matchId?: string };
+        if (saved.clubId === clubId && saved.matchId) {
+          setSelectedMatchId(saved.matchId);
+          setSelectedMode("live");
+        }
+      }
+    } catch (error) {
+      console.warn("Nepodařilo se obnovit LIVE zápas:", error);
+    } finally {
+      setSavedLiveViewRestored(true);
+    }
+  }, [clubId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !savedLiveViewRestored) return;
+
+    if (selectedMode === "live" && selectedMatchId) {
+      window.localStorage.setItem(
+        LIVE_VIEW_STORAGE_KEY,
+        JSON.stringify({ clubId, matchId: selectedMatchId })
+      );
+      return;
+    }
+
+    window.localStorage.removeItem(LIVE_VIEW_STORAGE_KEY);
+  }, [clubId, selectedMatchId, selectedMode, savedLiveViewRestored]);
 
   useEffect(() => {
     onLiveModeChange(selectedMode === "live");

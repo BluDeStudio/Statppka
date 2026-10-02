@@ -209,6 +209,58 @@ export default function MatchLiveScreen({
     await loadDetailRows(detailPlayerIds);
   }, [detailPlayerIds, loadDetailRows]);
 
+  // Po návratu z jiné aplikace / zamčeného displeje nespoléháme jen na realtime.
+  // Websocket mohl být na pozadí uspán, proto načteme aktuální stav přímo ze Supabase.
+  // Čas se následně dopočítá z *_started_at a *_elapsed_seconds – nikdy z localStorage.
+  const refreshLiveDataAfterResume = useCallback(async () => {
+    const [loadedMatch, loadedEvents, loadedLineupIds] = await Promise.all([
+      getPlannedMatchById(matchId),
+      getLiveMatchEvents(matchId),
+      getMatchLineupPlayerIds(matchId),
+    ]);
+
+    if (loadedMatch) {
+      setMatchState(loadedMatch);
+      onMatchStateChanged?.(loadedMatch);
+    }
+
+    setEvents(loadedEvents);
+    setLineupPlayerIds(loadedLineupIds);
+
+    const idsForDetail =
+      loadedLineupIds.length > 0 ? loadedLineupIds : detailPlayerIds;
+
+    if (idsForDetail.length > 0) {
+      await loadDetailRows(idsForDetail);
+    }
+
+    // Vynutí okamžité přepočítání hodin i v prohlížečích, které interval
+    // během pobytu na pozadí pozastavily.
+    setTick((prev) => prev + 1);
+  }, [matchId, detailPlayerIds, loadDetailRows, onMatchStateChanged]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshLiveDataAfterResume();
+      }
+    };
+
+    const handlePageShow = () => {
+      void refreshLiveDataAfterResume();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pageshow", handlePageShow);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pageshow", handlePageShow);
+    };
+  }, [refreshLiveDataAfterResume]);
+
   useEffect(() => {
     let isDisposed = false;
 

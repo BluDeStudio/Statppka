@@ -48,6 +48,7 @@ import { getPlayersByClubId, type Player } from "@/lib/players";
 import { getTrainingsByClubId, type TrainingRow } from "@/lib/trainings";
 
 const INVITE_STORAGE_KEY = "statppka_invite_token";
+const APP_VIEW_STORAGE_KEY = "myteamhub_last_view_v1";
 
 type Screen =
   | "home"
@@ -117,7 +118,6 @@ export type PlannedMatch = {
   team: "A" | "B";
   homeTeam: string;
   awayTeam: string;
-  opponent_jersey?: "red" | "black" | "green" | "yellow" | "blue";
   status?: "planned" | "prepared" | "live" | "halftime" | "finished";
   current_period?: number;
   first_half_started_at?: string | null;
@@ -391,6 +391,7 @@ export default function Home() {
 
   const [openTrainingId, setOpenTrainingId] = useState<string | null>(null);
   const [openMatchId, setOpenMatchId] = useState<string | null>(null);
+  const [viewStateRestored, setViewStateRestored] = useState(false);
 
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
@@ -407,6 +408,51 @@ export default function Home() {
   );
 
   const finishedMatchIds = finishedMatches.map((match) => match.id);
+
+  // Obnoví poslední běžnou obrazovku po skutečném reloadu / zahození webview.
+  // LIVE kontext se ukládá samostatně uvnitř MatchesScreen, aby se nikdy
+  // neukládalo skóre ani čas lokálně. Ty zůstávají autoritativně v Supabase.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const raw = window.localStorage.getItem(APP_VIEW_STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as {
+          screen?: Screen;
+          teamTab?: TeamTab;
+          matchesTab?: MatchesTab;
+          selectedPlayedMatchId?: string | null;
+        };
+
+        const validScreens: Screen[] = [
+          "home", "team", "matches", "trainings", "polls", "stats", "discipline",
+        ];
+        const validTeamTabs: TeamTab[] = ["overview", "players", "periods", "edit"];
+        const validMatchesTabs: MatchesTab[] = ["planned", "played"];
+
+        if (saved.screen && validScreens.includes(saved.screen)) setScreen(saved.screen);
+        if (saved.teamTab && validTeamTabs.includes(saved.teamTab)) setTeamTab(saved.teamTab);
+        if (saved.matchesTab && validMatchesTabs.includes(saved.matchesTab)) setMatchesTab(saved.matchesTab);
+        if (typeof saved.selectedPlayedMatchId === "string") {
+          setSelectedPlayedMatchId(saved.selectedPlayedMatchId);
+        }
+      }
+    } catch (error) {
+      console.warn("Nepodařilo se obnovit poslední obrazovku:", error);
+    } finally {
+      setViewStateRestored(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !viewStateRestored) return;
+
+    window.localStorage.setItem(
+      APP_VIEW_STORAGE_KEY,
+      JSON.stringify({ screen, teamTab, matchesTab, selectedPlayedMatchId })
+    );
+  }, [screen, teamTab, matchesTab, selectedPlayedMatchId, viewStateRestored]);
 
   const plannedMatchesRenderKey = useMemo(() => {
     return plannedMatches
@@ -2563,7 +2609,6 @@ export default function Home() {
                   {matchesTab === "played" && !isLiveMatch && (
                     <PlayedMatchesScreen
                       finishedMatches={finishedMatches}
-                      clubName={currentClub.name}
                       onSelectMatch={(matchId) => setSelectedPlayedMatchId(matchId)}
                       onDeleteMatch={async (matchId) => {
                         const result = await deleteFinishedMatch(matchId);
@@ -2642,7 +2687,6 @@ export default function Home() {
           {selectedPlayedMatchId !== null && selectedPlayedMatch && (
   <PlayedMatchDetailScreen
     clubId={currentClub.id}
-    clubName={currentClub.name}
     match={selectedPlayedMatch}
     isAdmin={isCurrentUserAdmin}
     onBack={() => {
