@@ -25,29 +25,51 @@ export const metadata: Metadata = {
 
   applicationName: "MyTeamHub",
 
+  authors: [
+    {
+      name: "MyTeamHub",
+    },
+  ],
+
+  creator: "MyTeamHub",
+  publisher: "MyTeamHub",
+
   icons: {
-    icon: "/icon.png",
-    shortcut: "/icon.png",
-    apple: "/icon.png",
+    icon: [
+      {
+        url: "/icon.png?v=2",
+        type: "image/png",
+      },
+    ],
+    shortcut: "/icon.png?v=2",
+    apple: [
+      {
+        url: "/icon.png?v=2",
+        type: "image/png",
+      },
+    ],
   },
 
   openGraph: {
     type: "website",
     locale: "cs_CZ",
+
     url: "https://myteamhub.cz",
+
     siteName: "MyTeamHub",
 
     title: "MyTeamHub",
 
     description:
-      "Zápasy, tréninky, docházka, ankety a tým na jednom místě.",
+      "Zápasy, tréninky, docházka, ankety, statistiky a správa týmu na jednom místě.",
 
     images: [
       {
-        url: "https://myteamhub.cz/logo.png",
+        url: "https://myteamhub.cz/logo.png?v=2",
         width: 1536,
         height: 1024,
         alt: "MyTeamHub",
+        type: "image/png",
       },
     ],
   },
@@ -58,14 +80,18 @@ export const metadata: Metadata = {
     title: "MyTeamHub",
 
     description:
-      "Zápasy, tréninky, docházka, ankety a tým na jednom místě.",
+      "Zápasy, tréninky, docházka, ankety, statistiky a správa týmu na jednom místě.",
 
-    images: ["https://myteamhub.cz/logo.png"],
+    images: ["https://myteamhub.cz/logo.png?v=2"],
   },
 
   robots: {
     index: true,
     follow: true,
+  },
+
+  alternates: {
+    canonical: "https://myteamhub.cz",
   },
 };
 
