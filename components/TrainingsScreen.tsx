@@ -1570,71 +1570,37 @@ export default function TrainingsScreen({
                     <div
                       style={{
                         display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "10px",
                         flexWrap: "wrap",
-                        gap: "7px",
+                        paddingTop: "2px",
                       }}
                     >
-                      <div
-                        style={summaryPillStyle(
-                          "rgba(255,255,255,0.08)",
-                          "#d4d4d4",
-                          "1px solid rgba(255,255,255,0.10)"
-                        )}
-                      >
-                        Hlasovalo: {summary.total}
+                      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "5px", color: "#9a9a9a", fontSize: "12px", fontWeight: 700 }}>
+                        <span style={{ color: primaryColor, fontSize: "18px", fontWeight: 950, lineHeight: 1 }}>{summary.yesCount}</span>
+                        <span>budu</span><span>·</span>
+                        <span>{summary.maybeCount} možná</span><span>·</span>
+                        <span>{summary.noCount} nebudu</span><span>·</span>
+                        <span>{summary.notVotedCount} bez hlasu</span>
+                        {!isTrainingPlanned(training) && <><span>·</span><span>{presenceCount} účast</span></>}
                       </div>
 
                       <div
-                        style={summaryPillStyle(
-                          "rgba(46, 204, 113, 0.16)",
-                          "#9af0b6",
-                          "1px solid rgba(46, 204, 113, 0.24)"
-                        )}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: "999px",
+                          border: myStatus ? `1px solid ${primaryColor}88` : "1px solid rgba(242,201,76,.45)",
+                          color: myStatus ? primaryColor : "#f2c94c",
+                          background: myStatus ? `${primaryColor}0f` : "rgba(242,201,76,.06)",
+                          fontSize: "11px",
+                          fontWeight: 950,
+                          whiteSpace: "nowrap",
+                        }}
                       >
-                        BUDU: {summary.yesCount}
+                        {myStatus ? "✓ Hlasoval jsi" : "○ Nehlasoval jsi"}
                       </div>
-
-                      <div
-                        style={summaryPillStyle(
-                          "rgba(52, 152, 219, 0.16)",
-                          "#9fd3ff",
-                          "1px solid rgba(52, 152, 219, 0.24)"
-                        )}
-                      >
-                        MOŽNÁ: {summary.maybeCount}
-                      </div>
-
-                      <div
-                        style={summaryPillStyle(
-                          "rgba(231, 76, 60, 0.16)",
-                          "#ffb0a8",
-                          "1px solid rgba(231, 76, 60, 0.24)"
-                        )}
-                      >
-                        NEBUDU: {summary.noCount}
-                      </div>
-
-                      <div
-                        style={summaryPillStyle(
-                          "rgba(255, 193, 7, 0.16)",
-                          "#ffd97a",
-                          "1px solid rgba(255, 193, 7, 0.24)"
-                        )}
-                      >
-                        NEHLASOVALO: {summary.notVotedCount}
-                      </div>
-
-                      {!isTrainingPlanned(training) && (
-                        <div
-                          style={summaryPillStyle(
-                            `${primaryColor}22`,
-                            primaryColor,
-                            `1px solid ${primaryColor}44`
-                          )}
-                        >
-                          ÚČAST: {presenceCount}
-                        </div>
-                      )}
+                    </div>
                     </div>
                   </div>
                 </button>
@@ -1737,6 +1703,16 @@ export default function TrainingsScreen({
                         >
                           NEBUDU
                         </button>
+                      </div>
+
+                      <div style={{ textAlign: "center", color: "#8f8f8f", fontSize: "11px", fontWeight: 800 }}>
+                        {myStatus ? (
+                          <>Tvoje odpověď: <span style={{ color: myStatus === "yes" ? "#72e994" : myStatus === "maybe" ? "#7fc8ff" : "#ff8580", fontWeight: 950 }}>
+                            {myStatus === "yes" ? "BUDU" : myStatus === "maybe" ? "MOŽNÁ" : "NEBUDU"}
+                          </span></>
+                        ) : (
+                          <span style={{ color: "#f2c94c", fontWeight: 950 }}>Ještě jsi nehlasoval</span>
+                        )}
                       </div>
                     )}
 
