@@ -44,7 +44,7 @@ export const metadata: Metadata = {
 
     images: [
       {
-        url: "/logo.png",
+        url: "https://myteamhub.cz/logo.png",
         width: 1536,
         height: 1024,
         alt: "MyTeamHub",
@@ -60,7 +60,7 @@ export const metadata: Metadata = {
     description:
       "Zápasy, tréninky, docházka, ankety a tým na jednom místě.",
 
-    images: ["/logo.png"],
+    images: ["https://myteamhub.cz/logo.png"],
   },
 
   robots: {
