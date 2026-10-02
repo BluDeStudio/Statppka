@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   },
 
   description:
-    "Týmová aplikace pro zápasy, tréninky, docházku, ankety, statistiky a správu týmu.",
+    "Zápasy, tréninky, docházka, ankety, statistiky a správa týmu na jednom místě.",
 
   applicationName: "MyTeamHub",
 
@@ -36,13 +36,16 @@ export const metadata: Metadata = {
     locale: "cs_CZ",
     url: "https://myteamhub.cz",
     siteName: "MyTeamHub",
+
     title: "MyTeamHub",
+
     description:
       "Zápasy, tréninky, docházka, ankety a tým na jednom místě.",
+
     images: [
       {
-        url: "/icon.png",
-        width: 1024,
+        url: "/logo.png",
+        width: 1536,
         height: 1024,
         alt: "MyTeamHub",
       },
@@ -51,10 +54,13 @@ export const metadata: Metadata = {
 
   twitter: {
     card: "summary_large_image",
+
     title: "MyTeamHub",
+
     description:
       "Zápasy, tréninky, docházka, ankety a tým na jednom místě.",
-    images: ["/icon.png"],
+
+    images: ["/logo.png"],
   },
 
   robots: {
