@@ -1601,7 +1601,6 @@ export default function TrainingsScreen({
                         {myStatus ? "✓ Hlasoval jsi" : "○ Nehlasoval jsi"}
                       </div>
                     </div>
-                    </div>
                   </div>
                 </button>
 
@@ -1640,6 +1639,7 @@ export default function TrainingsScreen({
                     </button>
 
                     {isTrainingPlanned(training) && (
+                      <>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
                         <button
                           type="button"
@@ -1714,6 +1714,7 @@ export default function TrainingsScreen({
                           <span style={{ color: "#f2c94c", fontWeight: 950 }}>Ještě jsi nehlasoval</span>
                         )}
                       </div>
+                      </>
                     )}
 
                     {isAdmin && (
