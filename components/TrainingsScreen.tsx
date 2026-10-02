@@ -1975,7 +1975,14 @@ export default function TrainingsScreen({
                             Zatím nikdo.
                           </div>
                         ) : (
-                          <div style={{ display: "grid", gap: "6px" }}>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                              columnGap: "18px",
+                              rowGap: "6px",
+                            }}
+                          >
                             {yesRows.map((row) => (
                               <div
                                 key={`${training.id}-yes-${rowToPlayerId(row)}`}
@@ -2011,7 +2018,14 @@ export default function TrainingsScreen({
                             Zatím nikdo.
                           </div>
                         ) : (
-                          <div style={{ display: "grid", gap: "6px" }}>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                              columnGap: "18px",
+                              rowGap: "6px",
+                            }}
+                          >
                             {maybeRows.map((row) => (
                               <div
                                 key={`${training.id}-maybe-${rowToPlayerId(row)}`}
@@ -2047,7 +2061,14 @@ export default function TrainingsScreen({
                             Zatím nikdo.
                           </div>
                         ) : (
-                          <div style={{ display: "grid", gap: "6px" }}>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                              columnGap: "18px",
+                              rowGap: "6px",
+                            }}
+                          >
                             {noRows.map((row) => (
                               <div
                                 key={`${training.id}-no-${rowToPlayerId(row)}`}
@@ -2083,7 +2104,14 @@ export default function TrainingsScreen({
                             Všichni hlasovali.
                           </div>
                         ) : (
-                          <div style={{ display: "grid", gap: "6px" }}>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                              columnGap: "18px",
+                              rowGap: "6px",
+                            }}
+                          >
                             {nonVotedPlayers.map((player) => (
                               <div
                                 key={`${training.id}-not-voted-${player.id}`}
@@ -2120,7 +2148,14 @@ export default function TrainingsScreen({
                               Zatím nepotvrzeno.
                             </div>
                           ) : (
-                            <div style={{ display: "grid", gap: "6px" }}>
+                            <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                              columnGap: "18px",
+                              rowGap: "6px",
+                            }}
+                          >
                               {presentRows.map((row) => (
                                 <div
                                   key={`${training.id}-present-${row.player_id}`}
