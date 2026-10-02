@@ -450,16 +450,25 @@ export default function MatchesScreen({
     };
   };
 
-  const handleCopyMatchLink = async (matchId: string) => {
+  const handleCopyMatchLink = async (match: PlannedMatch) => {
     if (typeof window === "undefined") return;
 
-    const url = `${window.location.origin}${window.location.pathname}?open=match&id=${matchId}`;
+    const url = `${window.location.origin}${window.location.pathname}?open=match&id=${match.id}`;
+    const [year, month, day] = match.date.split("-");
+    const formattedDate = `${Number(day)}. ${Number(month)}. ${year}`;
+    const matchTitle = `${match.homeTeam} vs. ${match.awayTeam}`;
+
+    const shareText = `⚽ ZÁPAS: ${matchTitle}
+📅 ${formattedDate}${match.time ? ` • ${match.time}` : ""}
+
+👇 Hlasuj o účasti:
+${url}`;
 
     try {
-      await navigator.clipboard.writeText(url);
-      setMessage("Odkaz na anketu zápasu byl zkopírován.");
+      await navigator.clipboard.writeText(shareText);
+      setMessage("Anketa zápasu byla zkopírována.");
     } catch {
-      setMessage(url);
+      setMessage(shareText);
     }
   };
 
@@ -1213,7 +1222,7 @@ export default function MatchesScreen({
                         {myStatus ? <>Tvoje odpověď: <span style={{ color: myStatus === "yes" ? "#72e994" : "#ff8580", fontWeight: 950 }}>{myStatus === "yes" ? "BUDU" : "NEBUDU"}</span></> : <span style={{ color: "#f2c94c", fontWeight: 950 }}>Ještě jsi nehlasoval</span>}
                       </div>
 
-                      <button type="button" onClick={() => void handleCopyMatchLink(match.id)} style={{ ...softButtonStyle, width: "100%", padding: "11px 12px", borderRadius: "10px", background: "rgba(255,255,255,.035)" }}>🔗 Kopírovat odkaz na anketu</button>
+                      <button type="button" onClick={() => void handleCopyMatchLink(match)} style={{ ...softButtonStyle, width: "100%", padding: "11px 12px", borderRadius: "10px", background: "rgba(255,255,255,.035)" }}>🔗 Kopírovat odkaz na anketu</button>
 
                       {canOpenLive && (
                         <button style={primaryButtonStyle} onClick={() => { setSelectedMatchId(match.id); setSelectedMode("live"); setMessage(""); }}>LIVE ZÁPAS</button>
