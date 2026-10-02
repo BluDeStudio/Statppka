@@ -453,20 +453,30 @@ export default function MatchesScreen({
   const handleCopyMatchLink = async (match: PlannedMatch) => {
     if (typeof window === "undefined") return;
 
-    const url = `${window.location.origin}${window.location.pathname}?open=match&id=${match.id}`;
+    const url = `${window.location.origin}${window.location.pathname}?open=match&id=${encodeURIComponent(
+      match.id
+    )}`;
+
     const [year, month, day] = match.date.split("-");
     const formattedDate = `${Number(day)}. ${Number(month)}. ${year}`;
     const matchTitle = `${match.homeTeam} vs. ${match.awayTeam}`;
 
-    const shareText = `⚽ ZÁPAS: ${matchTitle}
-📅 ${formattedDate}${match.time ? ` • ${match.time}` : ""}
+    const dateTimeText = match.time
+      ? `${formattedDate} • ${match.time}`
+      : formattedDate;
 
-👇 Hlasuj o účasti:
+    const locationText = match.location?.trim()
+      ? `📍 ${match.location.trim()}`
+      : "";
+
+    const shareText = `⚽ ZÁPAS: ${matchTitle}
+📅 ${dateTimeText}${locationText ? `\n${locationText}` : ""}
+
 ${url}`;
 
     try {
       await navigator.clipboard.writeText(shareText);
-      setMessage("Anketa zápasu byla zkopírována.");
+      setMessage("Odkaz na zápas byl zkopírován.");
     } catch {
       setMessage(shareText);
     }
