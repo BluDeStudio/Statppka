@@ -1326,85 +1326,80 @@ export default function DisciplineScreen({
   };
 
   const glassCardStyle: React.CSSProperties = {
-    borderRadius: "22px",
-    background:
-      "linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.025))",
-    border: "1px solid rgba(255,255,255,0.09)",
-    boxShadow: "0 16px 36px rgba(0,0,0,0.30)",
-    backdropFilter: "blur(14px)",
+    borderRadius: "16px",
+    background: "rgba(255,255,255,0.035)",
+    border: "1px solid rgba(255,255,255,0.07)",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
+    backdropFilter: "blur(10px)",
   };
 
   const tabButton = (active: boolean): React.CSSProperties => ({
     flex: 1,
-    border: "none",
-    borderRadius: "14px",
-    padding: "12px 10px",
-    background: active
-      ? `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`
-      : "rgba(255,255,255,0.06)",
-    color: active ? "#071107" : "#ffffff",
+    border: active ? `1px solid ${primaryColor}55` : "1px solid rgba(255,255,255,0.07)",
+    borderRadius: "11px",
+    padding: "9px 10px",
+    background: active ? `${primaryColor}18` : "rgba(255,255,255,0.035)",
+    color: active ? primaryColor : "#b8b8b8",
     fontWeight: 900,
+    fontSize: "12px",
+    letterSpacing: "0.25px",
     cursor: "pointer",
-    boxShadow: active ? `0 10px 24px ${primaryColor}33` : "none",
+    boxShadow: "none",
   });
 
   const subTabButton = (active: boolean): React.CSSProperties => ({
     flex: 1,
     border: "none",
-    borderRadius: "14px",
-    padding: "12px 10px",
-    background: active
-      ? `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`
-      : "rgba(255,255,255,0.06)",
-    color: active ? "#071107" : "#ffffff",
-    fontWeight: 900,
+    borderRadius: "10px",
+    padding: "10px",
+    background: active ? `${primaryColor}1c` : "transparent",
+    color: active ? primaryColor : "#9b9b9b",
+    fontWeight: 950,
+    fontSize: "12px",
+    letterSpacing: "0.45px",
     cursor: "pointer",
-    boxShadow: active ? `0 10px 24px ${primaryColor}33` : "none",
+    boxShadow: active ? `inset 0 0 0 1px ${primaryColor}45` : "none",
   });
 
   const sortButton = (active: boolean): React.CSSProperties => ({
     flex: 1,
-    border: active
-      ? `1px solid ${primaryColor}66`
-      : "1px solid rgba(255,255,255,0.08)",
+    border: active ? `1px solid ${primaryColor}55` : "1px solid rgba(255,255,255,0.07)",
     borderRadius: "999px",
-    padding: "10px 12px",
-    background: active ? `${primaryColor}22` : "rgba(255,255,255,0.06)",
-    color: active ? primaryColor : "#ffffff",
+    padding: "7px 10px",
+    background: active ? `${primaryColor}16` : "rgba(255,255,255,0.025)",
+    color: active ? primaryColor : "#a8a8a8",
+    fontSize: "11px",
     fontWeight: 900,
     cursor: "pointer",
   });
 
   const modernMainTabButton = (
     tab: MainTab,
-    title: string,
-    subtitle: string,
-    icon: string
+    _title: string,
+    _subtitle: string,
+    _icon: string
   ): React.CSSProperties => {
     const active = mainTab === tab;
-
     return {
       position: "relative",
       overflow: "hidden",
-      border: "1px solid rgba(255,255,255,0.09)",
-      borderRadius: "22px",
-      padding: "14px 12px 14px 18px",
-      minHeight: "82px",
+      border: active ? `1px solid ${primaryColor}42` : "1px solid rgba(255,255,255,0.07)",
+      borderRadius: "16px",
+      padding: "11px 10px 11px 15px",
+      minHeight: "66px",
       background: active
-        ? "linear-gradient(135deg, rgba(255,255,255,0.095), rgba(255,255,255,0.035))"
-        : "linear-gradient(135deg, rgba(255,255,255,0.055), rgba(255,255,255,0.02))",
+        ? `linear-gradient(135deg, ${primaryColor}12, rgba(255,255,255,0.035))`
+        : "rgba(255,255,255,0.025)",
       color: "white",
       cursor: "pointer",
       textAlign: "left",
-      boxShadow: active
-        ? `0 14px 30px ${primaryColor}22`
-        : "0 12px 28px rgba(0,0,0,0.24)",
+      boxShadow: active ? `0 8px 20px ${primaryColor}12` : "0 6px 18px rgba(0,0,0,0.14)",
     };
   };
 
   return (
-    <div style={{ display: "grid", gap: "14px" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+    <div style={{ display: "grid", gap: "12px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
         <button
           type="button"
           onClick={() => setMainTab("attendance")}
@@ -1416,7 +1411,7 @@ export default function DisciplineScreen({
               left: 0,
               top: 0,
               bottom: 0,
-              width: "7px",
+              width: "4px",
               background:
                 mainTab === "attendance"
                   ? primaryColor
@@ -1427,8 +1422,8 @@ export default function DisciplineScreen({
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <div
               style={{
-                width: "38px",
-                height: "38px",
+                width: "34px",
+                height: "34px",
                 borderRadius: "14px",
                 background:
                   mainTab === "attendance"
@@ -1438,7 +1433,7 @@ export default function DisciplineScreen({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: "20px",
+                fontSize: "17px",
                 flexShrink: 0,
               }}
             >
@@ -1481,7 +1476,7 @@ export default function DisciplineScreen({
               left: 0,
               top: 0,
               bottom: 0,
-              width: "7px",
+              width: "4px",
               background:
                 mainTab === "fines" ? primaryColor : "rgba(255,255,255,0.10)",
             }}
@@ -1490,8 +1485,8 @@ export default function DisciplineScreen({
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <div
               style={{
-                width: "38px",
-                height: "38px",
+                width: "34px",
+                height: "34px",
                 borderRadius: "14px",
                 background:
                   mainTab === "fines"
@@ -1501,7 +1496,7 @@ export default function DisciplineScreen({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: "20px",
+                fontSize: "17px",
                 flexShrink: 0,
               }}
             >
@@ -1568,7 +1563,7 @@ export default function DisciplineScreen({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: "21px",
+                fontSize: "18px",
               }}
             >
               📅
@@ -1587,7 +1582,7 @@ export default function DisciplineScreen({
                 Období docházky
               </div>
 
-              <div style={{ fontSize: "18px", fontWeight: 950, marginTop: "3px" }}>
+              <div style={{ fontSize: "16px", fontWeight: 950, marginTop: "2px" }}>
                 {periodFilterMode === "all"
                   ? "Všechna období"
                   : periodFilterMode === "range"
@@ -1629,7 +1624,7 @@ export default function DisciplineScreen({
             style={{
               display: "grid",
               gap: "10px",
-              padding: "0 16px 16px",
+              padding: "0 14px 14px",
               borderTop: "1px solid rgba(255,255,255,0.06)",
             }}
           >
@@ -2001,7 +1996,7 @@ export default function DisciplineScreen({
                           minWidth: "64px",
                           textAlign: "right",
                           fontWeight: 950,
-                          fontSize: "20px",
+                          fontSize: "17px",
                           color: percentageColor,
                         }}
                       >
