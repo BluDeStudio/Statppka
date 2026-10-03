@@ -125,6 +125,7 @@ export type PlannedMatch = {
   second_half_started_at?: string | null;
   second_half_elapsed_seconds?: number;
   goalkeeper_player_id?: string | null;
+  opponent_jersey?: "red" | "black" | "green" | "yellow" | "blue";
 };
 
 type UpcomingEvent =
@@ -2609,6 +2610,7 @@ export default function Home() {
                   {matchesTab === "played" && !isLiveMatch && (
                     <PlayedMatchesScreen
                       finishedMatches={finishedMatches}
+                      clubName={currentClub.name}
                       onSelectMatch={(matchId) => setSelectedPlayedMatchId(matchId)}
                       onDeleteMatch={async (matchId) => {
                         const result = await deleteFinishedMatch(matchId);
@@ -2687,6 +2689,7 @@ export default function Home() {
           {selectedPlayedMatchId !== null && selectedPlayedMatch && (
   <PlayedMatchDetailScreen
     clubId={currentClub.id}
+    clubName={currentClub.name}
     match={selectedPlayedMatch}
     isAdmin={isCurrentUserAdmin}
     onBack={() => {

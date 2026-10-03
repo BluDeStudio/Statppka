@@ -5,7 +5,14 @@ import { supabase } from "@/lib/supabaseClient";
 import MatchDetail from "@/components/MatchDetail";
 import MatchLiveScreen from "@/components/MatchLiveScreen";
 import { styles } from "@/styles/appStyles";
-import type { FinishedMatch, PlannedMatch } from "@/app/page";
+import type {
+  FinishedMatch,
+  PlannedMatch as AppPlannedMatch,
+} from "@/app/page";
+
+type PlannedMatch = AppPlannedMatch & {
+  opponent_jersey?: "red" | "black" | "green" | "yellow" | "blue";
+};
 
 type MatchesScreenProps = {
   clubId: string;
