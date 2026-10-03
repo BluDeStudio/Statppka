@@ -903,18 +903,26 @@ export default function Home() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    } = supabase.auth.onAuthStateChange((event, newSession) => {
       if (!mounted) return;
 
-      setBootLoading(true);
+      // Běžné obnovení tokenu nebo opětovné potvrzení přihlášení nesmí
+      // shodit celé UI do boot loadingu. Zachováme aktuální React stav.
+      if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {
+        setSession(newSession ?? null);
+        return;
+      }
 
-      void (async () => {
-        await loadAppState(newSession ?? null);
+      // Skutečné odhlášení naopak musí vyčistit aplikační stav.
+      if (event === "SIGNED_OUT") {
+        void loadAppState(null);
+        return;
+      }
 
-        if (mounted) {
-          setBootLoading(false);
-        }
-      })();
+      // Ostatní auth události zpracujeme na pozadí bez překrytí aplikace.
+      if (newSession) {
+        setSession(newSession);
+      }
     });
 
     return () => {
