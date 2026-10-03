@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { getPlayersByClubId, type Player } from "@/lib/players";
-import { getMatchLineupPlayerIds, saveMatchLineup } from "@/lib/matchLineups";
+import { getMatchLineupPlayerIds } from "@/lib/matchLineups";
 import {
   addGoalAgainstEvent,
   addGoalForEvent,
@@ -99,10 +99,6 @@ export default function MatchLiveScreen({
   const [assistId, setAssistId] = useState<"none" | string>("none");
   const [yellowCardPlayerId, setYellowCardPlayerId] = useState("");
   const [redCardPlayerId, setRedCardPlayerId] = useState("");
-  const [addPlayersOpen, setAddPlayersOpen] = useState(false);
-  const [playersToAdd, setPlayersToAdd] = useState<string[]>([]);
-  const [savingAddedPlayers, setSavingAddedPlayers] = useState(false);
-
 
   const selectedPlayerObjects = useMemo(() => {
     const activePlayers = players.filter((player) => player.is_active !== false);
@@ -862,41 +858,6 @@ export default function MatchLiveScreen({
     setSavingDetailPlayerId(null);
   };
 
-  const availablePlayersToAdd = useMemo(() => {
-    const currentIds = new Set(selectedPlayerObjects.map((player) => player.id));
-    return players
-      .filter((player) => player.is_active !== false && !currentIds.has(player.id))
-      .sort((a, b) => a.number - b.number);
-  }, [players, selectedPlayerObjects]);
-
-  const handleAddPlayersToLiveMatch = async () => {
-    if (!isAdmin || playersToAdd.length === 0) return;
-    setSavingAddedPlayers(true);
-    setMessage("");
-    const currentIds = lineupPlayerIds.length > 0 ? lineupPlayerIds : selectedPlayerObjects.map((p) => p.id);
-    const nextIds = Array.from(new Set([...currentIds, ...playersToAdd]));
-    const result = await saveMatchLineup({
-      matchId,
-      playerIds: nextIds,
-      goalkeeperPlayerId: matchState?.goalkeeper_player_id ?? null,
-    });
-    if (!result.success) {
-      setMessage(result.errorMessage ?? "Nepodařilo se doplnit hráče do sestavy.");
-      setSavingAddedPlayers(false);
-      return;
-    }
-    setLineupPlayerIds(nextIds);
-    if (result.match) {
-      setMatchState(result.match);
-      onMatchStateChanged?.(result.match);
-    }
-    await loadDetailRows(nextIds);
-    setPlayersToAdd([]);
-    setAddPlayersOpen(false);
-    setMessage("Hráči byli doplněni do sestavy.");
-    setSavingAddedPlayers(false);
-  };
-
   const handleFinishMatch = async () => {
     if (!isAdmin) {
       setMessage("Zápas může ukončit jen admin.");
@@ -1185,8 +1146,8 @@ export default function MatchLiveScreen({
             border: "1px solid rgba(255,255,255,0.08)",
           }}
         >
-          <div style={{ fontSize: "52px", lineHeight: 1, fontWeight: 900, letterSpacing: "4px", marginBottom: "14px" }}>
-            {scoreFor} : {scoreAgainst}
+          <div style={{ fontSize: "14px", color: "#b8b8b8", marginBottom: "10px" }}>
+            Čas zápasu
           </div>
 
           <div
@@ -1213,7 +1174,16 @@ export default function MatchLiveScreen({
               : "Před zápasem"}
           </div>
 
-
+          <div
+            style={{
+              fontSize: "52px",
+              lineHeight: 1,
+              fontWeight: 800,
+              letterSpacing: "2px",
+            }}
+          >
+            {scoreFor}:{scoreAgainst}
+          </div>
         </div>
 
         {!canControlMatch && (
@@ -1280,23 +1250,6 @@ export default function MatchLiveScreen({
           </button>
         )}
 
-        {isAdmin && (matchState?.status === "live" || matchState?.status === "halftime") && (
-          <button
-            style={{
-              ...styles.primaryButton,
-              background: "rgba(255,255,255,0.12)",
-              marginTop: "10px",
-            }}
-            onClick={() => {
-              setPlayersToAdd([]);
-              setAddPlayersOpen(true);
-            }}
-            disabled={finishingMatch || deletingEventId !== null}
-          >
-            ＋ DOPLNIT HRÁČE
-          </button>
-        )}
-
         {canEndFirstHalf && (
           <button
             style={{
@@ -1331,7 +1284,7 @@ export default function MatchLiveScreen({
           <>
             <div style={{ marginTop: "14px", marginBottom: "14px" }}>
               <div style={{ fontWeight: "bold", marginBottom: "8px" }}>
-                ⚽ GÓL
+                Přidat náš gól
               </div>
 
               {playersLoading ? (
@@ -1407,7 +1360,7 @@ export default function MatchLiveScreen({
                     onClick={() => void handleAddGoalFor()}
                     disabled={savingEvent || !canEditEvents || deletingEventId !== null}
                   >
-                    Uložit gól
+                    Uložit gól + asistenci
                   </button>
                 </div>
               )}
@@ -1432,7 +1385,7 @@ export default function MatchLiveScreen({
 
             <div style={{ marginBottom: "14px" }}>
               <div style={{ fontWeight: "bold", marginBottom: "8px" }}>
-                🟨 ŽLUTÁ KARTA
+                Přidat žlutou kartu
               </div>
 
               <div style={{ display: "grid", gap: "10px" }}>
@@ -1478,7 +1431,7 @@ export default function MatchLiveScreen({
 
             <div style={{ marginBottom: "14px" }}>
               <div style={{ fontWeight: "bold", marginBottom: "8px" }}>
-                🟥 ČERVENÁ KARTA
+                Přidat červenou kartu
               </div>
 
               <div style={{ display: "grid", gap: "10px" }}>
@@ -1675,66 +1628,6 @@ export default function MatchLiveScreen({
         >
           Zpět na zápasy
         </button>
-
-        {addPlayersOpen && (
-          <div
-            onClick={() => !savingAddedPlayers && setAddPlayersOpen(false)}
-            style={{
-              position: "fixed", inset: 0, zIndex: 1000,
-              background: "rgba(0,0,0,0.78)", backdropFilter: "blur(6px)",
-              display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "14px",
-            }}
-          >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                width: "100%", maxWidth: "560px", maxHeight: "78vh", overflowY: "auto",
-                borderRadius: "22px", padding: "16px", background: "#111513",
-                border: "1px solid rgba(255,255,255,0.12)",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
-                <div>
-                  <div style={{ fontSize: "20px", fontWeight: 900 }}>Doplnit hráče</div>
-                  <div style={{ fontSize: "12px", color: "#aaa", marginTop: "3px" }}>
-                    Vyber hráče, na kterého se před zápasem zapomnělo.
-                  </div>
-                </div>
-                <button type="button" onClick={() => setAddPlayersOpen(false)}
-                  style={{ width: "38px", height: "38px", borderRadius: "50%", border: "none", background: "rgba(255,255,255,.1)", color: "white", fontSize: "20px" }}>
-                  ×
-                </button>
-              </div>
-              <div style={{ display: "grid", gap: "8px" }}>
-                {availablePlayersToAdd.length === 0 && (
-                  <div style={{ color: "#aaa", padding: "16px 4px" }}>Všichni aktivní hráči už jsou v sestavě.</div>
-                )}
-                {availablePlayersToAdd.map((player) => {
-                  const selected = playersToAdd.includes(player.id);
-                  return (
-                    <button type="button" key={player.id}
-                      onClick={() => setPlayersToAdd((prev) => selected ? prev.filter((id) => id !== player.id) : [...prev, player.id])}
-                      style={{
-                        minHeight: "52px", borderRadius: "12px",
-                        border: selected ? `1px solid ${primaryColor}` : "1px solid rgba(255,255,255,.1)",
-                        background: selected ? "rgba(34,197,94,.12)" : "rgba(255,255,255,.04)",
-                        color: "white", display: "flex", alignItems: "center", gap: "12px", padding: "8px 12px", textAlign: "left",
-                      }}
-                    >
-                      <strong style={{ width: "32px" }}>{selected ? "✓" : `#${player.number}`}</strong>
-                      <span style={{ fontWeight: 700 }}>{player.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <button type="button" onClick={() => void handleAddPlayersToLiveMatch()}
-                disabled={playersToAdd.length === 0 || savingAddedPlayers}
-                style={{ ...styles.primaryButton, background: primaryColor, marginTop: "14px", opacity: playersToAdd.length === 0 || savingAddedPlayers ? 0.6 : 1 }}>
-                {savingAddedPlayers ? "Doplňuji..." : `PŘIDAT DO SESTAVY (${playersToAdd.length})`}
-              </button>
-            </div>
-          </div>
-        )}
 
         {message && (
           <p style={{ marginTop: "12px", color: "#d9d9d9" }}>{message}</p>
