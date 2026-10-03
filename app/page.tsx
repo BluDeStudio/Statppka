@@ -1420,35 +1420,45 @@ export default function Home() {
 
   const bottomNavStyle: React.CSSProperties = {
     position: "sticky",
-    bottom: "max(8px, env(safe-area-inset-bottom))",
+    bottom: "max(6px, env(safe-area-inset-bottom))",
     zIndex: 100,
     display: "grid",
     gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
-    gap: "4px",
-    marginTop: "18px",
-    padding: "7px",
-    borderRadius: "18px",
-    background: "rgba(8,8,8,0.94)",
+    width: "100%",
+    gap: "0",
+    marginTop: "16px",
+    padding: "5px 3px",
+    boxSizing: "border-box",
+    overflow: "hidden",
+    borderRadius: "16px",
+    background: "rgba(8,8,8,0.96)",
     border: `1px solid ${dynamicTheme.cardBorder}`,
-    boxShadow: "0 14px 34px rgba(0,0,0,0.38)",
+    boxShadow: "0 12px 30px rgba(0,0,0,0.34)",
     backdropFilter: "blur(18px)",
   };
 
   const getBottomNavButtonStyle = (active: boolean): React.CSSProperties => ({
+    width: "100%",
     minWidth: 0,
+    maxWidth: "100%",
+    overflow: "hidden",
     border: "none",
-    borderRadius: "13px",
-    padding: "9px 3px 8px",
-    background: active ? `${dynamicTheme.primary}22` : "transparent",
-    color: active ? dynamicTheme.primary : "rgba(255,255,255,0.58)",
+    borderRadius: "10px",
+    padding: "7px 0 6px",
+    background: active ? `${dynamicTheme.primary}16` : "transparent",
+    color: active ? dynamicTheme.primary : "rgba(255,255,255,0.56)",
     cursor: "pointer",
-    display: "grid",
-    justifyItems: "center",
-    gap: "5px",
-    fontSize: "9px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "4px",
+    fontSize: "8px",
     lineHeight: 1,
     fontWeight: 900,
-    letterSpacing: "0.2px",
+    letterSpacing: "0",
+    whiteSpace: "nowrap",
+    boxSizing: "border-box",
   });
 
   const renderMatchesLoadingCard = () => (
@@ -2787,7 +2797,7 @@ export default function Home() {
 )}
         </div>
 
-        {!isLiveMatch && (
+        {!isLiveMatch && screen !== "home" && (
           <nav style={bottomNavStyle} aria-label="Hlavní navigace">
             {bottomNavItems.map((item) => {
               const active =
@@ -2801,10 +2811,30 @@ export default function Home() {
                   style={getBottomNavButtonStyle(active)}
                   aria-current={active ? "page" : undefined}
                 >
-                  <span style={{ fontSize: "18px", lineHeight: 1 }}>
+                  <span
+                    style={{
+                      fontSize: "15px",
+                      lineHeight: 1,
+                      height: "16px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
                     {item.icon}
                   </span>
-                  <span>{item.label}</span>
+                  <span
+                    style={{
+                      width: "100%",
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "clip",
+                      whiteSpace: "nowrap",
+                      textAlign: "center",
+                    }}
+                  >
+                    {item.label}
+                  </span>
                 </button>
               );
             })}
