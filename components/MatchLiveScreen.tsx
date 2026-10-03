@@ -370,26 +370,6 @@ export default function MatchLiveScreen({
   const scoreFor = events.filter((event) => event.type === "goal_for").length;
   const scoreAgainst = events.filter((event) => event.type === "goal_against").length;
 
-  // Skóre se zobrazuje vždy DOMÁCÍ : HOSTÉ.
-  const isOurTeamAway = useMemo(() => {
-    const home = (matchState?.homeTeam ?? "").trim().toLocaleLowerCase("cs-CZ");
-    const away = (matchState?.awayTeam ?? "").trim().toLocaleLowerCase("cs-CZ");
-    const club = "FC PPB".toLocaleLowerCase("cs-CZ");
-
-    if (away === club) return true;
-    if (home === club) return false;
-
-    const parts = matchTitle.split(/\s+vs\.?\s+/i);
-    if (parts.length === 2) {
-      return parts[1].trim().toLocaleLowerCase("cs-CZ") === club;
-    }
-
-    return false;
-  }, [matchState?.homeTeam, matchState?.awayTeam, matchTitle]);
-
-  const displayedHomeScore = isOurTeamAway ? scoreAgainst : scoreFor;
-  const displayedAwayScore = isOurTeamAway ? scoreFor : scoreAgainst;
-
   const canControlMatch = isAdmin;
   const canEditEvents = isAdmin && matchState?.status === "live" && !timerPaused;
   const canStartMatch =
@@ -905,10 +885,12 @@ export default function MatchLiveScreen({
       setSavingAddedPlayers(false);
       return;
     }
-    // Doplnění hráčů nesmí přepsat LIVE stav, čas ani poločas.
     setLineupPlayerIds(nextIds);
+    if (result.match) {
+      setMatchState(result.match);
+      onMatchStateChanged?.(result.match);
+    }
     await loadDetailRows(nextIds);
-    await refreshMatchState();
     setPlayersToAdd([]);
     setAddPlayersOpen(false);
     setMessage("Hráči byli doplněni do sestavy.");
@@ -1075,7 +1057,7 @@ export default function MatchLiveScreen({
       matchTitle,
       team,
       date,
-      score: `${displayedHomeScore}:${displayedAwayScore}`,
+      score: `${scoreFor}:${scoreAgainst}`,
       goalkeeperNumber: goalkeeperNumberToSave ?? null,
       goalsAgainst: scoreAgainst,
       playerStats,
@@ -1204,7 +1186,7 @@ export default function MatchLiveScreen({
           }}
         >
           <div style={{ fontSize: "52px", lineHeight: 1, fontWeight: 900, letterSpacing: "4px", marginBottom: "14px" }}>
-            {displayedHomeScore} : {displayedAwayScore}
+            {scoreFor} : {scoreAgainst}
           </div>
 
           <div
@@ -1706,16 +1688,9 @@ export default function MatchLiveScreen({
             <div
               onClick={(e) => e.stopPropagation()}
               style={{
-                width: "100%",
-                maxWidth: "560px",
-                height: "min(620px, 78dvh)",
-                overflow: "hidden",
-                borderRadius: "22px",
-                padding: "16px",
-                background: "#111513",
+                width: "100%", maxWidth: "560px", maxHeight: "78vh", overflowY: "auto",
+                borderRadius: "22px", padding: "16px", background: "#111513",
                 border: "1px solid rgba(255,255,255,0.12)",
-                display: "flex",
-                flexDirection: "column",
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
@@ -1730,7 +1705,7 @@ export default function MatchLiveScreen({
                   ×
                 </button>
               </div>
-              <div style={{ display: "grid", gap: "8px", overflowY: "auto", flex: 1, minHeight: 0, paddingRight: "2px" }}>
+              <div style={{ display: "grid", gap: "8px" }}>
                 {availablePlayersToAdd.length === 0 && (
                   <div style={{ color: "#aaa", padding: "16px 4px" }}>Všichni aktivní hráči už jsou v sestavě.</div>
                 )}
