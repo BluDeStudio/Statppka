@@ -258,18 +258,8 @@ export default function MatchesScreen({
       if (raw) {
         const saved = JSON.parse(raw) as { clubId?: string; matchId?: string };
         if (saved.clubId === clubId && saved.matchId) {
-          const savedMatch = plannedMatches.find((match) => match.id === saved.matchId);
-          const isActuallyLive =
-            savedMatch?.status === "live" || savedMatch?.status === "halftime";
-
-          if (savedMatch && isActuallyLive) {
-            setSelectedMatchId(saved.matchId);
-            setSelectedMode("live");
-          } else {
-            window.localStorage.removeItem(LIVE_VIEW_STORAGE_KEY);
-            setSelectedMatchId(null);
-            setSelectedMode(null);
-          }
+          setSelectedMatchId(saved.matchId);
+          setSelectedMode("live");
         }
       }
     } catch (error) {
@@ -931,6 +921,195 @@ ${url}`;
         </div>
       </div>
 
+      {isAdmin ? (
+        <div style={{ ...modernCardStyle, padding: "14px" }}>
+          <button
+            style={primaryButtonStyle}
+            onClick={() => {
+              setShowAddForm((prev) => !prev);
+              setMessage("");
+            }}
+          >
+            {showAddForm ? "Zavřít formulář" : "＋ Přidat zápas"}
+          </button>
+
+          {showAddForm && (
+            <div
+              style={{
+                marginTop: "14px",
+                display: "grid",
+                gap: "10px",
+              }}
+            >
+              <select
+                value={newTeam}
+                onChange={(e) => setNewTeam(e.target.value as "A" | "B")}
+                style={{
+                  ...styles.input,
+                  appearance: "none",
+                }}
+              >
+                <option value="A" style={{ background: "#111111", color: "white" }}>
+                  A-tým
+                </option>
+                {hasBTeam && (
+                  <option value="B" style={{ background: "#111111", color: "white" }}>
+                    B-tým
+                  </option>
+                )}
+              </select>
+
+              <input
+                type="text"
+                placeholder="Soupeř"
+                value={newOpponent}
+                onChange={(e) => setNewOpponent(e.target.value)}
+                style={styles.input}
+              />
+
+              <div style={{ display: "grid", gap: "9px", padding: "2px 0 4px" }}>
+                <div
+                  style={{
+                    color: "#f0f0f0",
+                    fontSize: "12px",
+                    fontWeight: 900,
+                    letterSpacing: ".35px",
+                  }}
+                >
+                  DRES SOUPEŘE
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+                    gap: "7px",
+                  }}
+                >
+                  {JERSEY_OPTIONS.map((option) => {
+                    const selected = newOpponentJersey === option.id;
+
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => setNewOpponentJersey(option.id)}
+                        style={{
+                          minWidth: 0,
+                          padding: "7px 3px 6px",
+                          borderRadius: "12px",
+                          border: selected
+                            ? `1px solid ${primaryColor}`
+                            : "1px solid rgba(255,255,255,.08)",
+                          background: selected
+                            ? `${primaryColor}12`
+                            : "rgba(255,255,255,.035)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <img
+                          src={option.src}
+                          alt={option.label}
+                          style={{
+                            width: "100%",
+                            height: "48px",
+                            objectFit: "contain",
+                            display: "block",
+                          }}
+                        />
+                        <div
+                          style={{
+                            marginTop: "4px",
+                            color: selected ? primaryColor : "#9ea4aa",
+                            fontSize: "8px",
+                            fontWeight: 900,
+                            textAlign: "center",
+                          }}
+                        >
+                          {option.label.toUpperCase()}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <input
+                type="date"
+                value={newDate}
+                onChange={(e) => setNewDate(e.target.value)}
+                style={styles.input}
+              />
+
+              <input
+                type="time"
+                value={newTime}
+                onChange={(e) => setNewTime(e.target.value)}
+                style={styles.input}
+              />
+
+              <input
+                type="text"
+                placeholder="Hřiště / místo"
+                value={newLocation}
+                onChange={(e) => setNewLocation(e.target.value)}
+                style={styles.input}
+              />
+
+              <select
+                value={newVenue}
+                onChange={(e) => setNewVenue(e.target.value as "home" | "away")}
+                style={{
+                  ...styles.input,
+                  appearance: "none",
+                }}
+              >
+                <option value="home" style={{ background: "#111111", color: "white" }}>
+                  Doma
+                </option>
+                <option value="away" style={{ background: "#111111", color: "white" }}>
+                  Venku
+                </option>
+              </select>
+
+              <button
+                style={{
+                  ...primaryButtonStyle,
+                  opacity: savingMatch ? 0.7 : 1,
+                }}
+                onClick={() => void handleAddMatch()}
+                disabled={savingMatch}
+              >
+                {savingMatch ? "Ukládám..." : "Uložit zápas"}
+              </button>
+
+              <button
+                style={{
+                  ...softButtonStyle,
+                  width: "100%",
+                }}
+                onClick={() => setShowAddForm(false)}
+              >
+                Zrušit
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div
+          style={{
+            ...modernCardStyle,
+            padding: "14px",
+            color: "#b8b8b8",
+            fontSize: "14px",
+            lineHeight: 1.5,
+          }}
+        >
+          Jako člen týmu můžeš sledovat zápasy, hlasovat v anketě a otevřít live
+          zápas.
+        </div>
+      )}
+
       {message && (
         <div
           style={{
@@ -1336,194 +1515,7 @@ ${url}`;
         </div>
       )}
 
-      {isAdmin ? (
-        <div style={{ ...modernCardStyle, padding: "14px" }}>
-          <button
-            style={primaryButtonStyle}
-            onClick={() => {
-              setShowAddForm((prev) => !prev);
-              setMessage("");
-            }}
-          >
-            {showAddForm ? "Zavřít formulář" : "＋ Přidat zápas"}
-          </button>
 
-          {showAddForm && (
-            <div
-              style={{
-                marginTop: "14px",
-                display: "grid",
-                gap: "10px",
-              }}
-            >
-              <select
-                value={newTeam}
-                onChange={(e) => setNewTeam(e.target.value as "A" | "B")}
-                style={{
-                  ...styles.input,
-                  appearance: "none",
-                }}
-              >
-                <option value="A" style={{ background: "#111111", color: "white" }}>
-                  A-tým
-                </option>
-                {hasBTeam && (
-                  <option value="B" style={{ background: "#111111", color: "white" }}>
-                    B-tým
-                  </option>
-                )}
-              </select>
-
-              <input
-                type="text"
-                placeholder="Soupeř"
-                value={newOpponent}
-                onChange={(e) => setNewOpponent(e.target.value)}
-                style={styles.input}
-              />
-
-              <div style={{ display: "grid", gap: "9px", padding: "2px 0 4px" }}>
-                <div
-                  style={{
-                    color: "#f0f0f0",
-                    fontSize: "12px",
-                    fontWeight: 900,
-                    letterSpacing: ".35px",
-                  }}
-                >
-                  DRES SOUPEŘE
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-                    gap: "7px",
-                  }}
-                >
-                  {JERSEY_OPTIONS.map((option) => {
-                    const selected = newOpponentJersey === option.id;
-
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        onClick={() => setNewOpponentJersey(option.id)}
-                        style={{
-                          minWidth: 0,
-                          padding: "7px 3px 6px",
-                          borderRadius: "12px",
-                          border: selected
-                            ? `1px solid ${primaryColor}`
-                            : "1px solid rgba(255,255,255,.08)",
-                          background: selected
-                            ? `${primaryColor}12`
-                            : "rgba(255,255,255,.035)",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <img
-                          src={option.src}
-                          alt={option.label}
-                          style={{
-                            width: "100%",
-                            height: "48px",
-                            objectFit: "contain",
-                            display: "block",
-                          }}
-                        />
-                        <div
-                          style={{
-                            marginTop: "4px",
-                            color: selected ? primaryColor : "#9ea4aa",
-                            fontSize: "8px",
-                            fontWeight: 900,
-                            textAlign: "center",
-                          }}
-                        >
-                          {option.label.toUpperCase()}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <input
-                type="date"
-                value={newDate}
-                onChange={(e) => setNewDate(e.target.value)}
-                style={styles.input}
-              />
-
-              <input
-                type="time"
-                value={newTime}
-                onChange={(e) => setNewTime(e.target.value)}
-                style={styles.input}
-              />
-
-              <input
-                type="text"
-                placeholder="Hřiště / místo"
-                value={newLocation}
-                onChange={(e) => setNewLocation(e.target.value)}
-                style={styles.input}
-              />
-
-              <select
-                value={newVenue}
-                onChange={(e) => setNewVenue(e.target.value as "home" | "away")}
-                style={{
-                  ...styles.input,
-                  appearance: "none",
-                }}
-              >
-                <option value="home" style={{ background: "#111111", color: "white" }}>
-                  Doma
-                </option>
-                <option value="away" style={{ background: "#111111", color: "white" }}>
-                  Venku
-                </option>
-              </select>
-
-              <button
-                style={{
-                  ...primaryButtonStyle,
-                  opacity: savingMatch ? 0.7 : 1,
-                }}
-                onClick={() => void handleAddMatch()}
-                disabled={savingMatch}
-              >
-                {savingMatch ? "Ukládám..." : "Uložit zápas"}
-              </button>
-
-              <button
-                style={{
-                  ...softButtonStyle,
-                  width: "100%",
-                }}
-                onClick={() => setShowAddForm(false)}
-              >
-                Zrušit
-              </button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div
-          style={{
-            ...modernCardStyle,
-            padding: "14px",
-            color: "#b8b8b8",
-            fontSize: "14px",
-            lineHeight: 1.5,
-          }}
-        >
-          Jako člen týmu můžeš sledovat zápasy, hlasovat v anketě a otevřít live
-          zápas.
-        </div>
-      )}
     </div>
   );
 }

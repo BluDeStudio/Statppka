@@ -1361,6 +1361,7 @@ export default function Home() {
     { screen: "team", label: "TÝM", icon: <FaUsers /> },
     { screen: "matches", label: "ZÁPASY", icon: <FaFutbol /> },
     { screen: "trainings", label: "TRÉNINKY", icon: <GiTrafficCone /> },
+    { screen: "discipline", label: "DISCIPLÍNA", icon: <FaFutbol /> },
     { screen: "stats", label: "STATISTIKY", icon: <FaChartBar /> },
   ];
 
@@ -1401,6 +1402,11 @@ export default function Home() {
       return;
     }
 
+    if (nextScreen === "discipline") {
+      setScreen("discipline");
+      return;
+    }
+
     if (nextScreen === "stats") {
       setScreen("stats");
 
@@ -1417,7 +1423,7 @@ export default function Home() {
     bottom: "max(8px, env(safe-area-inset-bottom))",
     zIndex: 100,
     display: "grid",
-    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
     gap: "4px",
     marginTop: "18px",
     padding: "7px",
@@ -2293,23 +2299,7 @@ export default function Home() {
           </>
         )}
 
-        {!isMainMenuVisible && !isLiveMatch && selectedPlayedMatchId === null && (
-          <div style={sectionHeaderCardStyle}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-              }}
-            >
-              <button onClick={() => setScreen("home")} style={backButtonStyle}>
-                ← Zpět
-              </button>
 
-              <div style={sectionTitleStyle}>{getScreenTitle(screen)}</div>
-            </div>
-          </div>
-        )}
 
         <div style={{ marginTop: isMainMenuVisible ? "20px" : "0px" }}>
           {screen === "team" && selectedPlayedMatchId === null && !isLiveMatch && (
