@@ -1326,104 +1326,128 @@ export default function DisciplineScreen({
   };
 
   const glassCardStyle: React.CSSProperties = {
-    borderRadius: "16px",
-    background: "rgba(255,255,255,0.035)",
-    border: "1px solid rgba(255,255,255,0.07)",
-    boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
-    backdropFilter: "blur(10px)",
+    borderRadius: "22px",
+    background:
+      "linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.025))",
+    border: "1px solid rgba(255,255,255,0.09)",
+    boxShadow: "0 16px 36px rgba(0,0,0,0.30)",
+    backdropFilter: "blur(14px)",
   };
 
   const tabButton = (active: boolean): React.CSSProperties => ({
     flex: 1,
-    border: active ? `1px solid ${primaryColor}55` : "1px solid rgba(255,255,255,0.07)",
-    borderRadius: "11px",
-    padding: "9px 10px",
-    background: active ? `${primaryColor}18` : "rgba(255,255,255,0.035)",
-    color: active ? primaryColor : "#b8b8b8",
+    border: "none",
+    borderRadius: "14px",
+    padding: "12px 10px",
+    background: active
+      ? `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`
+      : "rgba(255,255,255,0.06)",
+    color: active ? "#071107" : "#ffffff",
     fontWeight: 900,
-    fontSize: "12px",
-    letterSpacing: "0.25px",
     cursor: "pointer",
-    boxShadow: "none",
+    boxShadow: active ? `0 10px 24px ${primaryColor}33` : "none",
   });
 
   const subTabButton = (active: boolean): React.CSSProperties => ({
     flex: 1,
     border: "none",
-    borderRadius: "10px",
-    padding: "10px",
-    background: active ? `${primaryColor}1c` : "transparent",
-    color: active ? primaryColor : "#9b9b9b",
-    fontWeight: 950,
-    fontSize: "12px",
-    letterSpacing: "0.45px",
+    borderRadius: "14px",
+    padding: "12px 10px",
+    background: active
+      ? `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`
+      : "rgba(255,255,255,0.06)",
+    color: active ? "#071107" : "#ffffff",
+    fontWeight: 900,
     cursor: "pointer",
-    boxShadow: active ? `inset 0 0 0 1px ${primaryColor}45` : "none",
+    boxShadow: active ? `0 10px 24px ${primaryColor}33` : "none",
   });
 
   const sortButton = (active: boolean): React.CSSProperties => ({
     flex: 1,
-    border: active ? `1px solid ${primaryColor}55` : "1px solid rgba(255,255,255,0.07)",
+    border: active
+      ? `1px solid ${primaryColor}66`
+      : "1px solid rgba(255,255,255,0.08)",
     borderRadius: "999px",
-    padding: "7px 10px",
-    background: active ? `${primaryColor}16` : "rgba(255,255,255,0.025)",
-    color: active ? primaryColor : "#a8a8a8",
-    fontSize: "11px",
+    padding: "10px 12px",
+    background: active ? `${primaryColor}22` : "rgba(255,255,255,0.06)",
+    color: active ? primaryColor : "#ffffff",
     fontWeight: 900,
     cursor: "pointer",
   });
 
   const modernMainTabButton = (
     tab: MainTab,
-    _title: string,
-    _subtitle: string,
-    _icon: string
+    title: string,
+    subtitle: string,
+    icon: string
   ): React.CSSProperties => {
     const active = mainTab === tab;
+
     return {
       position: "relative",
       overflow: "hidden",
-      border: active ? `1px solid ${primaryColor}42` : "1px solid rgba(255,255,255,0.07)",
-      borderRadius: "16px",
-      padding: "11px 10px 11px 15px",
-      minHeight: "66px",
+      border: "1px solid rgba(255,255,255,0.09)",
+      borderRadius: "22px",
+      padding: "14px 12px 14px 18px",
+      minHeight: "82px",
       background: active
-        ? `linear-gradient(135deg, ${primaryColor}12, rgba(255,255,255,0.035))`
-        : "rgba(255,255,255,0.025)",
+        ? "linear-gradient(135deg, rgba(255,255,255,0.095), rgba(255,255,255,0.035))"
+        : "linear-gradient(135deg, rgba(255,255,255,0.055), rgba(255,255,255,0.02))",
       color: "white",
       cursor: "pointer",
       textAlign: "left",
-      boxShadow: active ? `0 8px 20px ${primaryColor}12` : "0 6px 18px rgba(0,0,0,0.14)",
+      boxShadow: active
+        ? `0 14px 30px ${primaryColor}22`
+        : "0 12px 28px rgba(0,0,0,0.24)",
     };
   };
 
   return (
-    <div style={{ display: "grid", gap: "12px" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+    <div style={{ display: "grid", gap: "18px", paddingBottom: "18px" }}>
+      <div
+        style={{
+          fontSize: "30px",
+          lineHeight: 1,
+          fontWeight: 950,
+          letterSpacing: "0.3px",
+          color: "#ffffff",
+          marginTop: "2px",
+        }}
+      >
+        DISCIPLÍNA
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "0",
+          padding: "3px",
+          borderRadius: "16px",
+          border: "1px solid rgba(255,255,255,0.09)",
+          background: "rgba(255,255,255,0.025)",
+        }}
+      >
         <button
           type="button"
           onClick={() => setMainTab("attendance")}
-          style={modernMainTabButton("attendance", "DOCHÁZKA", "účast hráčů", "👤")}
+          style={{
+            border: mainTab === "attendance" ? `1px solid ${primaryColor}` : "1px solid transparent",
+            borderRadius: "13px",
+            minHeight: "58px",
+            padding: "10px 12px",
+            background: mainTab === "attendance"
+              ? `linear-gradient(135deg, ${primaryColor}22, ${primaryColor}0b)`
+              : "transparent",
+            color: mainTab === "attendance" ? "#ffffff" : "#a9a9ad",
+            cursor: "pointer",
+          }}
         >
-          <div
-            style={{
-              position: "absolute",
-              left: 0,
-              top: 0,
-              bottom: 0,
-              width: "4px",
-              background:
-                mainTab === "attendance"
-                  ? primaryColor
-                  : "rgba(255,255,255,0.10)",
-            }}
-          />
-
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <div
               style={{
-                width: "34px",
-                height: "34px",
+                width: "38px",
+                height: "38px",
                 borderRadius: "14px",
                 background:
                   mainTab === "attendance"
@@ -1433,7 +1457,7 @@ export default function DisciplineScreen({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: "17px",
+                fontSize: "20px",
                 flexShrink: 0,
               }}
             >
@@ -1444,23 +1468,14 @@ export default function DisciplineScreen({
               <div
                 style={{
                   fontWeight: 950,
-                  fontSize: "14px",
-                  letterSpacing: "0.4px",
+                  fontSize: "17px",
+                  letterSpacing: "0.1px",
                   color: mainTab === "attendance" ? "#ffffff" : "#d7d7d7",
                 }}
               >
                 DOCHÁZKA
               </div>
-              <div
-                style={{
-                  marginTop: "3px",
-                  fontSize: "11px",
-                  color: "#9b9b9b",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                účast hráčů
-              </div>
+
             </div>
           </div>
         </button>
@@ -1468,7 +1483,17 @@ export default function DisciplineScreen({
         <button
           type="button"
           onClick={() => setMainTab("fines")}
-          style={modernMainTabButton("fines", "POKUTY", "platby a tresty", "💳")}
+          style={{
+            border: mainTab === "fines" ? `1px solid ${primaryColor}` : "1px solid transparent",
+            borderRadius: "13px",
+            minHeight: "58px",
+            padding: "10px 12px",
+            background: mainTab === "fines"
+              ? `linear-gradient(135deg, ${primaryColor}22, ${primaryColor}0b)`
+              : "transparent",
+            color: mainTab === "fines" ? "#ffffff" : "#a9a9ad",
+            cursor: "pointer",
+          }}
         >
           <div
             style={{
@@ -1476,7 +1501,7 @@ export default function DisciplineScreen({
               left: 0,
               top: 0,
               bottom: 0,
-              width: "4px",
+              width: "7px",
               background:
                 mainTab === "fines" ? primaryColor : "rgba(255,255,255,0.10)",
             }}
@@ -1485,8 +1510,8 @@ export default function DisciplineScreen({
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <div
               style={{
-                width: "34px",
-                height: "34px",
+                width: "38px",
+                height: "38px",
                 borderRadius: "14px",
                 background:
                   mainTab === "fines"
@@ -1496,7 +1521,7 @@ export default function DisciplineScreen({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: "17px",
+                fontSize: "20px",
                 flexShrink: 0,
               }}
             >
@@ -1507,23 +1532,14 @@ export default function DisciplineScreen({
               <div
                 style={{
                   fontWeight: 950,
-                  fontSize: "14px",
-                  letterSpacing: "0.4px",
+                  fontSize: "17px",
+                  letterSpacing: "0.1px",
                   color: mainTab === "fines" ? "#ffffff" : "#d7d7d7",
                 }}
               >
                 POKUTY
               </div>
-              <div
-                style={{
-                  marginTop: "3px",
-                  fontSize: "11px",
-                  color: "#9b9b9b",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                platby a tresty
-              </div>
+
             </div>
           </div>
         </button>
@@ -1531,8 +1547,23 @@ export default function DisciplineScreen({
 
       <div
         style={{
+          fontSize: "13px",
+          color: "#a9a9ad",
+          fontWeight: 900,
+          letterSpacing: "1.2px",
+          textTransform: "uppercase",
+          marginTop: "4px",
+          marginBottom: "-6px",
+        }}
+      >
+        OBDOBÍ
+      </div>
+
+      <div
+        style={{
           ...glassCardStyle,
           overflow: "hidden",
+          borderRadius: "15px",
         }}
       >
         <button
@@ -1543,7 +1574,7 @@ export default function DisciplineScreen({
             border: "none",
             background: "transparent",
             color: "white",
-            padding: "16px",
+            padding: "14px 16px",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
@@ -1563,7 +1594,7 @@ export default function DisciplineScreen({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: "18px",
+                fontSize: "21px",
               }}
             >
               📅
@@ -1579,10 +1610,10 @@ export default function DisciplineScreen({
                   textTransform: "uppercase",
                 }}
               >
-                Období docházky
+                Období
               </div>
 
-              <div style={{ fontSize: "16px", fontWeight: 950, marginTop: "2px" }}>
+              <div style={{ fontSize: "18px", fontWeight: 950, marginTop: "3px" }}>
                 {periodFilterMode === "all"
                   ? "Všechna období"
                   : periodFilterMode === "range"
@@ -1624,7 +1655,7 @@ export default function DisciplineScreen({
             style={{
               display: "grid",
               gap: "10px",
-              padding: "0 14px 14px",
+              padding: "0 16px 16px",
               borderTop: "1px solid rgba(255,255,255,0.06)",
             }}
           >
@@ -1840,11 +1871,12 @@ export default function DisciplineScreen({
         <>
           <div
             style={{
-              ...glassCardStyle,
-              padding: "16px",
+              padding: "14px 4px",
               display: "grid",
               gridTemplateColumns: "1fr 1fr 1fr",
               gap: "10px",
+              borderTop: "1px solid rgba(255,255,255,0.10)",
+              borderBottom: "1px solid rgba(255,255,255,0.10)",
             }}
           >
             <div>
@@ -1895,10 +1927,10 @@ export default function DisciplineScreen({
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
             <div
               style={{
-                fontSize: "13px",
-                color: "#b8b8b8",
-                fontWeight: 900,
-                letterSpacing: "0.8px",
+                fontSize: "14px",
+                color: "#bfc0c4",
+                fontWeight: 950,
+                letterSpacing: "0.9px",
                 textTransform: "uppercase",
               }}
             >
@@ -1944,9 +1976,10 @@ export default function DisciplineScreen({
                     key={row.player.id}
                     style={{
                       ...glassCardStyle,
-                      padding: "12px",
+                      padding: "14px",
                       display: "grid",
-                      gap: "10px",
+                      gap: "12px",
+                      borderRadius: "15px",
                     }}
                   >
                     <div
@@ -1960,9 +1993,9 @@ export default function DisciplineScreen({
                       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                         <div
                           style={{
-                            minWidth: "44px",
-                            height: "44px",
-                            borderRadius: "13px",
+                            minWidth: "48px",
+                            height: "48px",
+                            borderRadius: "12px",
                             background: `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`,
                             color: "#071107",
                             display: "flex",
@@ -1976,7 +2009,7 @@ export default function DisciplineScreen({
                         </div>
 
                         <div>
-                          <div style={{ fontWeight: 950, fontSize: "16px" }}>
+                          <div style={{ fontWeight: 950, fontSize: "17px" }}>
                             {row.player.name}
                           </div>
                           <div
@@ -1996,7 +2029,7 @@ export default function DisciplineScreen({
                           minWidth: "64px",
                           textAlign: "right",
                           fontWeight: 950,
-                          fontSize: "17px",
+                          fontSize: "21px",
                           color: percentageColor,
                         }}
                       >
