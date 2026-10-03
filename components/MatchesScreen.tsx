@@ -258,8 +258,18 @@ export default function MatchesScreen({
       if (raw) {
         const saved = JSON.parse(raw) as { clubId?: string; matchId?: string };
         if (saved.clubId === clubId && saved.matchId) {
-          setSelectedMatchId(saved.matchId);
-          setSelectedMode("live");
+          const savedMatch = plannedMatches.find((match) => match.id === saved.matchId);
+          const isActuallyLive =
+            savedMatch?.status === "live" || savedMatch?.status === "halftime";
+
+          if (savedMatch && isActuallyLive) {
+            setSelectedMatchId(saved.matchId);
+            setSelectedMode("live");
+          } else {
+            window.localStorage.removeItem(LIVE_VIEW_STORAGE_KEY);
+            setSelectedMatchId(null);
+            setSelectedMode(null);
+          }
         }
       }
     } catch (error) {
