@@ -455,15 +455,6 @@ export default function Home() {
     );
   }, [screen, teamTab, matchesTab, selectedPlayedMatchId, viewStateRestored]);
 
-  const plannedMatchesRenderKey = useMemo(() => {
-    return plannedMatches
-      .map(
-        (match) =>
-          `${match.id}-${match.status ?? "planned"}-${match.current_period ?? 0}-${match.first_half_elapsed_seconds ?? 0}-${match.second_half_elapsed_seconds ?? 0}`
-      )
-      .join("|");
-  }, [plannedMatches]);
-
   const loadClubMatchData = useCallback(async (clubId: string, force = false) => {
     if (!force && (matchesLoadedRef.current || matchesLoadingRef.current)) {
       return;
@@ -2150,7 +2141,7 @@ export default function Home() {
                 onClick: () => {
                   setScreen("team");
                   setTeamTab("overview");
-                  void loadOverviewPlayers(currentClub.id, true);
+                  void loadOverviewPlayers(currentClub.id, false);
                   void ensureClubMatchDataLoaded(currentClub.id);
                 },
               })}
@@ -2227,7 +2218,7 @@ export default function Home() {
                   style={getSubTabStyle(teamTab === "overview")}
                   onClick={() => {
                     setTeamTab("overview");
-                    void loadOverviewPlayers(currentClub.id, true);
+                    void loadOverviewPlayers(currentClub.id, false);
                     void ensureClubMatchDataLoaded(currentClub.id);
                   }}
                 >
@@ -2492,7 +2483,6 @@ export default function Home() {
                 <>
                   {matchesTab === "planned" && (
                     <MatchesScreen
-                      key={plannedMatchesRenderKey}
                       clubId={currentClub.id}
                       clubName={currentClub.name}
                       hasBTeam={currentClub.has_b_team}
