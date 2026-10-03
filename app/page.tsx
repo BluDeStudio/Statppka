@@ -1352,6 +1352,99 @@ export default function Home() {
     color: active ? dynamicTheme.primaryText : "white",
   });
 
+  const bottomNavItems: {
+    screen: Screen;
+    label: string;
+    icon: React.ReactNode;
+  }[] = [
+    { screen: "home", label: "DOMŮ", icon: <FaChevronRight /> },
+    { screen: "team", label: "TÝM", icon: <FaUsers /> },
+    { screen: "matches", label: "ZÁPASY", icon: <FaFutbol /> },
+    { screen: "trainings", label: "TRÉNINKY", icon: <GiTrafficCone /> },
+    { screen: "stats", label: "STATISTIKY", icon: <FaChartBar /> },
+  ];
+
+  const handleBottomNavigation = (nextScreen: Screen) => {
+    setSelectedPlayedMatchId(null);
+    setOpenTrainingId(null);
+    setOpenMatchId(null);
+
+    if (nextScreen === "home") {
+      setScreen("home");
+      return;
+    }
+
+    if (nextScreen === "team") {
+      setScreen("team");
+      setTeamTab("overview");
+
+      if (currentClub) {
+        void loadOverviewPlayers(currentClub.id, false);
+        void ensureClubMatchDataLoaded(currentClub.id);
+      }
+
+      return;
+    }
+
+    if (nextScreen === "matches") {
+      setScreen("matches");
+
+      if (currentClub) {
+        void ensureClubMatchDataLoaded(currentClub.id);
+      }
+
+      return;
+    }
+
+    if (nextScreen === "trainings") {
+      setScreen("trainings");
+      return;
+    }
+
+    if (nextScreen === "stats") {
+      setScreen("stats");
+
+      if (currentClub) {
+        void ensureClubMatchDataLoaded(currentClub.id);
+      }
+
+      return;
+    }
+  };
+
+  const bottomNavStyle: React.CSSProperties = {
+    position: "sticky",
+    bottom: "max(8px, env(safe-area-inset-bottom))",
+    zIndex: 100,
+    display: "grid",
+    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+    gap: "4px",
+    marginTop: "18px",
+    padding: "7px",
+    borderRadius: "18px",
+    background: "rgba(8,8,8,0.94)",
+    border: `1px solid ${dynamicTheme.cardBorder}`,
+    boxShadow: "0 14px 34px rgba(0,0,0,0.38)",
+    backdropFilter: "blur(18px)",
+  };
+
+  const getBottomNavButtonStyle = (active: boolean): React.CSSProperties => ({
+    minWidth: 0,
+    border: "none",
+    borderRadius: "13px",
+    padding: "9px 3px 8px",
+    background: active ? `${dynamicTheme.primary}22` : "transparent",
+    color: active ? dynamicTheme.primary : "rgba(255,255,255,0.58)",
+    cursor: "pointer",
+    display: "grid",
+    justifyItems: "center",
+    gap: "5px",
+    fontSize: "9px",
+    lineHeight: 1,
+    fontWeight: 900,
+    letterSpacing: "0.2px",
+  });
+
   const renderMatchesLoadingCard = () => (
     <div
       style={{
@@ -2703,6 +2796,30 @@ export default function Home() {
   />
 )}
         </div>
+
+        {!isLiveMatch && (
+          <nav style={bottomNavStyle} aria-label="Hlavní navigace">
+            {bottomNavItems.map((item) => {
+              const active =
+                selectedPlayedMatchId === null && screen === item.screen;
+
+              return (
+                <button
+                  key={item.screen}
+                  type="button"
+                  onClick={() => handleBottomNavigation(item.screen)}
+                  style={getBottomNavButtonStyle(active)}
+                  aria-current={active ? "page" : undefined}
+                >
+                  <span style={{ fontSize: "18px", lineHeight: 1 }}>
+                    {item.icon}
+                  </span>
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        )}
 
         <div
           style={{
