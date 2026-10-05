@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { EmailOtpType, Session } from "@supabase/supabase-js";
 import { App as CapacitorApp } from "@capacitor/app";
 import {
@@ -401,13 +402,6 @@ export default function Home() {
   const deepLinkHandledRef = useRef(false);
 
   const isCurrentUserAdmin = currentMembership?.role === "admin";
-
-  // isLiveMatch je pouze informace z MatchesScreen o jeho vnitřním LIVE režimu.
-  // NESMÍ řídit globální navigaci ani dostupnost hlavních obrazovek.
-  // Na mobilech mohl po návratu z backgroundu zůstat true, i když MatchesScreen
-  // už zobrazoval běžný seznam zápasů. Výsledkem bylo zmizení spodní navigace
-  // i přepínače PLÁNOVANÉ / ODEHRANÉ a aplikace působila jako zamrzlá.
-  const isLiveMatchActive = screen === "matches" && isLiveMatch;
 
   const isMainMenuVisible =
     selectedPlayedMatchId === null && screen === "home";
@@ -2867,7 +2861,22 @@ export default function Home() {
 )}
         </div>
 
-        {screen !== "home" && (
+        <div
+          style={{
+            marginTop: "18px",
+            textAlign: "center",
+            fontSize: "12px",
+            color: "rgba(255,255,255,0.38)",
+            letterSpacing: "0.4px",
+          }}
+        >
+          {appTitle}
+        </div>
+      </div>
+
+      {screen !== "home" &&
+        typeof document !== "undefined" &&
+        createPortal(
           <nav style={bottomNavStyle} aria-label="Hlavní navigace">
             {bottomNavItems.map((item) => {
               const active =
@@ -2908,21 +2917,9 @@ export default function Home() {
                 </button>
               );
             })}
-          </nav>
+          </nav>,
+          document.body
         )}
-
-        <div
-          style={{
-            marginTop: "18px",
-            textAlign: "center",
-            fontSize: "12px",
-            color: "rgba(255,255,255,0.38)",
-            letterSpacing: "0.4px",
-          }}
-        >
-          {appTitle}
-        </div>
-      </div>
     </main>
   );
 }
