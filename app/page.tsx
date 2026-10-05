@@ -402,13 +402,15 @@ export default function Home() {
 
   const isCurrentUserAdmin = currentMembership?.role === "admin";
 
-  // LIVE režim smí ovlivňovat layout pouze uvnitř sekce ZÁPASY.
-  // Kdyby MatchesScreen po návratu z backgroundu nechal isLiveMatch=true,
-  // nesmí tím zmizet navigace ani obsah ostatních sekcí.
+  // isLiveMatch je pouze informace z MatchesScreen o jeho vnitřním LIVE režimu.
+  // NESMÍ řídit globální navigaci ani dostupnost hlavních obrazovek.
+  // Na mobilech mohl po návratu z backgroundu zůstat true, i když MatchesScreen
+  // už zobrazoval běžný seznam zápasů. Výsledkem bylo zmizení spodní navigace
+  // i přepínače PLÁNOVANÉ / ODEHRANÉ a aplikace působila jako zamrzlá.
   const isLiveMatchActive = screen === "matches" && isLiveMatch;
 
   const isMainMenuVisible =
-    !isLiveMatchActive && selectedPlayedMatchId === null && screen === "home";
+    selectedPlayedMatchId === null && screen === "home";
 
   const selectedPlayedMatch = finishedMatches.find(
     (match) => match.id === selectedPlayedMatchId
@@ -2037,7 +2039,7 @@ export default function Home() {
           border: `1px solid ${dynamicTheme.cardBorder}`,
           // Pevná spodní navigace leží mimo tok stránky, proto jí necháme místo.
           paddingBottom:
-            !isLiveMatchActive && screen !== "home"
+            screen !== "home"
               ? "calc(92px + env(safe-area-inset-bottom))"
               : styles.phone.paddingBottom,
         }}
@@ -2312,6 +2314,7 @@ export default function Home() {
                 subtitle: "Hráči, soupiska a role",
                 icon: <FaUsers />,
                 onClick: () => {
+                  setIsLiveMatch(false);
                   setScreen("team");
                   setTeamTab("overview");
                   void loadOverviewPlayers(currentClub.id, false);
@@ -2324,6 +2327,7 @@ export default function Home() {
                 subtitle: "Rozpisy, výsledky a sestavy",
                 icon: <FaFutbol />,
                 onClick: () => {
+                  setIsLiveMatch(false);
                   setScreen("matches");
                   setMatchesTab("planned");
                   void ensureClubMatchDataLoaded(currentClub.id);
@@ -2334,14 +2338,20 @@ export default function Home() {
                 label: "TRÉNINKY",
                 subtitle: "Plány tréninků a účast",
                 icon: <GiTrafficCone />,
-                onClick: () => setScreen("trainings"),
+                onClick: () => {
+                  setIsLiveMatch(false);
+                  setScreen("trainings");
+                },
               })}
 
               {renderMenuButton({
                 label: "ANKETY",
                 subtitle: "Hlasování a průzkumy",
                 icon: <FaClipboardList />,
-                onClick: () => setScreen("polls"),
+                onClick: () => {
+                  setIsLiveMatch(false);
+                  setScreen("polls");
+                },
               })}
 
               {renderMenuButton({
@@ -2349,6 +2359,7 @@ export default function Home() {
                 subtitle: "Výkony a týmové statistiky",
                 icon: <FaChartBar />,
                 onClick: () => {
+                  setIsLiveMatch(false);
                   setScreen("stats");
                   void ensureClubMatchDataLoaded(currentClub.id);
                 },
@@ -2359,7 +2370,10 @@ export default function Home() {
                 subtitle: "Pokuty, docházka a tresty",
                 icon: <FaFutbol />,
                 stripeColor: "#f1c40f",
-                onClick: () => setScreen("discipline"),
+                onClick: () => {
+                  setIsLiveMatch(false);
+                  setScreen("discipline");
+                },
               })}
             </div>
           </>
@@ -2368,7 +2382,7 @@ export default function Home() {
 
 
         <div style={{ marginTop: isMainMenuVisible ? "20px" : "0px" }}>
-          {screen === "team" && selectedPlayedMatchId === null && !isLiveMatchActive && (
+          {screen === "team" && selectedPlayedMatchId === null && (
             <div style={{ display: "grid", gap: "12px" }}>
               <div style={{ display: "flex", gap: "6px" }}>
                 <button
@@ -2610,29 +2624,29 @@ export default function Home() {
 
           {screen === "matches" && selectedPlayedMatchId === null && (
             <div style={{ display: "grid", gap: "12px" }}>
-              {!isLiveMatchActive && (
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <button
-                    style={getSubTabStyle(matchesTab === "planned")}
-                    onClick={() => {
-                      setMatchesTab("planned");
-                      void ensureClubMatchDataLoaded(currentClub.id);
-                    }}
-                  >
-                    PLÁNOVANÉ
-                  </button>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  style={getSubTabStyle(matchesTab === "planned")}
+                  onClick={() => {
+                    setIsLiveMatch(false);
+                    setMatchesTab("planned");
+                    void ensureClubMatchDataLoaded(currentClub.id);
+                  }}
+                >
+                  PLÁNOVANÉ
+                </button>
 
-                  <button
-                    style={getSubTabStyle(matchesTab === "played")}
-                    onClick={() => {
-                      setMatchesTab("played");
-                      void ensureClubMatchDataLoaded(currentClub.id);
-                    }}
-                  >
-                    ODEHRANÉ
-                  </button>
-                </div>
-              )}
+                <button
+                  style={getSubTabStyle(matchesTab === "played")}
+                  onClick={() => {
+                    setIsLiveMatch(false);
+                    setMatchesTab("played");
+                    void ensureClubMatchDataLoaded(currentClub.id);
+                  }}
+                >
+                  ODEHRANÉ
+                </button>
+              </div>
 
               {matchesLoading && !matchesLoaded ? (
                 renderMatchesLoadingCard()
@@ -2754,7 +2768,7 @@ export default function Home() {
                     />
                   )}
 
-                  {matchesTab === "played" && !isLiveMatchActive && (
+                  {matchesTab === "played" && (
                     <PlayedMatchesScreen
                       finishedMatches={finishedMatches}
                       clubName={currentClub.name}
@@ -2793,7 +2807,7 @@ export default function Home() {
             </div>
           )}
 
-          {screen === "trainings" && selectedPlayedMatchId === null && !isLiveMatchActive && (
+          {screen === "trainings" && selectedPlayedMatchId === null && (
             <TrainingsScreen
               clubId={currentClub.id}
               primaryColor={currentClub.primary_color}
@@ -2803,7 +2817,7 @@ export default function Home() {
             />
           )}
 
-          {screen === "polls" && selectedPlayedMatchId === null && !isLiveMatchActive && (
+          {screen === "polls" && selectedPlayedMatchId === null && (
             <PollsScreen
               clubId={currentClub.id}
               userId={session.user.id}
@@ -2811,7 +2825,7 @@ export default function Home() {
             />
           )}
 
-          {screen === "stats" && selectedPlayedMatchId === null && !isLiveMatchActive && (
+          {screen === "stats" && selectedPlayedMatchId === null && (
             <>
               {matchesLoading && !matchesLoaded ? (
                 renderMatchesLoadingCard()
@@ -2825,7 +2839,7 @@ export default function Home() {
             </>
           )}
 
-          {screen === "discipline" && selectedPlayedMatchId === null && !isLiveMatchActive && (
+          {screen === "discipline" && selectedPlayedMatchId === null && (
             <DisciplineScreen
               clubId={currentClub.id}
               primaryColor={currentClub.primary_color}
@@ -2853,7 +2867,7 @@ export default function Home() {
 )}
         </div>
 
-        {!isLiveMatchActive && screen !== "home" && (
+        {screen !== "home" && (
           <nav style={bottomNavStyle} aria-label="Hlavní navigace">
             {bottomNavItems.map((item) => {
               const active =
