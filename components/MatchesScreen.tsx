@@ -414,11 +414,11 @@ export default function MatchesScreen({
   const teamLabelB = `${teamLabelA} B`;
 
   const modernCardStyle: React.CSSProperties = {
-    borderRadius: "22px",
+    borderRadius: "16px",
     background:
       "linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.025))",
     border: "1px solid rgba(255,255,255,0.09)",
-    boxShadow: "0 16px 36px rgba(0,0,0,0.30)",
+    boxShadow: "0 8px 22px rgba(0,0,0,0.20)",
     backdropFilter: "blur(14px)",
   };
 
@@ -434,8 +434,8 @@ export default function MatchesScreen({
 
   const softButtonStyle: React.CSSProperties = {
     border: "1px solid rgba(255,255,255,0.10)",
-    borderRadius: "14px",
-    padding: "10px 12px",
+    borderRadius: "12px",
+    padding: "8px 11px",
     background: "rgba(255,255,255,0.07)",
     color: "#ffffff",
     fontWeight: 900,
@@ -444,8 +444,8 @@ export default function MatchesScreen({
 
   const getFilterButtonStyle = (value: MatchFilter): React.CSSProperties => ({
     border: "none",
-    borderRadius: "999px",
-    padding: "10px 10px",
+    borderRadius: "12px",
+    padding: "8px 10px",
     background:
       filter === value
         ? `linear-gradient(135deg, ${primaryColor}, ${primaryColor}cc)`
@@ -878,49 +878,19 @@ ${url}`;
   }
 
   return (
-    <div style={{ display: "grid", gap: "14px" }}>
+    <div style={{ display: "grid", gap: "12px", paddingBottom: "18px" }}>
       <div
         style={{
-          ...modernCardStyle,
-          padding: "12px",
+          fontSize: "24px",
+          lineHeight: 1.05,
+          fontWeight: 950,
+          letterSpacing: "0.2px",
+          color: "#ffffff",
+          margin: "2px 2px 6px",
         }}
       >
-        <div
-          style={{
-            color: "#9b9b9b",
-            fontSize: "11px",
-            fontWeight: 950,
-            letterSpacing: "0.8px",
-            textTransform: "uppercase",
-            marginBottom: "10px",
-          }}
-        >
-          Filtr týmu
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: hasBTeam ? "1fr 1fr 1fr" : "1fr 1fr",
-            gap: "8px",
-          }}
-        >
-          <button onClick={() => setFilter("ALL")} style={getFilterButtonStyle("ALL")}>
-            Vše
-          </button>
-
-          <button onClick={() => setFilter("A")} style={getFilterButtonStyle("A")}>
-            A-tým
-          </button>
-
-          {hasBTeam && (
-            <button onClick={() => setFilter("B")} style={getFilterButtonStyle("B")}>
-              B-tým
-            </button>
-          )}
-        </div>
+        ZÁPASY
       </div>
-
       {isAdmin ? (
         <div style={{ ...modernCardStyle, padding: "14px" }}>
           <button
@@ -1109,6 +1079,50 @@ ${url}`;
           zápas.
         </div>
       )}
+
+      <div
+        style={{
+          ...modernCardStyle,
+          padding: "12px",
+        }}
+      >
+        <div
+          style={{
+            color: "#9b9b9b",
+            fontSize: "11px",
+            fontWeight: 950,
+            letterSpacing: "0.8px",
+            textTransform: "uppercase",
+            marginBottom: "10px",
+          }}
+        >
+          Filtr týmu
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: hasBTeam ? "1fr 1fr 1fr" : "1fr 1fr",
+            gap: "8px",
+          }}
+        >
+          <button onClick={() => setFilter("ALL")} style={getFilterButtonStyle("ALL")}>
+            Vše
+          </button>
+
+          <button onClick={() => setFilter("A")} style={getFilterButtonStyle("A")}>
+            A-tým
+          </button>
+
+          {hasBTeam && (
+            <button onClick={() => setFilter("B")} style={getFilterButtonStyle("B")}>
+              B-tým
+            </button>
+          )}
+        </div>
+      </div>
+
+
 
       {message && (
         <div

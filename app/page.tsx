@@ -398,11 +398,17 @@ export default function Home() {
   const [pullDistance, setPullDistance] = useState(0);
   const pullStartYRef = useRef<number | null>(null);
   const pullDistanceRef = useRef(0);
+  const deepLinkHandledRef = useRef(false);
 
   const isCurrentUserAdmin = currentMembership?.role === "admin";
 
+  // LIVE režim smí ovlivňovat layout pouze uvnitř sekce ZÁPASY.
+  // Kdyby MatchesScreen po návratu z backgroundu nechal isLiveMatch=true,
+  // nesmí tím zmizet navigace ani obsah ostatních sekcí.
+  const isLiveMatchActive = screen === "matches" && isLiveMatch;
+
   const isMainMenuVisible =
-    !isLiveMatch && selectedPlayedMatchId === null && screen === "home";
+    !isLiveMatchActive && selectedPlayedMatchId === null && screen === "home";
 
   const selectedPlayedMatch = finishedMatches.find(
     (match) => match.id === selectedPlayedMatchId
@@ -935,11 +941,16 @@ export default function Home() {
     if (typeof window === "undefined") return;
     if (!session || !currentClub) return;
 
+    // Deep-link zpracujeme jen jednou. Na mobilu se při obnovení session/currentClub
+    // efekt mohl spustit znovu a vrátit uživatele pořád na stejný trénink/zápas.
+    if (deepLinkHandledRef.current) return;
+
     const params = new URLSearchParams(window.location.search);
     const open = params.get("open");
     const id = params.get("id");
 
     if (!open || !id) return;
+    deepLinkHandledRef.current = true;
 
     if (open === "training") {
       setScreen("trainings");
@@ -958,6 +969,11 @@ export default function Home() {
       setIsLiveMatch(false);
       void loadClubMatchData(currentClub.id, true);
     }
+
+    // Po otevření odkazu odstraníme ?open=...&id=... z adresy.
+    // Jinak Safari/PWA může při návratu z pozadí stejný deep-link znovu aplikovat.
+    const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+    window.history.replaceState(window.history.state, "", cleanUrl);
   }, [session, currentClub, loadClubMatchData]);
 
   useEffect(() => {
@@ -981,6 +997,30 @@ export default function Home() {
     loadOverviewPlayers,
     ensureClubMatchDataLoaded,
   ]);
+
+
+  // Když se po skutečném reloadu / zahození WebView obnoví přímo ZÁPASY
+  // nebo STATISTIKY, musí se jejich data načíst i bez průchodu přes DOMŮ.
+  useEffect(() => {
+    if (!currentClub) return;
+    if (screen !== "matches" && screen !== "stats") return;
+
+    void ensureClubMatchDataLoaded(currentClub.id);
+  }, [currentClub, screen, ensureClubMatchDataLoaded]);
+
+  // selectedPlayedMatchId je perzistentní jen kvůli návratu na detail po reloadu.
+  // Pokud už uložený zápas neexistuje, nesmí aplikace zůstat v prázdném stavu.
+  useEffect(() => {
+    if (!matchesLoaded || selectedPlayedMatchId === null) return;
+
+    const stillExists = finishedMatches.some(
+      (match) => match.id === selectedPlayedMatchId
+    );
+
+    if (!stillExists) {
+      setSelectedPlayedMatchId(null);
+    }
+  }, [matchesLoaded, finishedMatches, selectedPlayedMatchId]);
 
   const todaysBirthdayPlayers = useMemo(() => {
     const today = new Date();
@@ -1369,6 +1409,7 @@ export default function Home() {
     setSelectedPlayedMatchId(null);
     setOpenTrainingId(null);
     setOpenMatchId(null);
+    setIsLiveMatch(false);
 
     if (nextScreen === "home") {
       setScreen("home");
@@ -1419,22 +1460,29 @@ export default function Home() {
   };
 
   const bottomNavStyle: React.CSSProperties = {
-    position: "sticky",
-    bottom: "max(6px, env(safe-area-inset-bottom))",
-    zIndex: 100,
+    position: "fixed",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
     display: "grid",
     gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
-    width: "100%",
-    gap: "0",
-    marginTop: "16px",
-    padding: "5px 3px",
+    width: "100vw",
+    maxWidth: "100vw",
+    gap: 0,
+    margin: 0,
+    padding: "7px 2px calc(7px + env(safe-area-inset-bottom))",
     boxSizing: "border-box",
     overflow: "hidden",
-    borderRadius: "16px",
-    background: "rgba(8,8,8,0.96)",
-    border: `1px solid ${dynamicTheme.cardBorder}`,
-    boxShadow: "0 12px 30px rgba(0,0,0,0.34)",
+    borderRadius: 0,
+    background: "rgba(8,8,8,0.97)",
+    borderTop: `1px solid ${dynamicTheme.cardBorder}`,
+    borderLeft: "none",
+    borderRight: "none",
+    borderBottom: "none",
+    boxShadow: "0 -8px 28px rgba(0,0,0,0.42)",
     backdropFilter: "blur(18px)",
+    WebkitBackdropFilter: "blur(18px)",
   };
 
   const getBottomNavButtonStyle = (active: boolean): React.CSSProperties => ({
@@ -1443,9 +1491,9 @@ export default function Home() {
     maxWidth: "100%",
     overflow: "hidden",
     border: "none",
-    borderRadius: "10px",
+    borderRadius: 0,
     padding: "7px 0 6px",
-    background: active ? `${dynamicTheme.primary}16` : "transparent",
+    background: "transparent",
     color: active ? dynamicTheme.primary : "rgba(255,255,255,0.56)",
     cursor: "pointer",
     display: "flex",
@@ -1459,6 +1507,7 @@ export default function Home() {
     letterSpacing: "0",
     whiteSpace: "nowrap",
     boxSizing: "border-box",
+    boxShadow: active ? `inset 0 2px 0 ${dynamicTheme.primary}` : "none",
   });
 
   const renderMatchesLoadingCard = () => (
@@ -1986,8 +2035,14 @@ export default function Home() {
           ...styles.phone,
           background: dynamicTheme.phoneBackground,
           border: `1px solid ${dynamicTheme.cardBorder}`,
+          // Pevná spodní navigace leží mimo tok stránky, proto jí necháme místo.
+          paddingBottom:
+            !isLiveMatchActive && screen !== "home"
+              ? "calc(92px + env(safe-area-inset-bottom))"
+              : styles.phone.paddingBottom,
         }}
       >
+        {screen === "home" && (
         <div
           style={{
             display: "flex",
@@ -2076,6 +2131,7 @@ export default function Home() {
             Odhlásit
           </button>
         </div>
+        )}
 
         {showMissingPlayerInfo && (
           <div
@@ -2312,7 +2368,7 @@ export default function Home() {
 
 
         <div style={{ marginTop: isMainMenuVisible ? "20px" : "0px" }}>
-          {screen === "team" && selectedPlayedMatchId === null && !isLiveMatch && (
+          {screen === "team" && selectedPlayedMatchId === null && !isLiveMatchActive && (
             <div style={{ display: "grid", gap: "12px" }}>
               <div style={{ display: "flex", gap: "6px" }}>
                 <button
@@ -2554,7 +2610,7 @@ export default function Home() {
 
           {screen === "matches" && selectedPlayedMatchId === null && (
             <div style={{ display: "grid", gap: "12px" }}>
-              {!isLiveMatch && (
+              {!isLiveMatchActive && (
                 <div style={{ display: "flex", gap: "8px" }}>
                   <button
                     style={getSubTabStyle(matchesTab === "planned")}
@@ -2698,7 +2754,7 @@ export default function Home() {
                     />
                   )}
 
-                  {matchesTab === "played" && !isLiveMatch && (
+                  {matchesTab === "played" && !isLiveMatchActive && (
                     <PlayedMatchesScreen
                       finishedMatches={finishedMatches}
                       clubName={currentClub.name}
@@ -2737,7 +2793,7 @@ export default function Home() {
             </div>
           )}
 
-          {screen === "trainings" && selectedPlayedMatchId === null && !isLiveMatch && (
+          {screen === "trainings" && selectedPlayedMatchId === null && !isLiveMatchActive && (
             <TrainingsScreen
               clubId={currentClub.id}
               primaryColor={currentClub.primary_color}
@@ -2747,7 +2803,7 @@ export default function Home() {
             />
           )}
 
-          {screen === "polls" && selectedPlayedMatchId === null && !isLiveMatch && (
+          {screen === "polls" && selectedPlayedMatchId === null && !isLiveMatchActive && (
             <PollsScreen
               clubId={currentClub.id}
               userId={session.user.id}
@@ -2755,7 +2811,7 @@ export default function Home() {
             />
           )}
 
-          {screen === "stats" && selectedPlayedMatchId === null && !isLiveMatch && (
+          {screen === "stats" && selectedPlayedMatchId === null && !isLiveMatchActive && (
             <>
               {matchesLoading && !matchesLoaded ? (
                 renderMatchesLoadingCard()
@@ -2769,7 +2825,7 @@ export default function Home() {
             </>
           )}
 
-          {screen === "discipline" && selectedPlayedMatchId === null && !isLiveMatch && (
+          {screen === "discipline" && selectedPlayedMatchId === null && !isLiveMatchActive && (
             <DisciplineScreen
               clubId={currentClub.id}
               primaryColor={currentClub.primary_color}
@@ -2797,7 +2853,7 @@ export default function Home() {
 )}
         </div>
 
-        {!isLiveMatch && screen !== "home" && (
+        {!isLiveMatchActive && screen !== "home" && (
           <nav style={bottomNavStyle} aria-label="Hlavní navigace">
             {bottomNavItems.map((item) => {
               const active =

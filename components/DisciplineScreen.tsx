@@ -1368,7 +1368,7 @@ export default function DisciplineScreen({
       ? `1px solid ${primaryColor}66`
       : "1px solid rgba(255,255,255,0.08)",
     borderRadius: "999px",
-    padding: "10px 12px",
+    padding: "8px 10px",
     background: active ? `${primaryColor}22` : "rgba(255,255,255,0.06)",
     color: active ? primaryColor : "#ffffff",
     fontWeight: 900,
@@ -1403,10 +1403,10 @@ export default function DisciplineScreen({
   };
 
   return (
-    <div style={{ display: "grid", gap: "18px", paddingBottom: "18px" }}>
+    <div style={{ display: "grid", gap: "12px", paddingBottom: "18px" }}>
       <div
         style={{
-          fontSize: "30px",
+          fontSize: "24px",
           lineHeight: 1,
           fontWeight: 950,
           letterSpacing: "0.3px",
@@ -1434,8 +1434,8 @@ export default function DisciplineScreen({
           style={{
             border: mainTab === "attendance" ? `1px solid ${primaryColor}` : "1px solid transparent",
             borderRadius: "13px",
-            minHeight: "58px",
-            padding: "10px 12px",
+            minHeight: "46px",
+            padding: "8px 10px",
             background: mainTab === "attendance"
               ? `linear-gradient(135deg, ${primaryColor}22, ${primaryColor}0b)`
               : "transparent",
@@ -1468,7 +1468,7 @@ export default function DisciplineScreen({
               <div
                 style={{
                   fontWeight: 950,
-                  fontSize: "17px",
+                  fontSize: "14px",
                   letterSpacing: "0.1px",
                   color: mainTab === "attendance" ? "#ffffff" : "#d7d7d7",
                 }}
@@ -1486,8 +1486,8 @@ export default function DisciplineScreen({
           style={{
             border: mainTab === "fines" ? `1px solid ${primaryColor}` : "1px solid transparent",
             borderRadius: "13px",
-            minHeight: "58px",
-            padding: "10px 12px",
+            minHeight: "46px",
+            padding: "8px 10px",
             background: mainTab === "fines"
               ? `linear-gradient(135deg, ${primaryColor}22, ${primaryColor}0b)`
               : "transparent",
@@ -1532,7 +1532,7 @@ export default function DisciplineScreen({
               <div
                 style={{
                   fontWeight: 950,
-                  fontSize: "17px",
+                  fontSize: "14px",
                   letterSpacing: "0.1px",
                   color: mainTab === "fines" ? "#ffffff" : "#d7d7d7",
                 }}
@@ -2465,7 +2465,7 @@ export default function DisciplineScreen({
                                 <div
                                   key={fine.id}
                                   style={{
-                                    padding: "10px 12px",
+                                    padding: "8px 10px",
                                     borderRadius: "14px",
                                     background: "rgba(255,255,255,0.04)",
                                     border: "1px solid rgba(255,255,255,0.05)",
@@ -2545,7 +2545,7 @@ export default function DisciplineScreen({
                                             width: "100%",
                                             border: "none",
                                             borderRadius: "12px",
-                                            padding: "10px 12px",
+                                            padding: "8px 10px",
                                             background: primaryColor,
                                             color: "#071107",
                                             fontWeight: 950,
@@ -2564,7 +2564,7 @@ export default function DisciplineScreen({
                                           width: "100%",
                                           border: "none",
                                           borderRadius: "12px",
-                                          padding: "10px 12px",
+                                          padding: "8px 10px",
                                           background: "rgba(198,40,40,0.95)",
                                           color: "white",
                                           fontWeight: 950,
@@ -2693,7 +2693,7 @@ export default function DisciplineScreen({
                               flex: 1,
                               border: "none",
                               borderRadius: "12px",
-                              padding: "10px 12px",
+                              padding: "8px 10px",
                               background: primaryColor,
                               color: "#071107",
                               fontWeight: 950,
@@ -2710,7 +2710,7 @@ export default function DisciplineScreen({
                               flex: 1,
                               border: "none",
                               borderRadius: "12px",
-                              padding: "10px 12px",
+                              padding: "8px 10px",
                               background: "rgba(198,40,40,0.95)",
                               color: "white",
                               fontWeight: 950,

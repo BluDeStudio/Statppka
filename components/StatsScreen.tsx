@@ -1038,7 +1038,19 @@ export default function StatsScreen({
           : "Nejdřív vytvoř aktivní období";
 
   return (
-    <div style={{ display: "grid", gap: "14px" }}>
+    <div style={{ display: "grid", gap: "12px", paddingBottom: "18px" }}>
+      <div
+        style={{
+          fontSize: "24px",
+          lineHeight: 1.05,
+          fontWeight: 950,
+          letterSpacing: "0.2px",
+          color: "#ffffff",
+          margin: "2px 2px 6px",
+        }}
+      >
+        STATISTIKY
+      </div>
       {loading ? (
         <div
           style={{
@@ -1065,7 +1077,7 @@ export default function StatsScreen({
                 border: "none",
                 background: "transparent",
                 color: "white",
-                padding: "16px",
+                padding: "13px 14px",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
@@ -1077,15 +1089,15 @@ export default function StatsScreen({
               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                 <div
                   style={{
-                    width: "44px",
-                    height: "44px",
+                    width: "38px",
+                    height: "38px",
                     borderRadius: "14px",
                     background: `${primaryColor}22`,
                     color: primaryColor,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontSize: "21px",
+                    fontSize: "18px",
                   }}
                 >
                   📊
@@ -1101,12 +1113,12 @@ export default function StatsScreen({
                       textTransform: "uppercase",
                     }}
                   >
-                    Období statistik
+                    Období
                   </div>
 
                   <div
                     style={{
-                      fontSize: "18px",
+                      fontSize: "16px",
                       fontWeight: 950,
                       marginTop: "3px",
                     }}

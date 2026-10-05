@@ -1026,7 +1026,19 @@ export default function TrainingsScreen({
           : "Nejdřív vytvoř aktivní období";
 
   return (
-    <div style={{ display: "grid", gap: "14px" }}>
+    <div style={{ display: "grid", gap: "12px", paddingBottom: "18px" }}>
+      <div
+        style={{
+          fontSize: "20px",
+          lineHeight: 1.05,
+          fontWeight: 950,
+          letterSpacing: "0.2px",
+          color: "#ffffff",
+          margin: "2px 2px 6px",
+        }}
+      >
+        TRÉNINKY
+      </div>
       <div
         style={{
           ...glassCardStyle,
@@ -1041,7 +1053,7 @@ export default function TrainingsScreen({
             border: "none",
             background: "transparent",
             color: "white",
-            padding: "16px",
+            padding: "13px 14px",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
@@ -1060,10 +1072,10 @@ export default function TrainingsScreen({
                 textTransform: "uppercase",
               }}
             >
-              Období tréninků a anket
+              Období
             </div>
 
-            <div style={{ fontSize: "18px", fontWeight: 950, marginTop: "3px" }}>
+            <div style={{ fontSize: "16px", fontWeight: 950, marginTop: "2px" }}>
               {periodTitle}
             </div>
 
@@ -1074,7 +1086,7 @@ export default function TrainingsScreen({
 
           <div
             style={{
-              fontSize: "24px",
+              fontSize: "20px",
               color: "#b8b8b8",
               transform: periodPanelOpen ? "rotate(180deg)" : "rotate(0deg)",
               transition: "transform 0.2s ease",
