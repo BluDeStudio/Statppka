@@ -34,6 +34,7 @@ import {
   createInviteLink,
   getClubById,
   getMyClubMembership,
+  joinClubByInviteToken,
   type Club,
   type ClubMember,
 } from "@/lib/club";
@@ -173,11 +174,38 @@ function saveInviteFromUrl(url: string) {
     const parsedUrl = new URL(url);
     const inviteToken = parsedUrl.searchParams.get("invite");
 
-    if (inviteToken) {
-      window.localStorage.setItem(INVITE_STORAGE_KEY, inviteToken);
+    if (inviteToken?.trim()) {
+      window.localStorage.setItem(INVITE_STORAGE_KEY, inviteToken.trim());
     }
   } catch (error) {
     console.warn("Nepodařilo se uložit invite token z URL:", error);
+  }
+}
+
+function getStoredInviteToken() {
+  if (typeof window === "undefined") return "";
+  return (window.localStorage.getItem(INVITE_STORAGE_KEY) ?? "").trim();
+}
+
+function clearStoredInviteToken() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(INVITE_STORAGE_KEY);
+}
+
+function removeInviteFromCurrentUrl() {
+  if (typeof window === "undefined") return;
+
+  try {
+    const url = new URL(window.location.href);
+
+    if (!url.searchParams.has("invite")) return;
+
+    url.searchParams.delete("invite");
+
+    const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+    window.history.replaceState(window.history.state, "", nextUrl || "/");
+  } catch (error) {
+    console.warn("Nepodařilo se odstranit invite parametr z URL:", error);
   }
 }
 
@@ -621,7 +649,40 @@ export default function Home() {
         const profile = await getOrCreateProfile();
         setUserProfile(profile);
 
-        const membership = await getMyClubMembership(currentSession.user.id);
+        let membership = await getMyClubMembership(currentSession.user.id);
+
+        // Pokud uživatel přišel přes pozvánku a ještě není členem žádného klubu,
+        // dokončíme připojení automaticky hned po přihlášení.
+        if (!membership) {
+          const storedInviteToken = getStoredInviteToken();
+
+          if (storedInviteToken) {
+            const joinResult = await joinClubByInviteToken(
+              currentSession.user.id,
+              storedInviteToken
+            );
+
+            if (joinResult.club && joinResult.membership) {
+              membership = joinResult.membership;
+              setCurrentMembership(joinResult.membership);
+              setCurrentClub(joinResult.club);
+
+              clearStoredInviteToken();
+              removeInviteFromCurrentUrl();
+
+              await loadLinkedPlayerState(
+                joinResult.club.id,
+                currentSession.user.id
+              );
+              return;
+            }
+
+            if (joinResult.errorMessage) {
+              setAppError(joinResult.errorMessage);
+            }
+          }
+        }
+
         setCurrentMembership(membership);
 
         if (!membership) {
@@ -637,6 +698,8 @@ export default function Home() {
         setCurrentClub(club);
 
         if (club) {
+          clearStoredInviteToken();
+          removeInviteFromCurrentUrl();
           await loadLinkedPlayerState(club.id, currentSession.user.id);
         } else {
           resetLoadedClubData();
@@ -881,6 +944,12 @@ export default function Home() {
     const init = async () => {
       try {
         setBootLoading(true);
+
+        // Webovou pozvánku uložíme ještě před kontrolou přihlášení.
+        // Přihlašovací redirect může ?invite=... z adresy odstranit.
+        if (typeof window !== "undefined") {
+          saveInviteFromUrl(window.location.href);
+        }
 
         const {
           data: { session: currentSession },

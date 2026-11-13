@@ -290,6 +290,30 @@ export async function joinClubByInviteToken(
       };
     }
 
+    const { data: invite, error: inviteError } = await supabase
+      .from("club_invites")
+      .select("*")
+      .eq("token", cleanedToken)
+      .eq("active", true)
+      .maybeSingle();
+
+    if (inviteError) {
+      console.error("Nepodařilo se ověřit pozvánku:", inviteError.message);
+      return {
+        club: null,
+        membership: null,
+        errorMessage: "Pozvánku se nepodařilo ověřit.",
+      };
+    }
+
+    if (!invite) {
+      return {
+        club: null,
+        membership: null,
+        errorMessage: "Pozvánka nebyla nalezena nebo už není aktivní.",
+      };
+    }
+
     const { data: existingMembership, error: existingMembershipError } = await supabase
       .from("club_members")
       .select("*")
@@ -298,6 +322,7 @@ export async function joinClubByInviteToken(
       .maybeSingle();
 
     if (existingMembershipError) {
+      console.error("Nepodařilo se ověřit existující členství:", existingMembershipError.message);
       return {
         club: null,
         membership: null,
@@ -306,29 +331,25 @@ export async function joinClubByInviteToken(
     }
 
     if (existingMembership) {
-      const club = await getClubById(existingMembership.club_id);
-      return {
-        club,
-        membership: {
-          ...(existingMembership as ClubMember),
-          role: ((existingMembership as ClubMember).role ?? "member") as "admin" | "member",
-        },
-        errorMessage: club ? undefined : "Už jsi členem klubu, ale klub se nepodařilo načíst.",
-      };
-    }
+      if (existingMembership.club_id === invite.club_id) {
+        const club = await getClubById(existingMembership.club_id);
 
-    const { data: invite, error: inviteError } = await supabase
-      .from("club_invites")
-      .select("*")
-      .eq("token", cleanedToken)
-      .eq("active", true)
-      .maybeSingle();
+        return {
+          club,
+          membership: {
+            ...(existingMembership as ClubMember),
+            role: ((existingMembership as ClubMember).role ?? "member") as "admin" | "member",
+          },
+          errorMessage: club
+            ? undefined
+            : "Už jsi členem tohoto klubu, ale klub se nepodařilo načíst.",
+        };
+      }
 
-    if (inviteError || !invite) {
       return {
         club: null,
         membership: null,
-        errorMessage: "Pozvánka nebyla nalezena nebo už není aktivní.",
+        errorMessage: "Už jsi členem jiného klubu. Nejprve je potřeba vyřešit stávající členství.",
       };
     }
 
@@ -345,6 +366,7 @@ export async function joinClubByInviteToken(
       .single();
 
     if (memberError || !membership) {
+      console.error("Nepodařilo se vytvořit členství z pozvánky:", memberError?.message);
       return {
         club: null,
         membership: null,
